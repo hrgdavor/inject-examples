@@ -32,6 +32,12 @@ of keys. See [Region rules by file type](#region-rules-by-file-type).
 
 No dependencies. Node 18+. Works as a CLI and as a library.
 
+The JavaScript implementation — [`index.mjs`](./index.mjs) and
+[`cli.mjs`](./cli.mjs) — is the source of truth. Its author is more experienced
+in JavaScript, so the Zig port in `src/` follows it and never the other way
+round: when the two disagree about a byte, the JavaScript is right. See
+[The Zig port](#the-zig-port).
+
 A detailed usage guide lives in [`doc/usage.md`](./doc/usage.md).
 
 ## Install
@@ -541,6 +547,67 @@ field, so npm links the package page to the GitHub repository.
 
 Only `cli.mjs`, `index.mjs`, `README.md` and `LICENSE` ship (`files` in
 `package.json`); the test file stays out.
+
+## The Zig port
+
+**The JavaScript implementation is the source of truth.** `index.mjs` and
+`cli.mjs` define what this tool does, and their author is more experienced in
+JavaScript, so the Zig code is the one that moves when the two disagree.
+
+`build.zig`, `build.zig.zon` and `src/` hold a second implementation of this
+exact tool in Zig, written against Zig 0.16.0 (this checkout used the toolchain
+at `D:\wrk\zig\16\zig.exe`). It is not a rewrite-with-ideas: its job is to
+produce the same bytes the JavaScript one produces, in every mode, on every
+input.
+
+```bash
+zig build                     # -> zig-out/inject-examples(.exe)
+zig build test                # the ported test suite, all in memory
+node tools/compare-zig.mjs    # differential harness: JS vs Zig, byte for byte
+```
+
+The binary is a drop-in stand-in for `node cli.mjs`: the same flags in all of
+their spellings, the same `inject-examples: …` messages on stderr, the same
+in-place and `--out` rewriting, and the same exit codes (0 for up to date or
+updated, 1 for stale or malformed, 2 for a wrong command line).
+
+Five JavaScript details decide byte equality, so the Zig code mirrors them
+exactly instead of approximating:
+
+| JS behaviour                        | how the Zig port mirrors it                                                                                       |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| every index and length is a code unit | text is handled as UTF-16 code units, not bytes, so `.length`, slices and regex scans agree on astral characters |
+| `String.prototype.trim` and `/\s/`  | the same 25-code-unit set V8 uses — tab through U+FEFF, and *not* U+0085                                          |
+| `JSON.parse` / `JSON.stringify`     | V8's own messages (position, line, column, the embedded input), escaping, number spelling and key order           |
+| `readFileSync(path, 'utf8')`        | the WHATWG utf-8 decoder: one U+FFFD per invalid maximal subpart, and one for an unpaired surrogate on the way out |
+| `node:path`, `resolve` especially   | `std.fs.path`, with the working directory named explicitly, because Zig's `resolve` will not anchor a relative path |
+
+Two JavaScript quirks that a "clean" port would have smoothed over are
+reproduced instead, because they are observable: `.constructor` and `.__proto__`
+are reachable as fence languages (the language table is an ordinary object, and
+those are its inherited members), and a merged JSON selection drops a
+`__proto__` key for the same reason.
+
+One divergence is deliberate. A `.gitignore` glob whose generated regular
+expression is invalid in JavaScript (`[?-!*]`, or `[a\]x`) makes the JS tool die
+with an uncaught `SyntaxError`, while the Zig port matches the glob as written
+and carries on. A rule like that is broken either way.
+
+The library side is importable as well: the whole of `index.mjs` lives in
+`src/root.zig`, exposed as the `inject_examples` module of the package —
+`updateDocument`, `resolveMarker`, `parseMarker`, `findMarkers`, `injectInto`,
+`extractRegion`, `extractCodeRegion`, `extractJsonRegion`, `ruleFor`,
+`fileLanguage`, `parseIgnoreFile`, `isIgnoredPath`, `normalize` and the
+`utf8Decode` / `utf8Encode` pair. Only `fileReader` has no twin: a Zig library
+has no working directory of its own, so the CLI hands `updateDocument` a
+`Reader` that resolves against the root and reads what is there.
+
+`tools/compare-zig.mjs` is the proof. It runs both tools over a corpus made of
+edge cases — markers in fences, broken includes, CRLF documents, JSON regions
+with every error shape, gitignore rules, `--out`, directories, missing files,
+usage errors — plus a seeded fuzzer that builds random documents and target
+files, and compares stdout, stderr, exit code and every rewritten file byte for
+byte. `--seed N` and `--rounds N` vary the corpus.
 
 ## License
 

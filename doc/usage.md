@@ -2,6 +2,11 @@
 
 A detailed guide to using inject-examples in a real project.
 
+The JavaScript implementation is the source of truth for everything described
+here. The Zig port under `src/` is written to match it byte for byte, and the
+JavaScript is the one that wins when they disagree; see
+[The Zig port](../README.md#the-zig-port).
+
 This document is built with the tool it documents: each code block below that
 follows a marker line is not typed by hand. The marker names a real file in
 this repository, and the tool rewrites the block with the file's current
