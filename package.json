@@ -1,0 +1,41 @@
+{
+  "name": "inject-examples",
+  "version": "1.0.0",
+  "description": "Keep Markdown examples in sync with the real files they show — inject file content, or one region of it, into the fenced block that follows a link.",
+  "keywords": [
+    "markdown",
+    "readme",
+    "documentation",
+    "docs",
+    "examples",
+    "fixtures",
+    "inject",
+    "sync",
+    "cli",
+    "region",
+    "gitignore"
+  ],
+  "license": "MIT",
+  "author": "Davor Hrg",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "bin": {
+    "inject-examples": "./cli.mjs"
+  },
+  "files": [
+    "cli.mjs",
+    "index.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test.mjs"
+  }
+}
