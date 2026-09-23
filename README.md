@@ -571,6 +571,12 @@ their spellings, the same `inject-examples: …` messages on stderr, the same
 in-place and `--out` rewriting, and the same exit codes (0 for up to date or
 updated, 1 for stale or malformed, 2 for a wrong command line).
 
+Tagging `v*` runs `.github/workflows/release.yml` (the one from md-fix-tables,
+adjusted for this project), which cross-builds `ReleaseSafe` binaries for x86_64
+Linux, Windows, x86_64 macOS and aarch64 macOS, and attaches them to a GitHub
+release. That is the Zig side only: `npm publish` ships the JavaScript package,
+a `v*` tag ships the binaries.
+
 Five JavaScript details decide byte equality, so the Zig code mirrors them
 exactly instead of approximating:
 
