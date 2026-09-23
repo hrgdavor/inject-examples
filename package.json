@@ -1,6 +1,6 @@
 {
   "name": "@hrg/inject-examples",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Keep Markdown examples in sync with the real files they show — inject file content, or one region of it, into the fenced block that follows a link.",
   "keywords": [
     "markdown",
@@ -25,7 +25,9 @@
   "sideEffects": false,
   "main": "./index.mjs",
   "exports": {
-    ".": "./index.mjs"
+    ".": "./index.mjs",
+    "./cli.mjs": "./cli.mjs",
+    "./package.json": "./package.json"
   },
   "bin": {
     "inject-examples": "./cli.mjs"

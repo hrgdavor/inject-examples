@@ -20,6 +20,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+    CODE_RULE,
+    JSON_RULE,
+    REGION_RULES,
+    codeReference,
+    extractCodeRegion,
+    extractDeclaration,
+    extractJsonRegion,
     extractRegion,
     fenceRanges,
     fileLanguage,
@@ -32,6 +39,7 @@ import {
     parseMarker,
     regionDirective,
     resolveMarker,
+    ruleFor,
     updateDocument,
 } from './index.mjs';
 
@@ -101,6 +109,249 @@ test('extractRegion fails loudly on missing, ambiguous and unclosed regions', ()
         /appears 2 times/,
     );
     assert.throws(() => extractRegion('#region t\nx', 't'), /never closed/);
+});
+
+// ---------------------------------------------------------------------------
+// Region rules by file type — the code rule
+// ---------------------------------------------------------------------------
+
+const JAVA = [
+    'package example;',
+    '',
+    '/** A cart of items. */',
+    'public class Cart {',
+    '    /** Add one item to this cart. */',
+    '    @Override',
+    '    public String toString() {',
+    '        return String.join(",", items);',
+    '    }',
+    '',
+    '    /** One line of a cart. */',
+    '    public static class Line {',
+    '        Line(String name) {',
+    '            this.name = name;',
+    '        }',
+    '    }',
+    '}',
+].join('\n');
+
+test('codeReference reads the scope modifiers', () => {
+    assert.deepEqual(codeReference('add'), { scope: 'declaration', name: 'add' });
+    assert.deepEqual(codeReference('-add'), { scope: 'body', name: 'add' });
+    assert.deepEqual(codeReference('+add'), { scope: 'annotated', name: 'add' });
+    assert.deepEqual(codeReference('++add'), { scope: 'documented', name: 'add' });
+    assert.deepEqual(codeReference('++'), { scope: 'documented', name: '' });
+});
+
+test('extractDeclaration matches a method and a class-like declaration', () => {
+    assert.equal(extractDeclaration(JAVA, 'toString'),
+        '    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(extractDeclaration(JAVA, 'Line'),
+        '    public static class Line {\n'
+        + '        Line(String name) {\n'
+        + '            this.name = name;\n'
+        + '        }\n'
+        + '    }');
+    assert.equal(extractDeclaration(JAVA, 'missing'), null, 'nothing found is null, not an error');
+    assert.equal(extractDeclaration(JAVA, ''), null);
+});
+
+test('extractDeclaration prefers a class over its same-named constructor', () => {
+    const java = ['public class Cart {', '    Cart() {', '        init();', '    }', '}'].join('\n');
+    assert.equal(extractDeclaration(java, 'Cart'), java);
+});
+
+test('extractDeclaration scopes: -, + and ++', () => {
+    assert.equal(extractDeclaration(JAVA, 'toString', 'body'), '        return String.join(",", items);');
+    assert.equal(extractDeclaration(JAVA, 'toString', 'annotated'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(extractDeclaration(JAVA, 'toString', 'documented'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    // `++` without a doc comment above is `+`; `+` without an annotation is
+    // the declaration.
+    assert.equal(extractDeclaration(JAVA, 'Line', 'documented'),
+        '    /** One line of a cart. */\n'
+        + '    public static class Line {\n'
+        + '        Line(String name) {\n'
+        + '            this.name = name;\n'
+        + '        }\n'
+        + '    }');
+    assert.equal(extractDeclaration(JAVA, 'Line', 'annotated'), extractDeclaration(JAVA, 'Line'));
+});
+
+test('extractDeclaration follows indented and Allman bodies', () => {
+    const python = [
+        'class Cart:',
+        '    def add(self, item):',
+        '        self.items.append(item)',
+        '        return self',
+        '',
+        'def helper():',
+        '    pass',
+    ].join('\n');
+    assert.equal(extractDeclaration(python, 'add'),
+        '    def add(self, item):\n        self.items.append(item)\n        return self');
+    assert.equal(extractDeclaration(python, 'add', 'body'),
+        '        self.items.append(item)\n        return self');
+
+    const allman = ['public class A', '{', '    void run()', '    {', '        go();', '    }', '}'].join('\n');
+    assert.equal(extractDeclaration(allman, 'run'), '    void run()\n    {\n        go();\n    }');
+    assert.equal(extractDeclaration(allman, 'A', 'body'), '    void run()\n    {\n        go();\n    }');
+});
+
+test('extractDeclaration is not fooled by braces in strings or comments', () => {
+    const tricky = [
+        'class T {',
+        '    void go() {',
+        '        String s = "}";',
+        '        /* } */ // }',
+        '    }',
+        '}',
+    ].join('\n');
+    assert.equal(extractDeclaration(tricky, 'go'),
+        '    void go() {\n        String s = "}";\n        /* } */ // }\n    }');
+});
+
+test('extractDeclaration reads assigned and arrow functions', () => {
+    assert.equal(extractDeclaration('const pick = (a) => {\n    return a;\n};', 'pick'),
+        'const pick = (a) => {\n    return a;\n};');
+    assert.equal(extractDeclaration('const inc = (n) => n + 1;', 'inc', 'body'), 'n + 1;');
+    assert.equal(extractDeclaration('  handler = async (event) => {\n    go(event);\n  };', 'handler'),
+        '  handler = async (event) => {\n    go(event);\n  };');
+    assert.equal(extractDeclaration('const run = function () { go(); };', 'run'),
+        'const run = function () { go(); };');
+    assert.equal(extractDeclaration('const type: Fn = (a) => a;', 'type', 'body'), 'a;');
+});
+
+test('extractDeclaration rejects ambiguous names and ignores calls', () => {
+    const overloaded = ['class A {', '    void run() {}', '    void run(int x) {}', '}'].join('\n');
+    assert.throws(() => extractDeclaration(overloaded, 'run'), /"run" is declared 2 times/);
+    assert.equal(extractDeclaration('add(x);\nrun();', 'add'), null, 'a call is not a declaration');
+    assert.equal(extractDeclaration('interface Opts {\n    void add(int x);\n}', 'add'), null,
+        'a body-less declaration has nothing to inject');
+});
+
+test('extractCodeRegion prefers an explicit region directive', () => {
+    const text = ['// #region add', 'the region body', '// #endregion', '', 'void add() { body(); }'].join('\n');
+    assert.equal(extractCodeRegion(text, 'add'), 'the region body');
+    assert.equal(extractCodeRegion(text, '-add'), 'the region body', 'a modifier cannot change a region');
+});
+
+test('extractCodeRegion reads declarations and fails loudly on nothing', () => {
+    assert.equal(extractCodeRegion(JAVA, '+toString'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.throws(
+        () => extractCodeRegion(JAVA, 'missing'),
+        /no "#region missing" found, and no method or inner class named "missing"/,
+    );
+    assert.throws(() => extractCodeRegion(JAVA, '+'), /names nothing/);
+});
+
+// ---------------------------------------------------------------------------
+// Region rules by file type — the JSON rule
+// ---------------------------------------------------------------------------
+
+const JSON_DOC = [
+    '{',
+    '  "name": "acme",',
+    '  "version": "1.0.0",',
+    '  "scripts": {',
+    '    "build": "make",',
+    '    "test": "make test"',
+    '  },',
+    '  "keywords": ["docs", "examples", "sync"]',
+    '}',
+].join('\n');
+
+test('extractJsonRegion selects top-level keys and forms valid JSON', () => {
+    const selected = extractJsonRegion(JSON_DOC, 'name,version');
+    assert.equal(selected, '{\n  "name": "acme",\n  "version": "1.0.0"\n}');
+    assert.deepEqual(JSON.parse(selected), { name: 'acme', version: '1.0.0' });
+});
+
+test('extractJsonRegion follows dotted paths and array elements', () => {
+    assert.deepEqual(
+        JSON.parse(extractJsonRegion(JSON_DOC, 'scripts.test,name')),
+        { scripts: { test: 'make test' }, name: 'acme' },
+        'listed order, nested keys merged',
+    );
+    assert.deepEqual(
+        JSON.parse(extractJsonRegion(JSON_DOC, 'keywords.0,keywords.2')),
+        { keywords: ['docs', 'sync'] },
+        'only the elements named, in order',
+    );
+});
+
+test('extractJsonRegion fails loudly on missing keys and bad documents', () => {
+    assert.throws(() => extractJsonRegion(JSON_DOC, 'scripts.nope'), /"scripts.nope": no key "nope"/);
+    assert.throws(() => extractJsonRegion(JSON_DOC, 'keywords.x'), /is not an array index/);
+    assert.throws(() => extractJsonRegion(JSON_DOC, 'keywords.9'), /no element 9/);
+    assert.throws(() => extractJsonRegion(JSON_DOC, ','), /names no keys/);
+    assert.throws(() => extractJsonRegion('not json', 'a'), /not valid JSON/);
+    assert.throws(() => extractJsonRegion('[1, 2]', 'a'), /top-level JSON value is not an object/);
+    assert.throws(() => extractJsonRegion('null', 'a'), /top-level JSON value is not an object/);
+});
+
+test('ruleFor sends .json to the JSON rule and everything else to code', () => {
+    assert.equal(ruleFor('package.json').name, 'json');
+    assert.equal(ruleFor('./a/b.JSON').name, 'json', 'extensions are case-insensitive');
+    assert.equal(ruleFor('index.mjs').name, 'code');
+    assert.equal(ruleFor('README.md').name, 'code');
+    assert.equal(ruleFor('.gitignore').name, 'code');
+    assert.equal(ruleFor('noext').name, 'code');
+    assert.equal(ruleFor('a.json', [JSON_RULE, CODE_RULE]).name, 'json');
+    assert.equal(ruleFor('a.json', []).name, 'code', 'a rule set with no match falls back');
+    assert.deepEqual(REGION_RULES, [JSON_RULE, CODE_RULE]);
+});
+
+test('resolveMarker resolves a region by the file type', () => {
+    const files = { 'data.json': JSON_DOC, 'code.ts': 'const add = (a) => a;\n' };
+    const read = reader(files);
+    assert.equal(
+        resolveMarker(parseMarker('[data.json](./data.json#region:name)'), read),
+        '{\n  "name": "acme"\n}',
+    );
+    assert.equal(
+        resolveMarker(parseMarker('[code.ts](./code.ts#region:add)'), read),
+        'const add = (a) => a;',
+    );
+    assert.equal(
+        resolveMarker(parseMarker('[data.json](./data.json)'), read),
+        JSON_DOC,
+        'a whole file ignores the rules',
+    );
+});
+
+test('updateDocument injects a JSON selection and is idempotent', () => {
+    const files = { 'data.json': JSON_DOC };
+    const doc = ['[data.json](./data.json#region:scripts)', '```', 'stale', '```'].join('\n');
+    const read = reader(files);
+
+    const first = updateDocument(doc, { readFile: read });
+    assert.equal(first.changed, true);
+    assert.match(first.text, /"test": "make test"/);
+    assert.match(first.text, /^```json$/m, 'the fence still gets the file language');
+
+    const second = updateDocument(first.text, { readFile: read });
+    assert.equal(second.changed, false, 'a second pass is a no-op');
+});
+
+test('updateDocument takes a custom rule set', () => {
+    const files = { 'notes.txt': 'one\n-- eight --\ntwo\n' };
+    const doc = ['[notes.txt](./notes.txt#region:eight)', '```', 'stale', '```'].join('\n');
+    const custom = {
+        name: 'dashes',
+        extensions: ['txt'],
+        resolve: (text, region) => text.split('\n')[text.split('\n').indexOf(`-- ${region} --`) + 1],
+    };
+
+    const result = updateDocument(doc, { readFile: reader(files), regionRules: [custom] });
+    assert.match(result.text, /^two$/m);
+    assert.doesNotMatch(result.text, /stale/);
 });
 
 // ---------------------------------------------------------------------------
@@ -602,7 +853,10 @@ test('lenient tolerates region and fence failures and keeps their blocks', () =>
     // A region that does not exist.
     let doc = ['[big.md](./big.md#region:missing)', '```', 'old', '```'].join('\n');
     let result = updateDocument(doc, { readFile: read, lenient: true });
-    assert.equal(result.results[0].failure, 'no "#region missing" found');
+    assert.equal(
+        result.results[0].failure,
+        'no "#region missing" found, and no method or inner class named "missing"',
+    );
     assert.match(result.text, /old/);
 
     // An unclosed fence.
@@ -666,7 +920,13 @@ test('parseArgs reads the gitignore flags and rejects conflicts', () => {
     assert.equal(parseArgs(['--no-gitignore']).noGitignore, true);
     assert.throws(() => parseArgs(['-g', 'a.txt', '--no-gitignore']), UsageError);
     assert.throws(() => parseArgs(['--bogus']), UsageError);
-    assert.throws(() => parseArgs(['a.md', 'b.md']), UsageError);
+});
+
+test('parseArgs collects every positional target, files and directories alike', () => {
+    assert.deepEqual(parseArgs(['a.md', 'b.md']).files, ['a.md', 'b.md']);
+    assert.deepEqual(parseArgs(['docs/', 'a.md']).files, ['docs/', 'a.md']);
+    assert.deepEqual(parseArgs(['--', '-weird-name.md']).files, ['-weird-name.md']);
+    assert.deepEqual(parseArgs([]).files, ['README.md'], 'the default is still README.md');
 });
 
 test('main checks, updates and skips gitignored markers', (t) => {
@@ -773,6 +1033,84 @@ test('main --lenient --check exits 0 when only gitignored skips remain', (t) => 
     assert.equal(main([readmePath, '--lenient', '--check', '-g', join(dir, 'ci.txt')]), 0);
 });
 
+test('main expands a directory to every *.md below it, skipping the noise', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-tree-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    mkdirSync(join(dir, 'docs', 'nested'), { recursive: true });
+    mkdirSync(join(dir, 'docs', 'node_modules', 'dep'), { recursive: true });
+    mkdirSync(join(dir, 'docs', '.hidden'), { recursive: true });
+    mkdirSync(join(dir, 'fixtures'), { recursive: true });
+    writeFileSync(join(dir, 'fixtures', 'one.md'), 'one\n');
+    writeFileSync(join(dir, 'fixtures', 'two.md'), 'two\n');
+
+    const page = (target, content) => [
+        `[${target}](${target})`,
+        '```markdown',
+        content,
+        '```',
+        '',
+    ].join('\n');
+    const index = join(dir, 'docs', 'README.md');
+    const guide = join(dir, 'docs', 'nested', 'GUIDE.md');
+    const vendored = join(dir, 'docs', 'node_modules', 'dep', 'README.md');
+    const hidden = join(dir, 'docs', '.hidden', 'README.md');
+    writeFileSync(index, page('../fixtures/one.md', 'stale one'));
+    writeFileSync(guide, page('../../fixtures/two.md', 'stale two'));
+    writeFileSync(join(dir, 'docs', 'notes.txt'), 'not markdown\n');
+    // Neither of these two may be reached: each carries a dead marker, which
+    // in strict mode would end the run with exit 1.
+    writeFileSync(vendored, page('missing.md', 'stale'));
+    writeFileSync(hidden, page('missing.md', 'stale'));
+
+    const docs = join(dir, 'docs');
+    assert.equal(main([docs, '--check']), 1, 'both documents are stale at first');
+    assert.equal(main([docs]), 0, 'one run rewrites the whole tree');
+    assert.match(readFileSync(index, 'utf8'), /one/);
+    assert.match(readFileSync(guide, 'utf8'), /two/);
+    assert.equal(main([docs, '--check']), 0);
+    assert.match(readFileSync(hidden, 'utf8'), /stale/, 'dot-directories are left alone');
+    assert.match(readFileSync(vendored, 'utf8'), /stale/, 'node_modules is left alone');
+});
+
+test('a directory with no Markdown is a failure, not a silent success', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-empty-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    mkdirSync(join(dir, 'docs'), { recursive: true });
+    writeFileSync(join(dir, 'docs', 'notes.txt'), 'not markdown\n');
+    assert.equal(main([join(dir, 'docs'), '--check']), 1);
+});
+
+test('several targets run in one pass and the worst code wins', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-many-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    mkdirSync(join(dir, 'fixtures'), { recursive: true });
+    writeFileSync(join(dir, 'fixtures', 'a.md'), 'real a\n');
+    const page = (content) => [
+        '[fixtures/a.md](fixtures/a.md)',
+        '```markdown',
+        content,
+        '```',
+        '',
+    ].join('\n');
+    const healthy = join(dir, 'healthy.md');
+    const stale = join(dir, 'stale.md');
+    writeFileSync(healthy, page('real a'));
+    writeFileSync(stale, page('stale a'));
+
+    assert.equal(main([healthy, stale, '--check']), 1, 'the stale document decides the code');
+    assert.equal(main([healthy, '--check']), 0);
+
+    // A target that cannot be read is reported, and the run carries on: the
+    // document after it is still rewritten.
+    assert.equal(main([join(dir, 'missing.md'), stale]), 1);
+    assert.match(readFileSync(stale, 'utf8'), /real a/);
+
+    assert.equal(main([healthy, stale, '--check']), 0, 'everything is in sync now');
+});
+
 // ---------------------------------------------------------------------------
 // Shared fixtures — the files that back both the docs and the tests
 // ---------------------------------------------------------------------------
@@ -796,6 +1134,36 @@ test('the fixtures that back the docs are real files with stable content', () =>
         '| name | qty |\n| ---- | --- |\n| bolt | 12  |');
     assert.equal(extractRegion(read('test/fixtures/example.ts'), 'config'),
         'export const config = { retries: 3 };');
+
+    // The declarations the "Region rules by file type" section injects: an
+    // annotated, documented method and an inner class.
+    const java = read('test/fixtures/Example.java');
+    assert.equal(extractDeclaration(java, 'toString', 'annotated'),
+        '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(extractDeclaration(java, 'toString', 'documented'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(extractDeclaration(java, 'toString', 'body'), '        return String.join(",", items);');
+    assert.equal(extractDeclaration(java, 'Line'),
+        '    public static class Line {\n'
+        + '        private final String name;\n'
+        + '        private final int quantity;\n'
+        + '\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n'
+        + '            this.quantity = quantity;\n'
+        + '        }\n'
+        + '\n'
+        + '        String render() {\n'
+        + '            return name + " x" + quantity;\n'
+        + '        }\n'
+        + '    }');
 });
 
 test('the region markers in index.mjs and test.mjs resolve to real code', () => {
@@ -844,7 +1212,7 @@ test('the documentation stays in sync with the files it shows', () => {
     const result = updateDocument(doc, { root, gitignore: false });
 
     assert.equal(result.changed, false, 'doc/usage.md must match its fixtures');
-    assert.equal(result.markers.length, 8, 'one marker per shown file');
+    assert.equal(result.markers.length, 15, 'one marker per shown file, region or declaration');
     for (const entry of result.results) {
         assert.equal(entry.skipped, false);
         assert.equal(entry.failure, undefined);

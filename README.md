@@ -26,6 +26,10 @@ file, so a sample can show a slice of a big source file without duplicating it:
 [test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
 ```
 
+What the name may be depends on the file's type: a `#region` directive, a
+method or inner class by name, or — for `.json`, which has no comments — a list
+of keys. See [Region rules by file type](#region-rules-by-file-type).
+
 No dependencies. Node 18+. Works as a CLI and as a library.
 
 A detailed usage guide lives in [`doc/usage.md`](./doc/usage.md).
@@ -133,6 +137,103 @@ Rules:
 - A bare `region name` line with no comment prefix is treated as prose, not a
   directive — keep the `#` (or add a comment style) so ordinary text is safe.
 
+## Region rules by file type
+
+`#region:<reference>` means "the piece of this file called `<reference>`". What
+the reference may say — and what comes back — is decided by the file's
+**type**: each type has one rule, and the reference is handed to the rule that
+claims the file's extension. Two rules ship; the library takes more.
+
+### Code — the default rule
+
+One rule covers every type no other rule claims: source code, `.md`, `.txt`,
+anything. An explicit `#region <name>` directive always wins. When the file has
+none, the name is looked for as a **declaration** — a method, constructor,
+function or class-like declaration (`class`, `interface`, `enum`, `record`,
+`struct`, `trait`, `object`), nested or not. The declaration *is* the region, so
+code needs no region comments added to it:
+
+````markdown
+[test/fixtures/Example.java](./test/fixtures/Example.java#region:++toString)
+
+```java
+    /** Add one item to this cart. */
+    @Override
+    public String toString() {
+        return String.join(",", items);
+    }
+```
+````
+
+A `-`, `+` or `++` before the name selects how much of the declaration comes
+with it:
+
+| Reference | Injected text |
+| --- | --- |
+| `#region:add` | the declaration: signature through closing brace |
+| `#region:-add` | the body only, without the signature |
+| `#region:+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| `#region:++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
+
+A declaration is injected verbatim, indentation and all. Region names must be
+unique, and so must declaration names — two methods named `add` are an error,
+exactly as two `#region add`s are; wrap one in `#region` comments to pick it.
+A class name beats a same-named constructor, and nothing matching at all is an
+error (`--lenient` reports it and leaves the block as written).
+
+The match is a heuristic, not a parser: declaration-shaped lines, with brackets
+counted over text whose comments and string literals are blanked, so a `}`
+inside a string cannot end a body. Braced languages — Java, C#, C/C++, JS/TS,
+Go, Rust, PHP, Kotlin, Swift — are followed by their braces; Python and Ruby by
+indentation.
+
+### JSON — its own rule
+
+JSON has no comments to hang a region directive on, so `.json` files get a rule
+of their own: the reference is one or more **keys**, comma-separated and
+written as dotted paths from the top level, and the selection is rendered as
+valid JSON — braces and all:
+
+````markdown
+[package.json](./package.json#region:name,scripts.test)
+
+```json
+{
+  "name": "@hrg/inject-examples",
+  "scripts": {
+    "test": "node --test test.mjs"
+  }
+}
+```
+````
+
+`scripts.test` picks a nested key and `keywords.0` an element of an array (only
+the elements named, in order). A missing key, an index out of range, a
+top-level value that is not an object, or text that is not JSON is an error.
+Unlike the code rule this one *renders* the selection rather than copying
+bytes, because a selection of keys has to be re-printed to stay valid JSON.
+
+### Adding a rule for another type
+
+A rule is a plain object: a name, the extensions it claims, and a `resolve`.
+`options.regionRules` replaces the built-in set, so pass the built-ins plus
+your own:
+
+```js
+const toml = {
+    name: 'toml',
+    extensions: ['toml'],
+    resolve: (text, region) => extractRegion(text, region),
+};
+
+updateDocument(doc, { regionRules: [toml, ...REGION_RULES] });
+```
+
+The first rule claiming the file's extension wins, and `code` is the fallback,
+so one rule for one type leaves every other type exactly as it was.
+[`doc/usage.md`](./doc/usage.md#region-rules-by-file-type) works through both
+rules with live examples.
+
 ## Skipping gitignored files
 
 By default, a marker whose target file is gitignored is **skipped**: its block
@@ -182,11 +283,17 @@ skip, which has no `failure`.
 ## CLI
 
 ```
-inject-examples [options] [file]
+inject-examples [options] [file|dir ...]
 ```
 
-`file` defaults to `README.md`. Marker paths resolve relative to the directory
-holding that document, unless `--root` says otherwise.
+Any number of documents and directories may be given in one run; with no target
+the tool updates `README.md`. A directory expands to every `*.md` below it,
+recursively — `node_modules` and dot-directories are skipped — and every
+document is processed with the same options; the run exits with the worst code
+any of them produced.
+
+Marker paths resolve relative to the directory holding each document, unless
+`--root` says otherwise.
 
 | Option | Meaning |
 | --- | --- |
@@ -206,7 +313,7 @@ holding that document, unless `--root` says otherwise.
 | Code | Meaning |
 | --- | --- |
 | `0` | Every block is up to date, or was rewritten |
-| `1` | A block is stale in `--check` mode, the file is unreadable, a marker is malformed, or (with `--lenient`) a marker could not be resolved |
+| `1` | A block is stale in `--check` mode, a document or directory is unreadable, a directory holds no Markdown, a marker is malformed, or (with `--lenient`) a marker could not be resolved |
 | `2` | The command line itself was wrong |
 
 ### Output
@@ -253,7 +360,8 @@ run ends `1` and the marker's block is left as written.
 ### Several documents
 
 ```bash
-inject-examples README.md
+inject-examples README.md docs/GUIDE.md   # one run, two documents
+inject-examples docs/                     # every *.md under docs/, recursively
 inject-examples docs/GUIDE.md --root .
 ```
 
@@ -304,12 +412,18 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 
 | Export | Purpose |
 | --- | --- |
-| `updateDocument(text, options)` | Rewrite every block in a document; `options` may set `root`, `readFile`, `gitignore`, `isIgnored` and `lenient` |
+| `updateDocument(text, options)` | Rewrite every block in a document; `options` may set `root`, `readFile`, `gitignore`, `isIgnored`, `regionRules` and `lenient` |
 | `injectInto(lines, marker, content, startIndex?, language?)` | Replace one block; a bare fence is given `language`; returns `{ lines, changed }` |
 | `findMarkers(lines)` / `parseMarker(line)` | Discover markers |
 | `fenceRanges(lines)` | The fenced blocks in a document |
-| `resolveMarker(marker, read)` | The text a marker stands for |
-| `extractRegion(text, name)` / `regionDirective(line)` | Region parsing |
+| `resolveMarker(marker, read, rule?)` | The text a marker stands for, resolved by the file's type |
+| `extractRegion(text, name)` / `regionDirective(line)` | Region directive parsing |
+| `ruleFor(path, rules?)` | The region rule that resolves a reference in `path` |
+| `REGION_RULES` / `CODE_RULE` / `JSON_RULE` | The built-in rules; `code` is the fallback for every unclaimed type |
+| `extractCodeRegion(text, region)` | The default rule: a region directive, or a named declaration |
+| `extractDeclaration(text, name, scope?)` | The text of one declaration, or `null`; `scope` is the `-`/`+`/`++` |
+| `extractJsonRegion(text, region)` | The `.json` rule: dotted key paths, rendered as valid JSON |
+| `codeReference(reference)` | Split a `-`/`+`/`++` modifier from the name it applies to |
 | `normalize(text)` | LF endings, one trailing newline removed |
 | `fileLanguage(path)` | The fence language a file's extension implies, or `null` |
 | `fileReader(root)` | A `readFile` that resolves against a root |
@@ -322,10 +436,16 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 ## Behaviour notes
 
 - **Normalisation.** Content is injected with LF endings and no trailing
-  newline — exactly the text between the fences. A file ending in `\n` and one
-  that does not therefore inject identically, so `--check` will not flicker
-  between operating systems. The document's own endings (LF or CRLF) are
-  preserved everywhere outside the block body.
+  newline — exactly the text between the fences, except in the JSON rule, which
+  renders its selection. A file ending in `\n` and one that does not therefore
+  inject identically, so `--check` will not flicker between operating systems.
+  The document's own endings (LF or CRLF) are preserved everywhere outside the
+  block body.
+- **Regions are read by file type.** A `.json` reference is a list of dotted
+  key paths and the block is *rendered* (`JSON.stringify(…, 2)`), because a
+  selection of keys has to be re-printed to stay valid JSON. Every other type
+  uses the code rule, which injects verbatim — a region's lines, or a matched
+  declaration from its first line through its closing brace.
 - **Duplicated markers** in one document are an error, not a silent double
   injection.
 - **No markers at all** is an error, because it usually means the file argument
@@ -357,8 +477,9 @@ behaviours. None of them are supported here, and none are planned:
 - **No `~suffix` lookup.** A marker names one path; there is no
   `<label>~<suffix>` spelling that would let a label stand for several files
   sharing a stem.
-- **No glob arguments.** The CLI takes exactly one file argument. There are no
-  glob patterns and no directory arguments; run the tool per document.
+- **No glob patterns.** A path is a document or a directory; the CLI does not
+  expand `docs/*.md` itself. A shell that expands the pattern before the CLI
+  sees it is fine — the CLI accepts any number of paths.
 - **No alternate fence styles.** Fences are CommonMark backtick fences only:
   three or more backticks, and a closer that is at least as long. Tilde
   (~~~) fences are not recognised, anywhere.

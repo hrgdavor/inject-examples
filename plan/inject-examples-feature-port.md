@@ -8,7 +8,7 @@ features into the new marker mechanism.
 project keeps its own copy of the mechanism (`scripts/inject-examples.mjs` + root
 `test-fixtures.js`), that copy is the porting target: bring it to parity with the
 §1 contract first, then port the §4 features on top. Target-specific extensions the
-reference does not have (directory/glob targets) are their own feature work, under F2.
+reference does not have (glob patterns) are their own feature work, under F2.
 
 **Mission:** port the old mechanism's remaining features — or consciously retire them —
 so no document or workflow depends on anything the new mechanism cannot do, **without
@@ -252,7 +252,17 @@ fallback when no `.gitignore` is found.
 paths carry explicit paths; if the lookup helper is ported: unique suffix → prints
 one path; ambiguous → non-zero exit naming all candidates; no silent fallback.
 
-### F2 — Glob CLI patterns — **not ported**
+### F2 — Glob CLI patterns — **partly ported (directory targets)**
+
+**As implemented (directory and multi-target runs, 1.0.1).** The reference CLI
+takes any number of positional targets. A file is processed as before; a
+directory expands to every `*.md` below it, recursively, skipping `node_modules`
+and dot-directories (sorted, deduplicated). Every document is processed, in
+order, including the ones after a failure — one broken page must not hold the
+healthy ones hostage — and the run exits with the worst code it saw. A
+directory that holds no Markdown is a failure (`1`), not a silent success. Glob
+*patterns* are still not expanded by the CLI itself, which is all that is left
+of F2.
 
 **Old behaviour.** Any argument containing `*`, `?` or `{` was expanded with Bun's
 `Glob.scanSync({ cwd: repoRoot, absolute: true })`; other arguments were plain file
@@ -260,12 +270,13 @@ paths. Zero matches overall → print "No files matched the given pattern(s).",
 exit 0. The everyday invocation was
 `bun scripts/update-doc-includes.js "docs/**/*.md"` from the repo root.
 
-**Design question.** The reference CLI takes a **single positional file** (default
-`README.md`) — it has no directory recursion at all. The target project's in-repo
-script may have directory targets (§3.2); keep those if the project relies on them,
-but they are target-specific extensions, not reference contract. Node ≥ 22 offers
-`fs.globSync` — the reference targets Node 18+, so it is not available; the port
-must stay dependency-free plain Node either way.
+**Design question.** The reference CLI took a **single positional file** (default
+`README.md`) until 1.0.1; it now takes files and directories, but still no
+patterns. A target project's in-repo script may therefore have nothing left to
+add on the directory side (§3.2) — use the reference's recursion instead of
+keeping a private copy. Node ≥ 22 offers `fs.globSync` — the reference targets
+Node 18+, so it is not available; the port must stay dependency-free plain Node
+either way.
 
 **Recommendation.** Add pattern arguments only if the project's docs use them.
 Cheapest correct implementation: walk from the pattern's longest glob-free prefix
@@ -273,13 +284,14 @@ directory and filter with a translated regex — escape regex metacharacters, th
 `**/` → `(?:.*/)?`, `*` → `[^/]*`, `?` → `[^/]`, `{a,b}` → `(?:a|b)` — matching
 against the root-relative path with `/` separators; skip `.git` always and
 gitignored paths via `isIgnoredPath` (the walk-up default), so globs and the
-gitignore feature compose. If directory targets exist, keep skipping `node_modules`
-and dot-directories in the walk. Decide and document the no-match policy: the old
+gitignore feature compose. Keep the reference walk's skips (`node_modules` and
+dot-directories). Decide and document the no-match policy: the old
 exit-0 is another silent-success shape; recommend exit 1 with "no files matched:
 <pattern>". Also document the multi-file interactions: `--check` exits 1 if any
 file is stale; "no markers" in one file is an error per file unless `--allow-empty`;
-a failure in any file aborts the whole run before writing anything (strict,
-matching the reference).
+and the run processes every document and exits with the worst code — matching
+the reference, where a document that failed is left untouched while the others
+are still written.
 
 **Acceptance.** A pattern selects exactly the same file set as the equivalent
 explicit file list; a pattern matching nothing fails loudly (exit 1); file (and, if

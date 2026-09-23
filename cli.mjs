@@ -6,17 +6,24 @@
  *   inject-examples                 rewrite README.md in place
  *   inject-examples --check         exit 1 if any block is stale
  *   inject-examples docs/GUIDE.md   rewrite some other document
+ *   inject-examples docs/           rewrite every *.md below docs/
+ *
+ * Any number of documents and directories may be given at once; a directory
+ * expands to every `*.md` below it, recursively. Each document is processed
+ * with the same options and the run exits with the worst code it saw.
  *
  * Run `inject-examples --help` for the full option list.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseIgnoreFile, updateDocument } from './index.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FILE = 'README.md';
+/** A directory target expands to files with this suffix. */
+const MARKDOWN_SUFFIX = '.md';
 const SELF = fileURLToPath(import.meta.url);
 
 /** Exit codes, documented in the README. */
@@ -28,7 +35,7 @@ const USAGE = 2;    // the command line itself was wrong
 const HELP = `inject-examples — keep Markdown examples in sync with real files
 
 Usage:
-  inject-examples [options] [file]
+  inject-examples [options] [file|dir ...]
 
   Each marker in \`file\` is a line that is nothing but a link to a real path,
   labelled with that same path, followed by a fenced code block:
@@ -42,12 +49,22 @@ Usage:
   A fence without a language is given one from the file's extension, so the
   block highlights; a fence that already names a language is left as written.
 
-  Name a region in the fragment to inject part of a larger file:
+  Name a region in the fragment to inject part of a larger file. How the
+  reference is read depends on the file's type. A code file (or any type
+  without a rule of its own) takes a #region directive, or the name of a
+  method or inner class — optionally prefixed with - for its body alone, + to
+  include the annotations above it, or ++ to include its doc comment too. A
+  .json file, which has no comments, takes a comma-separated list of dotted
+  key paths, rendered as valid JSON:
 
       [src/app.ts](./src/app.ts#region:table)
+      [src/app.ts](./src/app.ts#region:++table)
+      [package.json](./package.json#region:scripts.test,name)
 
 Arguments:
-  file                 Markdown document to update (default: ${DEFAULT_FILE})
+  file|dir             Markdown document(s) to update. A directory expands to
+                       every *.md below it, recursively; node_modules and
+                       dot-directories are skipped. Default: ${DEFAULT_FILE}
 
 Options:
   -c, --check          Write nothing; exit ${FAILED} if any block is stale
@@ -69,9 +86,12 @@ Options:
 
 Exit codes:
   ${OK}  every block is up to date (or was rewritten)
-  ${FAILED}  a block is stale in --check mode, the document is malformed,
+  ${FAILED}  a block is stale in --check mode, a document is malformed,
              or (with --lenient) an include could not be resolved
   ${USAGE}  the command line was wrong
+
+  With several documents the run processes all of them, including the ones
+  after a failure, and exits with the worst code it saw.
 `;
 
 /** Parse argv (already free of `node script`). Throws UsageError on nonsense. */
@@ -79,7 +99,7 @@ export class UsageError extends Error {}
 
 export function parseArgs(argv) {
     const options = {
-        file: null,
+        files: [],
         root: null,
         gitignoreFile: null,
         noGitignore: false,
@@ -126,13 +146,10 @@ export function parseArgs(argv) {
         }
     }
 
-    if (positionals.length > 1) {
-        throw new UsageError(`expected at most one file, got ${positionals.length}: ${positionals.join(', ')}`);
-    }
     if (options.gitignoreFile !== null && options.noGitignore) {
         throw new UsageError('--gitignore and --no-gitignore cannot be used together');
     }
-    options.file = positionals[0] ?? DEFAULT_FILE;
+    options.files = positionals.length > 0 ? positionals : [DEFAULT_FILE];
     return options;
 }
 
@@ -148,8 +165,65 @@ function display(path) {
 }
 
 /**
- * Run the CLI. Exported so a thin wrapper (for example the repo this tool was
- * extracted from) can reuse it without duplicating any behaviour.
+ * Every Markdown document below `dir`, recursively, in a stable order.
+ * `node_modules` and dot-directories are skipped: neither is documentation a
+ * run should pull in by accident, and neither is ever the tree the user meant.
+ *
+ * @param {string} dir absolute directory to walk
+ * @returns {string[]} the absolute paths of the `*.md` files found
+ */
+function collectMarkdown(dir) {
+    const found = [];
+    const walk = (current) => {
+        const entries = readdirSync(current, { withFileTypes: true })
+            .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        for (const entry of entries) {
+            if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+            const full = join(current, entry.name);
+            if (entry.isDirectory()) walk(full);
+            else if (entry.isFile() && entry.name.endsWith(MARKDOWN_SUFFIX)) found.push(full);
+        }
+    };
+    walk(dir);
+    return found;
+}
+
+/**
+ * Turn the positional targets into the documents to process: a file is taken
+ * as it is, a directory expands to its Markdown documents, and a path that
+ * cannot be read is kept so that the read reports it.
+ *
+ * @param {string[]} targets the paths as the user typed them
+ * @returns {{documents: string[], code: number}} the documents to process,
+ *     deduplicated and in order, plus the exit code the targets themselves
+ *     earned (a directory with no Markdown is a failure, not a no-op)
+ */
+function resolveDocuments(targets) {
+    const documents = [];
+    let code = OK;
+
+    for (const target of targets) {
+        const full = resolve(target);
+        const stat = statSync(full, { throwIfNoEntry: false });
+        if (stat === undefined || !stat.isDirectory()) {
+            documents.push(full); // a file, or something the read will refuse
+            continue;
+        }
+        const found = collectMarkdown(full);
+        if (found.length === 0) {
+            console.error(`inject-examples: no Markdown (*.md) documents below ${display(full)}.`);
+            code = FAILED;
+            continue;
+        }
+        documents.push(...found);
+    }
+
+    return { documents: [...new Set(documents)], code };
+}
+
+/**
+ * Run the CLI. Exported so a caller (a repository's own script, say) can reuse
+ * it without duplicating any behaviour.
  *
  * @param {string[]} argv arguments after `node script`
  * @returns {number} the process exit code
@@ -168,26 +242,54 @@ export function main(argv) {
     if (options.help) { process.stdout.write(HELP); return OK; }
     if (options.version) { console.log(version()); return OK; }
 
-    const file = resolve(options.file);
-    const root = options.root === null ? dirname(file) : resolve(options.root);
+    const gitignore = loadGitignore(options);
+    if (gitignore === null) return FAILED;
 
-    let gitignore;
-    if (options.noGitignore) {
-        gitignore = false;
-    } else if (options.gitignoreFile !== null) {
-        const ignoreFile = resolve(options.gitignoreFile);
-        let ignoreText;
-        try {
-            ignoreText = readFileSync(ignoreFile, 'utf8');
-        } catch (err) {
-            const reason = err.code === 'ENOENT' ? 'no such file' : err.message;
-            console.error(`inject-examples: cannot read gitignore file ${display(ignoreFile)}: ${reason}`);
-            return FAILED;
-        }
-        gitignore = [{ dir: dirname(ignoreFile), rules: parseIgnoreFile(ignoreText) }];
-    } else {
-        gitignore = true;
+    const { documents, code } = resolveDocuments(options.files);
+    let exitCode = code;
+    for (const document of documents) {
+        // Every document is processed, including the ones after a failure: one
+        // broken page must not hold the healthy ones hostage.
+        exitCode = Math.max(exitCode, processDocument(document, options, gitignore));
     }
+    return exitCode;
+}
+
+/**
+ * The gitignore setting for a run: `false` for `--no-gitignore`, an explicit
+ * rule set for `--gitignore <file>`, and `true` for the default walk-up.
+ * Returns `null` (after reporting the problem) when the named file cannot be
+ * read, because then no document could be processed correctly.
+ *
+ * @param {object} options parsed command line
+ * @returns {false|true|Array|null} the setting, or `null` on a read failure
+ */
+function loadGitignore(options) {
+    if (options.noGitignore) return false;
+    if (options.gitignoreFile === null) return true;
+
+    const ignoreFile = resolve(options.gitignoreFile);
+    let ignoreText;
+    try {
+        ignoreText = readFileSync(ignoreFile, 'utf8');
+    } catch (err) {
+        const reason = err.code === 'ENOENT' ? 'no such file' : err.message;
+        console.error(`inject-examples: cannot read gitignore file ${display(ignoreFile)}: ${reason}`);
+        return null;
+    }
+    return [{ dir: dirname(ignoreFile), rules: parseIgnoreFile(ignoreText) }];
+}
+
+/**
+ * Update, check or dry-run one document.
+ *
+ * @param {string} file absolute path of the document
+ * @param {object} options parsed command line
+ * @param {false|true|Array} gitignore the resolved gitignore setting
+ * @returns {number} the exit code for this document
+ */
+function processDocument(file, options, gitignore) {
+    const root = options.root === null ? dirname(file) : resolve(options.root);
 
     let original;
     try {
@@ -250,7 +352,7 @@ export function main(argv) {
             if (failed.length > 0) {
                 console.error(`${display(file)}: ${failed.length} of ${total} marker(s) could not be resolved and were left as written.`);
             }
-            console.error(`Run: inject-examples ${options.file}`);
+            console.error(`Run: inject-examples ${display(file)}`);
             return FAILED;
         }
         console.log(skippedCount > 0

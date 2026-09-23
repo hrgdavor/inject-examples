@@ -16,6 +16,7 @@ not prose; see [Examples and tests share the same files](#examples-and-tests-sha
 - [Quick start](#quick-start)
 - [Markers](#markers)
 - [Regions](#regions)
+- [Region rules by file type](#region-rules-by-file-type)
 - [Fences](#fences)
 - [Running the CLI](#running-the-cli)
 - [Tolerating broken includes](#tolerating-broken-includes)
@@ -53,7 +54,7 @@ The entire published package, verbatim:
 ```json
 {
   "name": "@hrg/inject-examples",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Keep Markdown examples in sync with the real files they show — inject file content, or one region of it, into the fenced block that follows a link.",
   "keywords": [
     "markdown",
@@ -78,7 +79,9 @@ The entire published package, verbatim:
   "sideEffects": false,
   "main": "./index.mjs",
   "exports": {
-    ".": "./index.mjs"
+    ".": "./index.mjs",
+    "./cli.mjs": "./cli.mjs",
+    "./package.json": "./package.json"
   },
   "bin": {
     "inject-examples": "./cli.mjs"
@@ -229,6 +232,183 @@ prefix is stripped before the name is read. The rules:
 - `#region` in code without a comment prefix, e.g. C#, is not a directive;
   the same line inside a comment is.
 
+## Region rules by file type
+
+`#region:<reference>` means "the piece of this file called `<reference>`". What
+the reference may say — and what comes back — depends on the file's **type**:
+each type has one rule, and the reference is handed to the rule that claims the
+file's extension. Two rules ship, and a third is a few lines in a `regionRules`
+array (see [Adding a rule for another type](#adding-a-rule-for-another-type)).
+
+### The default rule: code, and everything else
+
+One rule covers every type no other rule claims — source code, `README.md`,
+`.txt`, `.ini`, anything. In a file that carries an explicit region directive,
+`#region <name>` opens and `#endregion` closes it and the lines strictly
+between them are injected, exactly as [Regions](#regions) describes.
+
+When the file carries no such directive, the name is looked for as a
+**declaration**: a method, constructor, function, or class-like declaration
+(`class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`) named
+`<name>`. The match is the text from the declaration's first line through its
+closing brace — or, in an indentation language such as Python, through the last
+line of its indented block. Nothing has to be added to the code first: the
+declaration *is* the region.
+
+A `-`, `+` or `++` in front of the name selects how much of that declaration
+comes with it:
+
+| Reference | Injected text |
+| --- | --- |
+| `#region:add` | the declaration: signature through closing brace |
+| `#region:-add` | the body only, without the signature |
+| `#region:+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| `#region:++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
+
+All four, against `test/fixtures/Example.java` — first the declaration itself:
+
+[test/fixtures/Example.java](test/fixtures/Example.java#region:toString)
+
+```java
+    public String toString() {
+        return String.join(",", items);
+    }
+```
+
+then its body alone:
+
+[test/fixtures/Example.java](test/fixtures/Example.java#region:-toString)
+
+```java
+        return String.join(",", items);
+```
+
+then the declaration with its annotation:
+
+[test/fixtures/Example.java](test/fixtures/Example.java#region:+toString)
+
+```java
+    @Override
+    public String toString() {
+        return String.join(",", items);
+    }
+```
+
+then annotation and doc comment together:
+
+[test/fixtures/Example.java](test/fixtures/Example.java#region:++toString)
+
+```java
+    /** Add one item to this cart. */
+    @Override
+    public String toString() {
+        return String.join(",", items);
+    }
+```
+
+The name may equally be a class-like declaration, nested or not:
+
+[test/fixtures/Example.java](test/fixtures/Example.java#region:Line)
+
+```java
+    public static class Line {
+        private final String name;
+        private final int quantity;
+
+        Line(String name, int quantity) {
+            this.name = name;
+            this.quantity = quantity;
+        }
+
+        String render() {
+            return name + " x" + quantity;
+        }
+    }
+```
+
+What the code rule does, and does not, promise:
+
+- An explicit `#region <name>` directive always wins, wherever the file has
+  one; a `-`/`+`/`++` reference still resolves to it, because a region is
+  already exactly its body.
+- Names must be unique. Two methods named `add` in one file — an overload pair
+  — are an error, as two regions of one name are; wrap one of them in `#region`
+  comments to disambiguate. A class name beats a same-named constructor.
+- Nothing matching at all is an error naming the reference; `--lenient` reports
+  it with its line number and leaves the block as written.
+- Matching is a heuristic, not a parser. It reads declaration-shaped lines and
+  counts brackets over text whose comments and string literals are blanked, so
+  a `}` inside a string cannot end a body. Braced languages — Java, C#, C/C++,
+  JavaScript/TypeScript, Go, Rust, PHP, Kotlin, Swift — are followed by their
+  braces; Python and Ruby by indentation.
+- The declaration is injected verbatim, indentation and all, so a nested method
+  keeps the indentation it has in its file.
+
+### The JSON rule
+
+JSON has no comments to hang a region directive on, so `.json` gets a rule of
+its own: `#region:<reference>` names one or more **keys**, comma-separated,
+each a dotted path from the top level. The selected values are rendered as
+valid JSON — braces and all — in the order they are listed.
+
+Top-level keys and a nested one, from `package.json`:
+
+[package.json](package.json#region:name,version,scripts.test)
+
+```json
+{
+  "name": "@hrg/inject-examples",
+  "version": "1.0.1",
+  "scripts": {
+    "test": "node --test test.mjs"
+  }
+}
+```
+
+An array keeps only the elements named, in order:
+
+[package.json](package.json#region:keywords.0,keywords.2)
+
+```json
+{
+  "keywords": [
+    "markdown",
+    "documentation"
+  ]
+}
+```
+
+- `scripts.test` is a nested key, `keywords.0` an element of an array. There is
+  no slice syntax: name every element you want.
+- A missing key, an index out of range, a document whose top level is not an
+  object, or text that is not JSON at all is an error; `--lenient` reports it
+  and leaves the block as written.
+- Unlike the code rule, this one **renders** the selection
+  (`JSON.stringify(selection, null, 2)`) instead of copying bytes: a selection
+  of keys has to be re-printed to stay valid JSON, so whitespace and number
+  formatting in the block belong to the renderer, not to the file. Keys appear
+  in the order the reference lists them.
+
+### Adding a rule for another type
+
+A rule is a plain object: a name, the extensions it claims, and a `resolve`:
+
+```js
+import { REGION_RULES, extractRegion } from '@hrg/inject-examples';
+
+const toml = {
+    name: 'toml',
+    extensions: ['toml'],
+    resolve: (text, region) => extractRegion(text, region),
+};
+
+updateDocument(doc, { regionRules: [toml, ...REGION_RULES] });
+```
+
+`resolve(text, region, path)` returns the text to inject, or throws to fail the
+include. The first rule claiming the file's extension wins and `code` is the
+fallback, so one rule for one type leaves every other type exactly as it was.
+
 ## Fences
 
 The block a marker stands for is a fenced code block immediately below the
@@ -265,8 +445,14 @@ And prose after it.
 ```
 inject-examples [--root <dir>] [--check] [--dry-run] [--allow-empty]
                 [-l, --lenient] [-g <file>] [--no-gitignore] [-q]
-                <file>
+                <file|dir> ...
 ```
+
+`<file|dir> ...` is any number of documents and directories, and defaults to
+`README.md`. A directory expands to every `*.md` below it, recursively —
+`node_modules` and dot-directories are skipped — and each document is processed
+with the same options; the run exits with the worst code any of them produced.
+Within one run, a document that fails does not stop the ones after it.
 
 The options, as the tool's own `--help` documents them:
 
@@ -280,9 +466,10 @@ The options, as the tool's own `--help` documents them:
 - `-g <file>`, `--no-gitignore` — override or disable gitignore handling.
 - `-q` — print only the closing summary.
 
-Exit codes: `0` on success; `1` on a stale block, an unreadable file, a
-malformed marker, or (with `--lenient`) a marker that could not be resolved;
-`2` on a usage error.
+Exit codes: `0` on success; `1` on a stale block, an unreadable file or
+directory, a directory that holds no Markdown, a malformed marker, or (with
+`--lenient`) a marker that could not be resolved; `2` on a usage error. With
+several targets the code is the worst of the run.
 
 The tool's own output for a clean run over this document:
 
@@ -335,6 +522,13 @@ document, whether anything changed, the markers found, and one entry per
 marker carrying `{ marker, content, changed, skipped }` — plus a `failure`
 field when `--lenient` skipped a broken include.
 
+Its `options` include the region rules: `regionRules` replaces the built-in set
+(`REGION_RULES`), and the library exports the pieces of the two rules that
+ship — `ruleFor(path)`, `extractCodeRegion(text, region)`,
+`extractDeclaration(text, name, scope)`, `extractJsonRegion(text, region)` and
+`codeReference(reference)` — so a rule for another type can be assembled from
+them rather than re-invented.
+
 ## Examples and tests share the same files
 
 This is the policy that keeps the documentation honest, and it is worth
@@ -343,15 +537,16 @@ stating because it is deliberate:
 - **No documentation-only examples.** Every file injected above exists in
   this repository — `package.json`, `test/fixtures/before.md`,
   `test/fixtures/after.md`, `test/fixtures/example.ts`,
-  `test/fixtures/fenced.md`, `index.mjs` and `test.mjs`. Nothing was invented
-  for the docs; each shown block is the current content of a file the
-  repository owns.
+  `test/fixtures/Example.java`, `test/fixtures/fenced.md`, `index.mjs` and
+  `test.mjs`. Nothing was invented for the docs; each shown block is the
+  current content of a file the repository owns.
 - **The fixtures are test data.** The files under `test/fixtures/` are read
   by `test.mjs` through the real `fileReader`, and the tests below pin their
-  content. The same files are what the markers above inject.
+  content. The same files are what the markers above inject — including the
+  declarations, which the tests resolve with the same code rule the tool uses.
 - **One test runs the engine over this very document.** If any block here
-  drifts from its file — a fixture edited, a region renamed — the test
-  fails, exactly like the CI `--check` run.
+  drifts from its file — a fixture edited, a method renamed, a key removed —
+  the test fails, exactly like the CI `--check` run.
 - **The rule for adding examples.** When you add an example to the docs, add
   its file and a test that uses it, or the example is decorative and can
   drift silently. Examples and tests deliberately overlap here, because the
