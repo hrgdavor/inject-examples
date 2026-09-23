@@ -25,8 +25,9 @@ pub fn build(b: *std.Build) void {
         }),
     });
     // `.dest_dir = .{ .override = .prefix }` installs the binary directly into
-    // zig-out/ instead of zig-out/bin/, which is where
-    // `tools/compare-zig.mjs` expects to find it.
+    // zig-out/ instead of zig-out/bin/, which is where `tools/compare-zig.mjs`
+    // looks for it. The release workflow's packaging paths must stay in step
+    // with this (see .github/workflows/release.yml).
     const install_exe = b.addInstallArtifact(exe, .{
         .dest_dir = .{ .override = .prefix },
     });
