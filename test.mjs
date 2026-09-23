@@ -1127,7 +1127,7 @@ test('the fixtures that back the docs are real files with stable content', () =>
     assert.equal(normalize(read('test/fixtures/before.md')),
         "## Example\n\n```ts\nimport { inject } from 'acme';\n\ninject('a', 'b');\n```");
     assert.equal(normalize(read('test/fixtures/after.md')),
-        '$ npx @hrg/inject-examples --root . doc/usage.md\ndoc/usage.md updated.');
+        '$ npx @hrg/inject-examples doc/usage.md\ndoc/usage.md updated.');
     assert.equal(normalize(read('test/fixtures/fenced.md')),
         "Prose, then a nested fence:\n\n```js\nconst x = 1;\n```\n\nAnd prose after it.");
     assert.equal(extractRegion(read('test/fixtures/example.ts'), 'table'),
@@ -1186,7 +1186,7 @@ test('a fixture-backed doc is rewritten when its block goes stale', () => {
 
     const result = updateDocument(stale, { root, readFile: read, gitignore: false });
     assert.equal(result.changed, true, 'the stale block is detected and rewritten');
-    assert.match(result.text, /\$ npx @hrg\/inject-examples --root \. doc\/usage\.md/);
+    assert.match(result.text, /\$ npx @hrg\/inject-examples doc\/usage\.md/);
 
     const second = updateDocument(result.text, { root, readFile: read, gitignore: false });
     assert.equal(second.changed, false, 'a second pass is a no-op');
@@ -1209,7 +1209,7 @@ test('content that contains fences is replaced inside a longer fence', () => {
 test('the documentation stays in sync with the files it shows', () => {
     const root = dirname(fileURLToPath(import.meta.url));
     const doc = readFileSync(join(root, 'doc', 'usage.md'), 'utf8');
-    const result = updateDocument(doc, { root, gitignore: false });
+    const result = updateDocument(doc, { root: join(root, 'doc'), gitignore: false });
 
     assert.equal(result.changed, false, 'doc/usage.md must match its fixtures');
     assert.equal(result.markers.length, 15, 'one marker per shown file, region or declaration');
@@ -1227,7 +1227,8 @@ test('the documentation stays in sync with the files it shows', () => {
 // Markdown link in a document's prose must be navigable — it is either an
 // external URL, an in-page link to a heading that exists in the same
 // document, or a file that exists in the repository (file links resolve
-// against the repository root, the `--root .` convention the docs follow).
+// against the document's own directory, the standard Markdown convention
+// the docs follow).
 // Content inside fenced blocks and inside inline code is data, not
 // navigation: an illustrative marker there — e.g. the `failed` demo in the
 // README's CLI output — is exempt, exactly as marker-like lines inside
@@ -1268,7 +1269,7 @@ test('every link in the docs is functional', () => {
                 if (pathPart === '') {
                     assert.ok(slugs.has(fragment), `${rel}:${i + 1}: no such heading ${dest}`);
                 } else {
-                    const target = resolve(root, pathPart);
+                    const target = resolve(dirname(file), pathPart);
                     assert.ok(existsSync(target), `${rel}:${i + 1}: ${dest} does not exist`);
                 }
             }

@@ -367,12 +367,15 @@ inject-examples docs/GUIDE.md --root .
 
 ### Documentation in a subfolder
 
-Links are usually written relative to the repository root, not to the document.
-Point `--root` at the root and the markers keep working from anywhere:
+Write the markers relative to the document itself — `../fixtures/a.md` —
+because that is how a reader resolves the same link, and the default root is
+the document's own directory, so no `--root` is needed:
 
 ```bash
-inject-examples --root . docs/GUIDE.md
+inject-examples docs/GUIDE.md
 ```
+
+If you write root-relative paths instead, point `--root` at the root.
 
 ### Run it before every commit
 
@@ -464,10 +467,10 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 - **Links in this repository's docs must be functional.** No fake links: a
   prose Markdown link (outside fenced blocks and inline code) must be an
   external URL, a heading that exists in the same document, or a file that
-  exists in the repository (resolved against the repository root). Fenced and
-  inline-code examples are data, not navigation, so a `failed` demo marker
-  there is exempt. `test.mjs` enforces this over every `.md` file in the
-  repository.
+  exists in the repository (resolved against the document's own directory,
+  the way Markdown links normally resolve). Fenced and inline-code examples
+  are data, not navigation, so a `failed` demo marker there is exempt.
+  `test.mjs` enforces this over every `.md` file in the repository.
 
 ## What this deliberately does not do
 

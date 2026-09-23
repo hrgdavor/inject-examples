@@ -29,14 +29,14 @@ not prose; see [Examples and tests share the same files](#examples-and-tests-sha
 The whole document is one argument to the tool. Two commands keep it honest:
 
 ```
-npx @hrg/inject-examples --root . doc/usage.md
-npx @hrg/inject-examples --root . --check doc/usage.md
+npx @hrg/inject-examples doc/usage.md
+npx @hrg/inject-examples --check doc/usage.md
 ```
 
-- `--root .` sets the root to the repository root. The document lives in a
-  subfolder, so its markers use root-relative paths — `test/fixtures/before.md`
-  — instead of `../` traversal. That is the same recipe the README gives for
-  documents in subfolders, applied here to this document itself.
+- The document lives in a subfolder, so its markers use paths relative to the
+  document itself — `../test/fixtures/before.md` — which is how a reader
+  resolves the same link, and what the tool's default root (the document's
+  directory) expects, so no `--root` is needed.
 - The first command rewrites every block below a marker with the file's
   current text. The second only reports: anything stale or failed ends with
   exit `1` and writes nothing — that is the CI hook.
@@ -49,7 +49,7 @@ npx @hrg/inject-examples --root . --check doc/usage.md
 
 The entire published package, verbatim:
 
-[package.json](package.json)
+[../package.json](../package.json)
 
 ```json
 {
@@ -120,7 +120,7 @@ tool keeps the block equal to that file. In a fresh repository the block
 would start empty or stale; after one run it contains exactly what you see
 here.
 
-[test/fixtures/before.md](test/fixtures/before.md)
+[../test/fixtures/before.md](../test/fixtures/before.md)
 
 ````markdown
 ## Example
@@ -156,7 +156,7 @@ looks like a marker still works: injected content is data, not a new marker.
 This is the real code that decides whether a line is a marker, injected from
 `index.mjs` by its region:
 
-[index.mjs](index.mjs#region:parseMarker)
+[../index.mjs](../index.mjs#region:parseMarker)
 
 ```javascript
 /**
@@ -203,7 +203,7 @@ When only part of a file belongs in the document, the file carries region
 directives and the marker names the region. The next block is one region of
 `test/fixtures/example.ts`:
 
-[test/fixtures/example.ts](test/fixtures/example.ts#region:table)
+[../test/fixtures/example.ts](../test/fixtures/example.ts#region:table)
 
 ```typescript
 | name | qty |
@@ -215,7 +215,7 @@ The same file, a different region, through the same kind of marker — two
 markers may point at different regions of one file, because the duplicate
 rule only forbids identical marker text:
 
-[test/fixtures/example.ts](test/fixtures/example.ts#region:config)
+[../test/fixtures/example.ts](../test/fixtures/example.ts#region:config)
 
 ```typescript
 export const config = { retries: 3 };
@@ -267,7 +267,7 @@ comes with it:
 
 All four, against `test/fixtures/Example.java` — first the declaration itself:
 
-[test/fixtures/Example.java](test/fixtures/Example.java#region:toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#region:toString)
 
 ```java
     public String toString() {
@@ -277,7 +277,7 @@ All four, against `test/fixtures/Example.java` — first the declaration itself:
 
 then its body alone:
 
-[test/fixtures/Example.java](test/fixtures/Example.java#region:-toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#region:-toString)
 
 ```java
         return String.join(",", items);
@@ -285,7 +285,7 @@ then its body alone:
 
 then the declaration with its annotation:
 
-[test/fixtures/Example.java](test/fixtures/Example.java#region:+toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#region:+toString)
 
 ```java
     @Override
@@ -296,7 +296,7 @@ then the declaration with its annotation:
 
 then annotation and doc comment together:
 
-[test/fixtures/Example.java](test/fixtures/Example.java#region:++toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#region:++toString)
 
 ```java
     /** Add one item to this cart. */
@@ -308,7 +308,7 @@ then annotation and doc comment together:
 
 The name may equally be a class-like declaration, nested or not:
 
-[test/fixtures/Example.java](test/fixtures/Example.java#region:Line)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#region:Line)
 
 ```java
     public static class Line {
@@ -353,7 +353,7 @@ valid JSON — braces and all — in the order they are listed.
 
 Top-level keys and a nested one, from `package.json`:
 
-[package.json](package.json#region:name,version,scripts.test)
+[../package.json](../package.json#region:name,version,scripts.test)
 
 ```json
 {
@@ -367,7 +367,7 @@ Top-level keys and a nested one, from `package.json`:
 
 An array keeps only the elements named, in order:
 
-[package.json](package.json#region:keywords.0,keywords.2)
+[../package.json](../package.json#region:keywords.0,keywords.2)
 
 ```json
 {
@@ -428,7 +428,7 @@ marker (blank lines are allowed in between). Fences follow CommonMark:
 The next block shows why the longer fence matters: the fixture contains
 three-backtick fences of its own, so its wrapper is four backticks.
 
-[test/fixtures/fenced.md](test/fixtures/fenced.md)
+[../test/fixtures/fenced.md](../test/fixtures/fenced.md)
 
 ````markdown
 Prose, then a nested fence:
@@ -473,10 +473,10 @@ several targets the code is the worst of the run.
 
 The tool's own output for a clean run over this document:
 
-[test/fixtures/after.md](test/fixtures/after.md)
+[../test/fixtures/after.md](../test/fixtures/after.md)
 
 ```markdown
-$ npx @hrg/inject-examples --root . doc/usage.md
+$ npx @hrg/inject-examples doc/usage.md
 doc/usage.md updated.
 ```
 
@@ -496,7 +496,7 @@ the library is pure and reads only through the `readFile` you hand it, which
 is why the test suite drives it in memory. The block below is the real test
 that drives the engine — a live marker into `test.mjs`'s region:
 
-[test.mjs](test.mjs#region:update-document-test)
+[../test.mjs](../test.mjs#region:update-document-test)
 
 ```javascript
 test('updateDocument rewrites every marker and is idempotent', () => {
@@ -556,19 +556,19 @@ stating because it is deliberate:
   in a document's prose (outside fenced blocks and inline code) must navigate
   somewhere real — an external URL, a heading that exists in the same
   document, or a file that exists in the repository, resolved against the
-  repository root, the same `--root .` convention this document uses. Fenced
-  blocks and inline code are data, not navigation, so illustrative markers
-  there — such as a `failed` demo — are exempt, exactly as marker-like lines
-  inside fences are inert. A test in `test.mjs` enforces this rule over every
-  Markdown file in the repository.
+  document's own directory, the standard Markdown convention this document's
+  markers follow. Fenced blocks and inline code are data, not navigation, so
+  illustrative markers there — such as a `failed` demo — are exempt, exactly
+  as marker-like lines inside fences are inert. A test in `test.mjs` enforces
+  this rule over every Markdown file in the repository.
 
 ## Keeping this document in sync
 
 Regenerate whenever a shown file changes, and check in CI:
 
 ```
-npx @hrg/inject-examples --root . doc/usage.md
-npx @hrg/inject-examples --root . --check doc/usage.md
+npx @hrg/inject-examples doc/usage.md
+npx @hrg/inject-examples --check doc/usage.md
 ```
 
 A stale block fails the check with the marker's line number and a `stale`
@@ -576,5 +576,5 @@ label, and writes nothing; regenerate and commit. As a CI step:
 
 ```yaml
 - name: Check injected examples
-  run: npx @hrg/inject-examples --root . --check doc/usage.md
+  run: npx @hrg/inject-examples --check doc/usage.md
 ```

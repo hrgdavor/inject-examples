@@ -1,2 +1,2 @@
-$ npx @hrg/inject-examples --root . doc/usage.md
+$ npx @hrg/inject-examples doc/usage.md
 doc/usage.md updated.
