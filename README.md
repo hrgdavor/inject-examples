@@ -305,12 +305,13 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 | Export | Purpose |
 | --- | --- |
 | `updateDocument(text, options)` | Rewrite every block in a document; `options` may set `root`, `readFile`, `gitignore`, `isIgnored` and `lenient` |
-| `injectInto(lines, marker, content, startIndex?)` | Replace one block; returns `{ lines, changed }` |
+| `injectInto(lines, marker, content, startIndex?, language?)` | Replace one block; a bare fence is given `language`; returns `{ lines, changed }` |
 | `findMarkers(lines)` / `parseMarker(line)` | Discover markers |
 | `fenceRanges(lines)` | The fenced blocks in a document |
 | `resolveMarker(marker, read)` | The text a marker stands for |
 | `extractRegion(text, name)` / `regionDirective(line)` | Region parsing |
 | `normalize(text)` | LF endings, one trailing newline removed |
+| `fileLanguage(path)` | The fence language a file's extension implies, or `null` |
 | `fileReader(root)` | A `readFile` that resolves against a root |
 | `parseIgnoreFile(text)` | Parse one `.gitignore` into rules |
 | `loadIgnoreRules(root, read)` | Walk up from `root` collecting `.gitignore` rules |
@@ -329,8 +330,11 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
   injection.
 - **No markers at all** is an error, because it usually means the file argument
   or the `--root` is wrong. Pass `--allow-empty` to allow it.
-- **Only the block body changes.** The marker line, the fence, the fence's
-  language tag and everything outside the block are left untouched.
+- **Only the block body changes — except the fence's language tag.** The
+  marker line and everything outside the block are left untouched. If the
+  opening fence has no language, the tool adds one from the file's extension
+  (`example.ts` becomes a `typescript` block), so the block highlights; a fence
+  that already names a language is never touched.
 - **Path traversal.** Marker paths resolve against the root and may contain
   `../`: the tool trusts the document it runs on, as it should a `pre-commit`
   hook it installed itself.

@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import {
     extractRegion,
     fenceRanges,
+    fileLanguage,
     fileReader,
     findMarkers,
     injectInto,
@@ -194,6 +195,74 @@ test('injectInto fails when the block is missing or unclosed', () => {
     assert.throws(() => injectInto(['[a.md](./a.md)'], '[a.md](./a.md)', 'x'), /no code block/);
     assert.throws(() => injectInto(['[a.md](./a.md)', '```', 'x'], '[a.md](./a.md)', 'x'), /unclosed/);
     assert.throws(() => injectInto(['nope'], '[a.md](./a.md)', 'x'), /marker not found/);
+});
+
+test('injectInto gives a bare fence the language it is passed', () => {
+    const bare = ['[a.ts](./a.ts)', '```', 'old', '```'];
+    const result = injectInto(bare, '[a.ts](./a.ts)', 'new', 0, 'typescript');
+    assert.deepEqual(result.lines, ['[a.ts](./a.ts)', '```typescript', 'new', '```']);
+    assert.equal(result.changed, true);
+
+    // A fence that already names a language is left as written.
+    const tagged = ['[a.ts](./a.ts)', '```cpp', 'same', '```'];
+    const kept = injectInto(tagged, '[a.ts](./a.ts)', 'same', 0, 'typescript');
+    assert.deepEqual(kept.lines, ['[a.ts](./a.ts)', '```cpp', 'same', '```']);
+    assert.equal(kept.changed, false);
+
+    // No language passed: a bare fence stays bare.
+    const noLang = injectInto(bare, '[a.ts](./a.ts)', 'new', 0);
+    assert.deepEqual(noLang.lines, ['[a.ts](./a.ts)', '```', 'new', '```']);
+
+    // Indentation and CRLF endings are preserved when the fence gains a language.
+    const crlf = ['[a.ts](./a.ts)', '  ```\r', 'old', '  ```\r'];
+    const keptCrlf = injectInto(crlf, '[a.ts](./a.ts)', 'new', 0, 'typescript');
+    assert.deepEqual(keptCrlf.lines, ['[a.ts](./a.ts)', '  ```typescript\r', 'new', '  ```\r']);
+});
+
+// ---------------------------------------------------------------------------
+// fileLanguage
+// ---------------------------------------------------------------------------
+
+test('fileLanguage maps extensions to fence languages', () => {
+    assert.equal(fileLanguage('src/app.ts'), 'typescript');
+    assert.equal(fileLanguage('src/app.tsx'), 'tsx');
+    assert.equal(fileLanguage('app.js'), 'javascript');
+    assert.equal(fileLanguage('app.mjs'), 'javascript');
+    assert.equal(fileLanguage('app.cjs'), 'javascript');
+    assert.equal(fileLanguage('config.json'), 'json');
+    assert.equal(fileLanguage('doc.md'), 'markdown');
+    assert.equal(fileLanguage('doc.markdown'), 'markdown');
+    assert.equal(fileLanguage('script.py'), 'python');
+    assert.equal(fileLanguage('run.sh'), 'bash');
+    assert.equal(fileLanguage('style.css'), 'css');
+    assert.equal(fileLanguage('page.html'), 'html');
+    assert.equal(fileLanguage('data.yml'), 'yaml');
+    assert.equal(fileLanguage('APP.TS'), 'typescript', 'extensions are case-insensitive');
+    assert.equal(fileLanguage('noext'), null, 'no extension is unknown');
+    assert.equal(fileLanguage('.gitignore'), null, 'a dotfile has no extension');
+    assert.equal(fileLanguage('notes.txt'), null, 'unknown extensions stay unknown');
+});
+
+test('updateDocument gives a bare fence the language of the marker file', () => {
+    const files = { 'fixtures/one.ts': 'code\n' };
+    const doc = ['[fixtures/one.ts](./fixtures/one.ts)', '```', 'stale', '```'].join('\n');
+    const read = reader(files);
+
+    const first = updateDocument(doc, { readFile: read });
+    assert.equal(first.changed, true);
+    assert.match(first.text, /^```typescript$/m);
+    assert.match(first.text, /code/);
+
+    const second = updateDocument(first.text, { readFile: read });
+    assert.equal(second.changed, false, 'the added language is not re-added');
+});
+
+test('updateDocument leaves a bare fence bare for unknown extensions', () => {
+    const files = { 'fixtures/notes.txt': 'notes\n' };
+    const doc = ['[fixtures/notes.txt](./fixtures/notes.txt)', '```', 'stale', '```'].join('\n');
+    const result = updateDocument(doc, { readFile: reader(files) });
+    assert.equal(result.changed, true, 'the content is still replaced');
+    assert.match(result.text, /^```\n/m, 'the fence stays bare');
 });
 
 // ---------------------------------------------------------------------------
@@ -763,7 +832,7 @@ test('content that contains fences is replaced inside a longer fence', () => {
     const result = updateDocument(doc, { root, readFile: read, gitignore: false });
     assert.equal(result.changed, true);
     assert.match(result.text, /const x = 1;/);
-    assert.match(result.text, /^````\n/m);
+    assert.match(result.text, /^````markdown\n/m, 'a bare fence gets the file language too');
 
     const second = updateDocument(result.text, { root, readFile: read, gitignore: false });
     assert.equal(second.changed, false, 'a second pass is a no-op');

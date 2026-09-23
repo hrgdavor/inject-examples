@@ -5,6 +5,7 @@
  * to a real file is followed by a fenced code block, and that block is replaced
  * verbatim with the file's text (or with one region of it). Because the text is
  * copied rather than typed, the document cannot drift from the file it shows.
+ * A fence left without a language is given the file's, so the block highlights.
  *
  * This module is pure: it reads only through the `readFile` you hand it, so it
  * is safe to unit-test and to embed. `cli.mjs` is the thin executable wrapper.
@@ -239,6 +240,53 @@ export function resolveMarker(marker, read) {
 }
 
 // ---------------------------------------------------------------------------
+// Fence language
+// ---------------------------------------------------------------------------
+
+// Extension to the language identifier a Markdown fence carries for
+// highlighting — GitHub's list, where `typescript` is not `ts` and `.mjs`
+// is `javascript`.
+const LANGUAGES = {
+    c: 'c', h: 'c',
+    cpp: 'cpp', hpp: 'cpp',
+    cs: 'csharp',
+    css: 'css',
+    go: 'go',
+    htm: 'html', html: 'html',
+    ini: 'ini',
+    java: 'java',
+    cjs: 'javascript', js: 'javascript', mjs: 'javascript',
+    jsx: 'jsx',
+    json: 'json',
+    md: 'markdown', markdown: 'markdown',
+    php: 'php',
+    pl: 'perl',
+    py: 'python',
+    rb: 'ruby',
+    rs: 'rust',
+    bash: 'bash', sh: 'bash',
+    sql: 'sql',
+    toml: 'toml',
+    ts: 'typescript',
+    tsx: 'tsx',
+    xml: 'xml',
+    yaml: 'yaml', yml: 'yaml',
+};
+
+/**
+ * The language a file's extension implies for a fence's info string, or null
+ * when the extension is unknown — a bare fence then stays bare.
+ *
+ * @param {string} path a path, with or without a leading `./`
+ * @returns {string | null}
+ */
+export function fileLanguage(path) {
+    const dot = path.lastIndexOf('.');
+    if (dot <= 0) return null;
+    return LANGUAGES[path.slice(dot + 1).toLowerCase()] ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Updating a document
 // ---------------------------------------------------------------------------
 
@@ -260,6 +308,10 @@ export class IncludeError extends Error {}
  * long as the opener, so a file whose content contains fence lines of its own
  * can be wrapped in a longer fence.
  *
+ * When `language` is given and the opening fence has no info string, the fence
+ * is given one — so a bare block becomes a highlighted one. A fence that
+ * already carries a language is never touched.
+ *
  * `startIndex` is the marker's line index; when omitted, the marker is located
  * by exact text. The index form is what `updateDocument` uses, so a document
  * whose own content contains a marker line still works.
@@ -268,9 +320,10 @@ export class IncludeError extends Error {}
  * @param {string} marker the exact marker line
  * @param {string} content
  * @param {number} [startIndex]
+ * @param {string | null} [language]
  * @returns {{ lines: string[], changed: boolean }}
  */
-export function injectInto(lines, marker, content, startIndex) {
+export function injectInto(lines, marker, content, startIndex, language = null) {
     let markerIndex;
     if (typeof startIndex === 'number') {
         if (lines[startIndex]?.trim() !== marker) throw new Error(`marker not found: ${marker}`);
@@ -282,11 +335,13 @@ export function injectInto(lines, marker, content, startIndex) {
 
     let open = -1;
     let openLen = 0;
+    let openInfo = '';
     for (let i = markerIndex + 1; i < lines.length; i++) {
         const openMatch = FENCE_OPEN.exec(lines[i]);
         if (openMatch) {
             open = i;
             openLen = openMatch[1].length;
+            openInfo = openMatch[2];
             break;
         }
         if (lines[i].trim() !== '') {
@@ -305,10 +360,22 @@ export function injectInto(lines, marker, content, startIndex) {
     }
     if (close === -1) throw new IncludeError(`unclosed code block after ${marker}`);
 
+    // A fence without a language cannot highlight: give it the file's, keeping
+    // the document's own indentation and line endings intact.
+    let fenceChanged = false;
+    if (language && openInfo.replace(/\r$/, '').trim() === '') {
+        const openLine = lines[open];
+        const indent = openLine.slice(0, openLine.indexOf('`'));
+        lines = [...lines];
+        lines[open] = indent + '`'.repeat(openLen) + language
+            + (openLine.endsWith('\r') ? '\r' : '');
+        fenceChanged = true;
+    }
+
     const current = lines.slice(open + 1, close).map((line) => line.replace(/\r$/, '')).join('\n');
     const next = [...lines.slice(0, open + 1), ...content.split('\n'), ...lines.slice(close)];
 
-    return { lines: next, changed: current !== content };
+    return { lines: next, changed: current !== content || fenceChanged };
 }
 
 // ---------------------------------------------------------------------------
@@ -506,6 +573,10 @@ function makeIgnorer(options, root, read) {
  * Markers whose target file is gitignored are skipped: their block is left
  * untouched and reported with `skipped: true`.
  *
+ * An opening fence without a language tag is given the language the marker's
+ * file extension implies, so the block highlights; a fence that already names
+ * a language is left as written.
+ *
  * With `lenient: true`, a marker whose include is broken — its file or
  * region cannot be read, or its block cannot be found — is skipped with
  * `failure` set to the cause and the run continues, its block left as
@@ -555,7 +626,7 @@ export function updateDocument(text, options = {}) {
 
         let injected;
         try {
-            injected = injectInto(lines, marker.raw, content, marker.index);
+            injected = injectInto(lines, marker.raw, content, marker.index, fileLanguage(marker.path));
         } catch (err) {
             if (!lenient || !(err instanceof IncludeError)) throw err;
             results.push({ marker, content: null, changed: false, skipped: true, failure: err.message });

@@ -155,7 +155,7 @@ This is the real code that decides whether a line is a marker, injected from
 
 [index.mjs](index.mjs#region:parseMarker)
 
-```
+```javascript
 /**
  * Read one line as an injection marker, or return null.
  *
@@ -202,7 +202,7 @@ directives and the marker names the region. The next block is one region of
 
 [test/fixtures/example.ts](test/fixtures/example.ts#region:table)
 
-```
+```typescript
 | name | qty |
 | ---- | --- |
 | bolt | 12  |
@@ -214,7 +214,7 @@ rule only forbids identical marker text:
 
 [test/fixtures/example.ts](test/fixtures/example.ts#region:config)
 
-```
+```typescript
 export const config = { retries: 3 };
 ```
 
@@ -240,6 +240,10 @@ marker (blank lines are allowed in between). Fences follow CommonMark:
   info string.
 - A fence left open at the end of the document swallows the rest of the
   document; that is reported as an error (and, with `--lenient`, tolerated).
+- If the opening fence has no info string, the tool adds one from the marker's
+  file extension — `index.mjs` opens a `javascript` block, `package.json` a
+  `json` block — so the injected content is highlighted. A fence that already
+  names a language is left as written.
 
 The next block shows why the longer fence matters: the fixture contains
 three-backtick fences of its own, so its wrapper is four backticks.
@@ -284,7 +288,7 @@ The tool's own output for a clean run over this document:
 
 [test/fixtures/after.md](test/fixtures/after.md)
 
-```
+```markdown
 $ npx @hrg/inject-examples --root . doc/usage.md
 doc/usage.md updated.
 ```
@@ -307,7 +311,7 @@ that drives the engine — a live marker into `test.mjs`'s region:
 
 [test.mjs](test.mjs#region:update-document-test)
 
-```
+```javascript
 test('updateDocument rewrites every marker and is idempotent', () => {
     const read = reader(FILES);
     const first = updateDocument(DOC, { readFile: read });

@@ -39,6 +39,9 @@ Usage:
       ...replaced, byte for byte, with that file...
       \`\`\`
 
+  A fence without a language is given one from the file's extension, so the
+  block highlights; a fence that already names a language is left as written.
+
   Name a region in the fragment to inject part of a larger file:
 
       [src/app.ts](./src/app.ts#region:table)
