@@ -1,6 +1,10 @@
-# inject-examples
+# @hrg/inject-examples
 
 Keep the code samples in your Markdown honest.
+
+This project [dogfoods](https://en.wikipedia.org/wiki/Dogfooding) its own
+documentation: [`doc/usage.md`](./doc/usage.md) is written with inject-examples
+itself, and every file it shows is exercised by the test suite.
 
 A **marker** is a line that is nothing but a link to a real file, labelled with
 that same path. The fenced code block that follows it is replaced — byte for
@@ -8,10 +12,10 @@ byte — with that file's content. Because the text is *copied* rather than type
 your README cannot drift from the files your tests use.
 
 ````markdown
-[fixtures/before.md](./fixtures/before.md)
+[test/fixtures/before.md](./test/fixtures/before.md)
 
 ```markdown
-...this block is generated from fixtures/before.md...
+...this block is generated from test/fixtures/before.md...
 ```
 ````
 
@@ -19,44 +23,46 @@ Prefix a fragment with `#region:<name>` to inject just one part of a larger
 file, so a sample can show a slice of a big source file without duplicating it:
 
 ```markdown
-[src/app.ts](./src/app.ts#region:table)
+[test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
 ```
 
 No dependencies. Node 18+. Works as a CLI and as a library.
 
+A detailed usage guide lives in [`doc/usage.md`](./doc/usage.md).
+
 ## Install
 
 ```bash
-npm install --save-dev inject-examples
+npm install --save-dev @hrg/inject-examples
 ```
 
 Or run it without installing:
 
 ```bash
-npx inject-examples --check
+npx @hrg/inject-examples --check
 ```
 
 ## Quick start
 
 1. Add a marker and an empty block to your `README.md`:
 
-   ```markdown
-   [fixtures/before.md](./fixtures/before.md)
+   ````markdown
+   [test/fixtures/before.md](./test/fixtures/before.md)
 
    ```markdown
    ```
-   ```
+   ````
 
 2. Run it:
 
    ```bash
-   npx inject-examples
+   npx @hrg/inject-examples
    ```
 
 3. Commit the result, and add a check to CI:
 
    ```bash
-   npx inject-examples --check
+   npx @hrg/inject-examples --check
    ```
 
 `--check` exits `1` when any block differs from its file, so CI fails the moment
@@ -73,9 +79,9 @@ A line is a marker when **all** of these hold:
 - The destination is a path, not a URL (no `http:`, `mailto:`, etc.).
 - Any fragment is either absent or exactly `#region:<name>`.
 
-So `[fixtures/a.md](./fixtures/a.md)` injects, while
-`[the docs](./docs/README.md)` and `[a.md](./a.md#install)` are ordinary links
-and are left alone.
+So `[test/fixtures/after.md](./test/fixtures/after.md)` injects, while
+`[the docs](./doc/usage.md)` and `[install](./doc/usage.md#install)` are
+ordinary links and are left alone.
 
 Lines inside fenced blocks are never markers: whatever a fence contains is
 content, even when it looks exactly like a marker — which is why this
@@ -104,7 +110,7 @@ between them:
 then
 
 ```markdown
-[src/app.ts](./src/app.ts#region:table)
+[test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
 ```
 
 Any of the usual comment prefixes is accepted, in any language:
@@ -156,9 +162,9 @@ longer held hostage by it:
 
 ```
 $ inject-examples --lenient
-updated  [fixtures/a.md](./fixtures/a.md)
-failed   [fixtures/missing.md](./fixtures/missing.md)
-updated  [fixtures/b.md](./fixtures/b.md)
+updated  [test/fixtures/before.md](./test/fixtures/before.md)
+failed   [test/fixtures/missing.md](./test/fixtures/missing.md)
+updated  [test/fixtures/after.md](./test/fixtures/after.md)
 
 README.md: 2 updated, 1 failed.
 ```
@@ -207,8 +213,8 @@ holding that document, unless `--root` says otherwise.
 
 ```
 $ inject-examples --check
-ok       [fixtures/before.md](./fixtures/before.md)
-stale    [fixtures/after.md](./fixtures/after.md)
+ok       [test/fixtures/before.md](./test/fixtures/before.md)
+stale    [test/fixtures/after.md](./test/fixtures/after.md)
 skipped  [node_modules/dep.js](./node_modules/dep.js)
 
 README.md is stale: 1 of 2 block(s) differ from their files.
@@ -241,7 +247,7 @@ run ends `1` and the marker's block is left as written.
   with:
     node-version: 20
 - run: npm ci
-- run: npx inject-examples --check
+- run: npx @hrg/inject-examples --check
 ```
 
 ### Several documents
@@ -266,8 +272,8 @@ inject-examples --root . docs/GUIDE.md
 
 ```bash
 #!/bin/sh
-npx inject-examples --check || {
-  echo "README examples are out of date; run: npx inject-examples"
+npx @hrg/inject-examples --check || {
+  echo "README examples are out of date; run: npx @hrg/inject-examples"
   exit 1
 }
 ```
@@ -278,7 +284,7 @@ The same engine is exported for scripts and tests. `updateDocument` is pure —
 it reads only through the `readFile` you pass and never writes:
 
 ```js
-import { updateDocument, findMarkers, extractRegion, parseMarker } from 'inject-examples';
+import { updateDocument, findMarkers, extractRegion, parseMarker } from '@hrg/inject-examples';
 
 const result = updateDocument(readmeText, { root: process.cwd() });
 
@@ -331,6 +337,13 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 - **Gitignore subset.** Comments, `!` negation, leading `/` anchoring,
   trailing `/`, `**`, `*`, `?`, character classes and backslash escapes are
   supported. Quoted patterns and trailing-space escapes are not.
+- **Links in this repository's docs must be functional.** No fake links: a
+  prose Markdown link (outside fenced blocks and inline code) must be an
+  external URL, a heading that exists in the same document, or a file that
+  exists in the repository (resolved against the repository root). Fenced and
+  inline-code examples are data, not navigation, so a `failed` demo marker
+  there is exempt. `test.mjs` enforces this over every `.md` file in the
+  repository.
 
 ## What this deliberately does not do
 
@@ -355,19 +368,25 @@ which is exactly the drift this tool exists to prevent.
 
 ## Publishing
 
-The package is ready to publish as-is:
+The package is published as `@hrg/inject-examples` under the `hrg` npm
+organization; `publishConfig` sets `access` to `public`, so a plain
+`npm publish` publishes it publicly:
 
 ```bash
 cd inject-examples
 npm test                 # node --test
 npm pack --dry-run       # inspect exactly what ships
-npm publish              # add --access public if you scope the name
+npm publish
 ```
 
-Before the first publish, consider adding `"repository"` and `"homepage"` to
-`package.json` — npm shows them on the package page. If the name
-`inject-examples` is taken, publish under a scope (`@you/inject-examples`) or
-pick another name; nothing in the code depends on it.
+`npm install -g @hrg/inject-examples` puts the CLI on the PATH globally: the
+`bin` entry in `package.json` points at `cli.mjs` (which carries the
+`#!/usr/bin/env node` shebang), and npm wires the `inject-examples` command
+into the global bin directory. The same `bin` entry is what `npx
+@hrg/inject-examples` and a dev-dependency install run locally.
+
+`package.json` carries the [repository](https://github.com/hrgdavor/inject-examples)
+field, so npm links the package page to the GitHub repository.
 
 Only `cli.mjs`, `index.mjs`, `README.md` and `LICENSE` ship (`files` in
 `package.json`); the test file stays out.

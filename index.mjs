@@ -101,6 +101,7 @@ const LINK = /^\[([^\]]+)\]\(([^)\s]+)\)$/;
 /** True for `https:`, `mailto:`, `data:` — an ordinary link, never a marker. */
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
+// #region parseMarker
 /**
  * Read one line as an injection marker, or return null.
  *
@@ -137,6 +138,7 @@ export function parseMarker(line) {
     if (!region) return null;
     return { raw: line.trim(), path: relativePath, region: region[1] };
 }
+// #endregion
 
 /**
  * A line that opens a fenced block: three or more backticks, optionally

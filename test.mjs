@@ -8,13 +8,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    existsSync,
     mkdtempSync,
     mkdirSync,
     readFileSync,
+    readdirSync,
     rmSync,
     writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -162,7 +164,7 @@ test('resolveMarker reads a whole file or one region of it', () => {
 
 test('fileReader resolves relative paths against its root', () => {
     const text = fileReader(dirname(fileURLToPath(import.meta.url)))('package.json');
-    assert.match(text, /"name": "inject-examples"/);
+    assert.match(text, /"name": "@hrg\/inject-examples"/);
 });
 
 // ---------------------------------------------------------------------------
@@ -222,6 +224,7 @@ const FILES = {
     'fixtures/big.md': 'noise\n#region table\n| a | b |\n#endregion\nnoise\n',
 };
 
+// #region update-document-test
 test('updateDocument rewrites every marker and is idempotent', () => {
     const read = reader(FILES);
     const first = updateDocument(DOC, { readFile: read });
@@ -238,6 +241,7 @@ test('updateDocument rewrites every marker and is idempotent', () => {
     assert.deepEqual(second.results.map((r) => r.changed), [false, false]);
     assert.equal(second.text, first.text);
 });
+// #endregion
 
 test('updateDocument keeps surrounding text intact', () => {
     const { text } = updateDocument(DOC, { readFile: reader(FILES) });
@@ -698,4 +702,139 @@ test('main --lenient --check exits 0 when only gitignored skips remain', (t) => 
 
     assert.equal(main([readmePath, '--check', '-g', join(dir, 'ci.txt')]), 0);
     assert.equal(main([readmePath, '--lenient', '--check', '-g', join(dir, 'ci.txt')]), 0);
+});
+
+// ---------------------------------------------------------------------------
+// Shared fixtures — the files that back both the docs and the tests
+// ---------------------------------------------------------------------------
+//
+// doc/usage.md injects these files with live markers, and the tests below
+// read them through the real fileReader. The overlap is deliberate: an
+// example shown in the docs is test data, not prose, so it cannot drift
+// from what the tests prove.
+
+test('the fixtures that back the docs are real files with stable content', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const read = fileReader(root);
+
+    assert.equal(normalize(read('test/fixtures/before.md')),
+        "## Example\n\n```ts\nimport { inject } from 'acme';\n\ninject('a', 'b');\n```");
+    assert.equal(normalize(read('test/fixtures/after.md')),
+        '$ npx @hrg/inject-examples --root . doc/usage.md\ndoc/usage.md updated.');
+    assert.equal(normalize(read('test/fixtures/fenced.md')),
+        "Prose, then a nested fence:\n\n```js\nconst x = 1;\n```\n\nAnd prose after it.");
+    assert.equal(extractRegion(read('test/fixtures/example.ts'), 'table'),
+        '| name | qty |\n| ---- | --- |\n| bolt | 12  |');
+    assert.equal(extractRegion(read('test/fixtures/example.ts'), 'config'),
+        'export const config = { retries: 3 };');
+});
+
+test('the region markers in index.mjs and test.mjs resolve to real code', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const read = fileReader(root);
+
+    const parse = resolveMarker(parseMarker('[index.mjs](index.mjs#region:parseMarker)'), read);
+    assert.match(parse, /^\/\*\*\n \* Read one line as an injection marker/);
+    assert.match(parse, /export function parseMarker\(line\)/);
+
+    const testCode = resolveMarker(parseMarker('[test.mjs](test.mjs#region:update-document-test)'), read);
+    assert.match(testCode, /updateDocument rewrites every marker and is idempotent/);
+    assert.match(testCode, /a second pass is a no-op/);
+});
+
+test('a fixture-backed doc is rewritten when its block goes stale', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const read = fileReader(root);
+    const stale = ['[test/fixtures/after.md](test/fixtures/after.md)', '```', 'old output', '```'].join('\n');
+
+    const result = updateDocument(stale, { root, readFile: read, gitignore: false });
+    assert.equal(result.changed, true, 'the stale block is detected and rewritten');
+    assert.match(result.text, /\$ npx @hrg\/inject-examples --root \. doc\/usage\.md/);
+
+    const second = updateDocument(result.text, { root, readFile: read, gitignore: false });
+    assert.equal(second.changed, false, 'a second pass is a no-op');
+});
+
+test('content that contains fences is replaced inside a longer fence', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const read = fileReader(root);
+    const doc = ['[test/fixtures/fenced.md](test/fixtures/fenced.md)', '````', 'old', '````'].join('\n');
+
+    const result = updateDocument(doc, { root, readFile: read, gitignore: false });
+    assert.equal(result.changed, true);
+    assert.match(result.text, /const x = 1;/);
+    assert.match(result.text, /^````\n/m);
+
+    const second = updateDocument(result.text, { root, readFile: read, gitignore: false });
+    assert.equal(second.changed, false, 'a second pass is a no-op');
+});
+
+test('the documentation stays in sync with the files it shows', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const doc = readFileSync(join(root, 'doc', 'usage.md'), 'utf8');
+    const result = updateDocument(doc, { root, gitignore: false });
+
+    assert.equal(result.changed, false, 'doc/usage.md must match its fixtures');
+    assert.equal(result.markers.length, 8, 'one marker per shown file');
+    for (const entry of result.results) {
+        assert.equal(entry.skipped, false);
+        assert.equal(entry.failure, undefined);
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Doc links must be functional
+// ---------------------------------------------------------------------------
+//
+// General rule for this repository: no fake links in the docs. Every
+// Markdown link in a document's prose must be navigable — it is either an
+// external URL, an in-page link to a heading that exists in the same
+// document, or a file that exists in the repository (file links resolve
+// against the repository root, the `--root .` convention the docs follow).
+// Content inside fenced blocks and inside inline code is data, not
+// navigation: an illustrative marker there — e.g. the `failed` demo in the
+// README's CLI output — is exempt, exactly as marker-like lines inside
+// fences are inert.
+
+test('every link in the docs is functional', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+
+    const mdFiles = readdirSync(root, { recursive: true })
+        .filter((name) => name.endsWith('.md'))
+        .map((name) => join(root, name));
+    assert.ok(mdFiles.length >= 3, 'README and doc/usage.md must be present');
+
+    const slugify = (heading) =>
+        heading.toLowerCase().replace(/[^a-z0-9 _-]/g, '').replace(/\s+/g, '-');
+
+    for (const file of mdFiles) {
+        const rel = file.slice(root.length + 1);
+        const lines = readFileSync(file, 'utf8').split('\n');
+
+        const fences = fenceRanges(lines);
+        const fenced = (i) => fences.some(([a, b]) => i >= a && i <= b);
+
+        const slugs = new Set();
+        for (let i = 0; i < lines.length; i++) {
+            if (fenced(i)) continue;
+            const heading = /^#{1,6} +(.+)$/.exec(lines[i]);
+            if (heading) slugs.add(slugify(heading[1]));
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+            if (fenced(i)) continue;
+            const prose = lines[i].replace(/`[^`]*`/g, '');
+            for (const link of prose.matchAll(/\[[^\]]+\]\(([^()\s]+)\)/g)) {
+                const dest = link[1];
+                if (/^[a-z][a-z0-9+.-]*:/i.test(dest)) continue; // external URL
+                const [pathPart, fragment] = dest.split('#');
+                if (pathPart === '') {
+                    assert.ok(slugs.has(fragment), `${rel}:${i + 1}: no such heading ${dest}`);
+                } else {
+                    const target = resolve(root, pathPart);
+                    assert.ok(existsSync(target), `${rel}:${i + 1}: ${dest} does not exist`);
+                }
+            }
+        }
+    }
 });

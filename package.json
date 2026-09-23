@@ -1,5 +1,5 @@
 {
-  "name": "inject-examples",
+  "name": "@hrg/inject-examples",
   "version": "1.0.0",
   "description": "Keep Markdown examples in sync with the real files they show — inject file content, or one region of it, into the fenced block that follows a link.",
   "keywords": [
@@ -17,6 +17,10 @@
   ],
   "license": "MIT",
   "author": "Davor Hrg",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hrgdavor/inject-examples"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./index.mjs",
@@ -34,6 +38,9 @@
   ],
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "node --test test.mjs"
