@@ -1033,6 +1033,81 @@ test('main --lenient --check exits 0 when only gitignored skips remain', (t) => 
     assert.equal(main([readmePath, '--lenient', '--check', '-g', join(dir, 'ci.txt')]), 0);
 });
 
+test('parseArgs reads --out', () => {
+    assert.equal(parseArgs(['--out', 'dist.md', 'f.md']).out, 'dist.md');
+    assert.equal(parseArgs(['-o', 'dist.md']).out, 'dist.md');
+    assert.equal(parseArgs(['--out=dist.md', 'f.md']).out, 'dist.md');
+    assert.throws(() => parseArgs(['f.md', '--out']), UsageError, 'a missing value is a usage error');
+});
+
+test('main --out writes a processed copy elsewhere and leaves the input alone', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-out-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    const srcDir = join(dir, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(join(srcDir, 'a.md'), 'real content\n');
+    const docPath = join(srcDir, 'doc.md');
+    const original = [
+        '[a.md](./a.md)',
+        '',
+        '```markdown',
+        'stale content',
+        '```',
+        '',
+    ].join('\n');
+    writeFileSync(docPath, original);
+    const outPath = join(dir, 'dist', 'out.md');
+
+    // The copy may live in a different folder; the missing parent is created.
+    assert.equal(main([docPath, '--out', outPath]), 0);
+    const copy = readFileSync(outPath, 'utf8');
+    assert.match(copy, /real content/);
+    assert.doesNotMatch(copy, /stale content/);
+    assert.equal(readFileSync(docPath, 'utf8'), original, 'the input is untouched');
+
+    // A second pass writes nothing more.
+    assert.equal(main([docPath, '--out', outPath]), 0, 'idempotent');
+
+    // --check verifies the copy and writes nothing.
+    assert.equal(main([docPath, '--out', outPath, '--check']), 0, 'a fresh copy passes');
+    writeFileSync(outPath, 'old output\n');
+    assert.equal(main([docPath, '--out', outPath, '--check']), 1, 'a stale copy fails');
+    assert.equal(readFileSync(outPath, 'utf8'), 'old output\n', 'check wrote nothing');
+    rmSync(outPath);
+    assert.equal(main([docPath, '--out', outPath, '--check']), 1, 'a missing copy fails');
+
+    // --dry-run reports and writes nothing.
+    assert.equal(main([docPath, '--out', outPath, '--dry-run']), 0);
+    assert.equal(existsSync(outPath), false, 'dry-run wrote nothing');
+
+    // A broken include: strict aborts without writing; lenient writes the
+    // resolvable parts and still exits 1.
+    const brokenDoc = [
+        '[a.md](./a.md)',
+        '```',
+        'stale content',
+        '```',
+        '[missing.md](./missing.md)',
+        '```',
+        'stale dead',
+        '```',
+    ].join('\n');
+    writeFileSync(docPath, brokenDoc);
+    assert.equal(main([docPath, '--out', outPath]), 1, 'strict mode aborts');
+    assert.equal(existsSync(outPath), false, 'strict wrote no output');
+    assert.equal(main([docPath, '--out', outPath, '--lenient']), 1);
+    const lenientCopy = readFileSync(outPath, 'utf8');
+    assert.match(lenientCopy, /real content/);
+    assert.match(lenientCopy, /stale dead/, 'the dead marker\'s block is kept as written');
+    assert.equal(main([docPath, '--out', outPath, '--check', '--lenient']), 1, 'a failed include fails --check too');
+    assert.equal(readFileSync(docPath, 'utf8'), brokenDoc, 'the input was never modified');
+
+    // --out is a usage error with a directory or several files.
+    assert.equal(main([srcDir, '--out', outPath]), 2, 'a directory is a usage error');
+    assert.equal(main([docPath, join(srcDir, 'a.md'), '--out', outPath]), 2, 'two files are a usage error');
+});
+
 test('main expands a directory to every *.md below it, skipping the noise', (t) => {
     const dir = mkdtempSync(join(process.cwd(), '.cli-tree-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));

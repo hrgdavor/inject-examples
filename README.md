@@ -299,6 +299,7 @@ Marker paths resolve relative to the directory holding each document, unless
 | --- | --- |
 | `-c`, `--check` | Write nothing; exit `1` if any block is stale |
 | `-n`, `--dry-run` | Write nothing; report what would change |
+| `-o`, `--out <file>` | Write the processed document to `<file>` instead of updating the input in place; the input is never modified, and exactly one input file is required |
 | `-r`, `--root <dir>` | Base directory for the paths the markers name (default: the document's directory) |
 | `-g`, `--gitignore <file>` | Skip markers whose target file is ignored by this `.gitignore` file (default: the walk-up search above) |
 | `--no-gitignore` | Do not apply any `.gitignore` rules |
@@ -376,6 +377,25 @@ inject-examples docs/GUIDE.md
 ```
 
 If you write root-relative paths instead, point `--root` at the root.
+
+### Processing a document into a new file
+
+`--out` writes the processed document to a separate file — the input is
+never touched, and the destination's missing parent directories are created:
+
+```bash
+inject-examples --out dist/GUIDE.md docs/GUIDE.md
+```
+
+`--check --out` is the CI form: it verifies an existing copy and writes
+nothing, exiting `1` when the copy is stale or missing:
+
+```bash
+inject-examples --check --out dist/GUIDE.md docs/GUIDE.md
+```
+
+The copy keeps the input's relative links, so its links point at the input's
+neighbours — treat it as a build artifact, or rewrite the links afterwards.
 
 ### Run it before every commit
 
@@ -458,6 +478,9 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
   opening fence has no language, the tool adds one from the file's extension
   (`example.ts` becomes a `typescript` block), so the block highlights; a fence
   that already names a language is never touched.
+- **`--out` never writes the input.** The processed document is written to the
+  destination file only; a directory or several files with `--out` is a
+  usage error (exit `2`), and a run that ends `1` writes no output.
 - **Path traversal.** Marker paths resolve against the root and may contain
   `../`: the tool trusts the document it runs on, as it should a `pre-commit`
   hook it installed itself.

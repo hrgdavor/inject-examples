@@ -19,6 +19,7 @@ not prose; see [Examples and tests share the same files](#examples-and-tests-sha
 - [Region rules by file type](#region-rules-by-file-type)
 - [Fences](#fences)
 - [Running the CLI](#running-the-cli)
+- [Writing a processed copy](#writing-a-processed-copy)
 - [Tolerating broken includes](#tolerating-broken-includes)
 - [Using the library](#using-the-library)
 - [Examples and tests share the same files](#examples-and-tests-share-the-same-files)
@@ -54,7 +55,7 @@ The entire published package, verbatim:
 ```json
 {
   "name": "@hrg/inject-examples",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Keep Markdown examples in sync with the real files they show — inject file content, or one region of it, into the fenced block that follows a link.",
   "keywords": [
     "markdown",
@@ -358,7 +359,7 @@ Top-level keys and a nested one, from `package.json`:
 ```json
 {
   "name": "@hrg/inject-examples",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "scripts": {
     "test": "node --test test.mjs"
   }
@@ -443,9 +444,9 @@ And prose after it.
 ## Running the CLI
 
 ```
-inject-examples [--root <dir>] [--check] [--dry-run] [--allow-empty]
-                [-l, --lenient] [-g <file>] [--no-gitignore] [-q]
-                <file|dir> ...
+inject-examples [--root <dir>] [--check] [--dry-run] [-o, --out <file>]
+                [--allow-empty] [-l, --lenient] [-g <file>] [--no-gitignore]
+                [-q] <file|dir> ...
 ```
 
 `<file|dir> ...` is any number of documents and directories, and defaults to
@@ -461,6 +462,8 @@ The options, as the tool's own `--help` documents them:
 - `--check` — report only; nothing is written; stale or failed markers end
   with exit `1`.
 - `--dry-run` — show what would change; write nothing.
+- `-o, --out <file>` — write the processed document to `<file>` instead of
+  updating the input in place (below); exactly one input file is required.
 - `--allow-empty` — succeed when the document has no markers.
 - `--lenient` — tolerate broken includes (below).
 - `-g <file>`, `--no-gitignore` — override or disable gitignore handling.
@@ -468,8 +471,9 @@ The options, as the tool's own `--help` documents them:
 
 Exit codes: `0` on success; `1` on a stale block, an unreadable file or
 directory, a directory that holds no Markdown, a malformed marker, or (with
-`--lenient`) a marker that could not be resolved; `2` on a usage error. With
-several targets the code is the worst of the run.
+`--lenient`) a marker that could not be resolved; `2` on a usage error, such
+as a `--out` run given a directory or more than one file. With several
+targets the code is the worst of the run.
 
 The tool's own output for a clean run over this document:
 
@@ -479,6 +483,30 @@ The tool's own output for a clean run over this document:
 $ npx @hrg/inject-examples doc/usage.md
 doc/usage.md updated.
 ```
+
+## Writing a processed copy
+
+For a build step, the processed document can go to a different file while the
+input stays untouched:
+
+```
+npx @hrg/inject-examples --out dist/usage.md doc/usage.md
+```
+
+- Markers still resolve against the input's own directory, exactly as in the
+  in-place run; the input is never written — only the destination file is.
+- The destination may live anywhere: missing parent directories are created.
+  Exactly one input file is required; a directory or several files is a
+  usage error (exit `2`).
+- `--check --out` verifies an existing copy instead of writing one: it ends
+  `1` when the copy is stale or missing, and writes nothing — the CI hook
+  for a build artifact.
+- `--dry-run`, `--lenient` and `-q` compose as usual: `--dry-run` reports the
+  write; `--lenient` leaves a broken include's block as written in the copy
+  and still ends `1`.
+- The copy keeps the input's relative links, so its links point at the
+  input's neighbours, not the copy's own: treat the copy as a build artifact,
+  or rewrite the links afterwards.
 
 ## Tolerating broken includes
 

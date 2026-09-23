@@ -7,6 +7,9 @@
  *   inject-examples --check         exit 1 if any block is stale
  *   inject-examples docs/GUIDE.md   rewrite some other document
  *   inject-examples docs/           rewrite every *.md below docs/
+ *   inject-examples --out dist/GUIDE.md docs/GUIDE.md
+ *                                   process docs/GUIDE.md into dist/GUIDE.md,
+ *                                   leaving the input untouched
  *
  * Any number of documents and directories may be given at once; a directory
  * expands to every `*.md` below it, recursively. Each document is processed
@@ -15,10 +18,10 @@
  * Run `inject-examples --help` for the full option list.
  */
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseIgnoreFile, updateDocument } from './index.mjs';
+import { normalize, parseIgnoreFile, updateDocument } from './index.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FILE = 'README.md';
@@ -69,6 +72,11 @@ Arguments:
 Options:
   -c, --check          Write nothing; exit ${FAILED} if any block is stale
   -n, --dry-run        Write nothing; report what would change
+  -o, --out <file>     Write the processed document to <file> instead of
+                        updating the input in place: the input is never
+                        modified, <file> may live in any folder (its missing
+                        parent directories are created), and exactly one
+                        input file is required
   -r, --root <dir>     Base directory for the paths the markers name
                        (default: the directory holding the document)
   -g, --gitignore <file> Skip markers whose target file is ignored by this
@@ -105,6 +113,7 @@ export function parseArgs(argv) {
         noGitignore: false,
         check: false,
         dryRun: false,
+        out: null,
         quiet: false,
         allowEmpty: false,
         lenient: false,
@@ -131,6 +140,7 @@ export function parseArgs(argv) {
         switch (arg) {
             case '-c': case '--check': options.check = true; break;
             case '-n': case '--dry-run': options.dryRun = true; break;
+            case '-o': case '--out': options.out = takesValue(arg); break;
             case '-q': case '--quiet': options.quiet = true; break;
             case '-l': case '--lenient': options.lenient = true; break;
             case '--allow-empty': options.allowEmpty = true; break;
@@ -141,6 +151,7 @@ export function parseArgs(argv) {
             case '--no-gitignore': options.noGitignore = true; break;
             default:
                 if (arg.startsWith('--root=')) { options.root = arg.slice('--root='.length); break; }
+                if (arg.startsWith('--out=')) { options.out = arg.slice('--out='.length); break; }
                 if (arg.startsWith('--gitignore=')) { options.gitignoreFile = arg.slice('--gitignore='.length); break; }
                 throw new UsageError(`unknown option: ${arg}`);
         }
@@ -162,6 +173,15 @@ function version() {
 function display(path) {
     const rel = relative(process.cwd(), path);
     return rel === '' || rel.startsWith('..') ? path : rel;
+}
+
+/** Read `path` as text, or `null` when the file does not exist. */
+function readOrNull(path) {
+    try {
+        return readFileSync(path, 'utf8');
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -232,6 +252,19 @@ export function main(argv) {
     let options;
     try {
         options = parseArgs(argv);
+        if (options.out !== null) {
+            // --out processes one document into a separate file, so the target
+            // must be exactly one file: a directory or several files is a wrong
+            // command line, not a document to process.
+            const targets = options.files;
+            if (targets.length !== 1) {
+                throw new UsageError('--out needs exactly one input file');
+            }
+            const stat = statSync(resolve(targets[0]), { throwIfNoEntry: false });
+            if (stat !== undefined && stat.isDirectory()) {
+                throw new UsageError(`--out needs a file, not a directory: ${display(targets[0])}`);
+            }
+        }
     } catch (err) {
         if (!(err instanceof UsageError)) throw err;
         console.error(`inject-examples: ${err.message}`);
@@ -343,6 +376,48 @@ function processDocument(file, options, gitignore) {
     const checked = total - skippedCount - failed.length;
     const skipNote = skippedCount > 0 ? `, ${skippedCount} marker(s) skipped` : '';
     const failedNote = failed.length > 0 ? `, ${failed.length} failed` : '';
+
+    if (options.out !== null) {
+        const out = resolve(options.out);
+        const current = readOrNull(out);
+        const changed = current === null || normalize(current) !== normalize(result.text);
+
+        if (options.check) {
+            if (failed.length > 0) {
+                console.error(`\n${display(file)}: ${failed.length} of ${total} marker(s) could not be resolved; ${display(options.out)} was not verified.`);
+                return FAILED;
+            }
+            if (!changed) {
+                console.log(`\n${display(options.out)} is up to date with respect to ${display(file)}.`);
+                return OK;
+            }
+            console.error(`\n${display(options.out)} is stale with respect to ${display(file)}${current === null ? ' (the file does not exist)' : ''}.`);
+            console.error(`Run: inject-examples --out ${display(options.out)} ${display(file)}`);
+            return FAILED;
+        }
+
+        if (options.dryRun) {
+            if (failed.length > 0) {
+                console.log(`\n${display(file)}: ${failed.length} marker(s) could not be resolved and would be left as written${skipNote}.`);
+                return FAILED;
+            }
+            console.log(!changed
+                ? `\n${display(file)} is already in sync with ${display(options.out)}${skipNote}.`
+                : stale.length > 0
+                    ? `\n${display(file)} would write ${display(options.out)}: ${stale.length} of ${checked} block(s) updated${skipNote}.`
+                    : `\n${display(file)} would write ${display(options.out)}${skipNote}.`);
+            return OK;
+        }
+
+        mkdirSync(dirname(out), { recursive: true });
+        if (changed) writeFileSync(out, result.text, 'utf8');
+        if (failed.length > 0) {
+            console.log(`\n${display(file)} -> ${display(options.out)} updated: ${failed.length} marker(s) could not be resolved and were left as written${skipNote}.`);
+            return FAILED;
+        }
+        console.log(`\n${display(file)} -> ${display(options.out)} ${changed ? 'updated' : 'already up to date'}${skipNote}.`);
+        return OK;
+    }
 
     if (options.check) {
         if (stale.length > 0 || failed.length > 0) {
