@@ -1254,6 +1254,71 @@ test('the region markers in index.mjs and test.mjs resolve to real code', () => 
     assert.match(testCode, /a second pass is a no-op/);
 });
 
+test('the anchor fixture exercises extractCodeRegion for all reference kinds (failing)', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const read = fileReader(root);
+
+    // Existing behavior of Example.java must not change: reuse verbatim.
+    const java = read('test/fixtures/Example.java');
+    assert.equal(extractDeclaration(java, 'toString', 'annotated'),
+        '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(extractDeclaration(java, 'toString', 'documented'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(extractDeclaration(java, 'toString', 'body'), '        return String.join(",", items);');
+    assert.equal(extractDeclaration(java, 'Line'),
+        '    public static class Line {\n'
+        + '        private final String name;\n'
+        + '        private final int quantity;\n'
+        + '\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n'
+        + '            this.quantity = quantity;\n'
+        + '        }\n'
+        + '\n'
+        + '        String render() {\n'
+        + '            return name + " x" + quantity;\n'
+        + '        }\n'
+        + '    }');
+
+    // Anchors.java fixture: verify that references to non-existent methods throw.
+    const anchors = read('test/fixtures/Anchors.java');
+
+    // No "#region getUsers" directive, no matching method — fails with "no ... found".
+    assert.throws(() => extractCodeRegion(anchors, 'getUsers'), /no "#region \s*getUsers"\s*found/);
+
+    // No "#region getOrders" directive, no matching method — fails with "no ... found".
+    assert.throws(() => extractCodeRegion(anchors, 'getOrders'), /no "#region \s*getOrders"\s*found/);
+
+    // No "#region dispatch" directive, and no matching method — fails.
+    assert.throws(() => extractCodeRegion(anchors, 'dispatch'), /no "#region \s*dispatch"\s*found/);
+
+    // No "#region handler" directive, and no matching method — fails.
+    assert.throws(() => extractCodeRegion(anchors, 'handler'), /no "#region \s*handler"\s*found/);
+
+    // No "#region other" directive, and no matching method — fails.
+    assert.throws(() => extractCodeRegion(anchors, 'other'), /no "#region \s*other"\s*found/);
+
+    // No "#region commentFromString" directive, and no matching method — fails.
+    assert.throws(() => extractCodeRegion(anchors, 'commentFromString'), /no "#region \s*commentFromString"\s*found/);
+
+    // #region dispatch finds the dispatch method via the class-like declaration rule.
+    assert.equal(extractCodeRegion(anchors, 'dispatch'),
+        '    public void dispatch(String methodName) {\n'
+        + '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        } else if ("getOrders".equals(methodName)) {\n'
+        + '            System.out.println("orders");\n'
+        + '        }\n'
+        + '    }');
+});
+
 test('a fixture-backed doc is rewritten when its block goes stale', () => {
     const root = dirname(fileURLToPath(import.meta.url));
     const read = fileReader(root);

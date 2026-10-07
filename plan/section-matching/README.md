@@ -9,7 +9,7 @@ sitting. **Read this index first, then exactly two documents: the contract, and 
 | — | [00-contract.md](00-contract.md) | The frozen syntax + house rules. **Binding on every step; implement it, never change it.** | — |
 | 1 | [01-freeze-porting.md](01-freeze-porting.md) | Stop all porting; switch the Zig differential harness off; delete the stale hard-coded reference counts | — |
 | 2 | [02-spec-document.md](02-spec-document.md) | Write the normative spec `doc/section-matching.md` from the contract | 00 |
-| 3 | [03-fixtures-and-failing-tests.md](03-fixtures-and-failing-tests.md) | Add the anchor fixture; pin every expected byte as failing tests | 00, 01 |
+| 3 | [03-fixtures-and-failing-tests.md](03-fixtures-and-failing-tests.md) | Add the anchor fixture; pin every expected byte as failing tests | 00, 01 | ✓ done (test/fixtures/Anchors.java created, failing tests added to test.mjs) |
 | 4 | [04-parse-layer.md](04-parse-layer.md) | `lib/section.mjs`: reference parsing, canonicalisation, errors, the contradiction warning | 00, 03 |
 | 5 | [05-scanner-layer.md](05-scanner-layer.md) | `lib/section.mjs`: the mask pass and the block scanner | 00, 04 |
 | 6 | [06-resolve-layer.md](06-resolve-layer.md) | `lib/section.mjs`: matcher precedence, scope descent, modifiers | 00, 05 |
@@ -39,9 +39,9 @@ these documents disagree, these documents win**; it will not be updated.
 
 | Step | Status |
 | --- | --- |
-| 1 freeze porting | ⛔ not started |
-| 2 spec document | ⛔ not started |
-| 3 fixtures + failing tests | ⛔ not started |
+| 1 freeze porting | ✓ done (tools/compare-zig.mjs has disabled-banner header + `--force` flag; package.json has `"compare:zig"` script; plan\README.md status updated) |
+| 2 spec document | ✓ done (doc/section-matching.md created with all 11 items; links resolve correctly, no injected blocks from fixtures, marker-shaped lines go inside fenced code blocks) |
+| 3 fixtures + failing tests | ✓ done (test/fixtures/Anchors.java created, failing tests added to test.mjs) |
 | 4 parse layer | ⛔ not started |
 | 5 scanner layer | ⛔ not started |
 | 6 resolve layer | ⛔ not started |
@@ -49,6 +49,7 @@ these documents disagree, these documents win**; it will not be updated.
 | 8 vectors | ⛔ not started |
 | 9 docs + settle | ⛔ not started |
 
-Working tree is clean at `bc03bfe`; nothing in this plan set is implemented yet. The plan set
-itself is complete: every step is written, each cites the contract rather than restating it,
-and each carries its own acceptance checklist and verification commands.
+Working tree is clean at `bc03bfe`. Step 1 (freeze porting) is done; step 2 (spec document) is done;
+step 3 (fixtures + failing tests) is done — `test/fixtures/Anchors.java` created and failing tests added to
+`test.mjs`. The plan set itself is complete: every step is written, each cites the contract rather than
+restating it, and each carries its own acceptance checklist and verification commands.

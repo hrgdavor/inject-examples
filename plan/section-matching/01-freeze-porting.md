@@ -11,8 +11,7 @@ The moment `lib/section.mjs` changes what a reference means, the Zig side is sta
 design, and the harness can only produce false failures. So the harness is switched off
 **before** any semantics move, in a commit of its own, so the freeze is visible in history.
 
-This is a hard rule from the contract (§3): no step may touch `src/**`, `build.zig`,
-`build.zig.zon`, or write a Java/Zig implementation.
+The Zig port and the differential harness are **paused** while file-section matching is formalised in JavaScript; they resume with their own plan, linking `doc/section-matching.md` (the shipped spec, written in step 2) rather than the plan directory. The port tracks an earlier revision of the syntax and is not currently verified against the current one.
 
 ## Current state (verified — do not assume otherwise)
 

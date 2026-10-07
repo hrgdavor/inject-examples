@@ -5,6 +5,15 @@
 //     node tools/compare-zig.mjs
 //     node tools/compare-zig.mjs --seed 0x1234 --rounds 500
 //
+// ⛔ **DISABLED** until the file-section matching syntax is settled in JavaScript
+// (see plan/section-matching/01-freeze-porting.md). The Zig differential harness is
+// paused because `lib/section.mjs` changes what a reference means, making the Zig
+// binary stale by design. A future separate plan will settle the syntax and re-enable
+// the harness. This is not a deletion — it is a switch.
+//
+// To run the harness: node tools/compare-zig.mjs --force (not recommended; the harness
+// will fail against the new syntax, which is expected).
+//
 // The corpus is the repository's own documents plus a list of edge cases plus a
 // seeded fuzzer. A scenario is a small tree of files and a command line; the
 // scenario is copied twice, once per tool, each tool runs in its own copy, and
@@ -634,6 +643,16 @@ function fuzzScenarios(seed, rounds) {
 
 rmSync(TMP, { recursive: true, force: true });
 mkdirSync(TMP, { recursive: true });
+
+// ---------------------------------------------------------------------------
+// Force flag — the harness is off until the JS syntax is settled.
+// Do not run comparisons; print a one-line reason and exit non-zero.
+// ---------------------------------------------------------------------------
+const FORCE = process.argv.includes('--force');
+if (!FORCE) {
+    console.error('⛔ The Zig differential harness is disabled while file-section matching is formalised in JavaScript (see plan/section-matching/01-freeze-porting.md). Use --force to override.');
+    process.exit(1);
+}
 
 const scenarios = [...fixedScenarios(), ...fuzzScenarios(SEED, ROUNDS)];
 for (const [name, files, args] of scenarios) {
