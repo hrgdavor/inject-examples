@@ -125,12 +125,17 @@ form is **trailing**, so the parser normalises before parsing:
 1. If the reference starts with `++`, `+` or `-`, detach it and append it to the end.
 2. If the **second** segment starts with exactly one `-` and nothing was detached in step 1,
    detach that `-` and append it (`Cart/-Line` → `Cart/Line-`).
-3. After normalisation, a `+` or `-` anywhere except the very end is an error (§9).
+3. **Only the last segment may carry a `+` or `-` modifier** (trailing, or a leading `-` on
+   the last segment, canonicalised to trailing). A `+` or `-` on any non-last segment is an
+   error.
+4. After normalisation, a `+` or `-` anywhere except the very end of the last segment is an
+   error (§9).
 
 Accepted: `add`, `add-`, `-add`, `Cart/Line`, `Cart/Line-`, `Cart/-Line`, `toString++`,
 `++toString`, `Cart/Line/render-`, `Cart/Line/-render`.
-Rejected (errors): `Cart/-Line/render`, `Cart/Line/+render`, `a//b`, `a/`, `/a`, `a+++`.
-Warned (see §10): `a/b++-`, `a-/b++`, `a+-`.
+Rejected (errors): `Cart/-Line/render`, `Cart/Line/+render`, `a-/b++`, `a//b`, `a/`, `/a`,
+`a+++`.
+Warned (see §11): `a++-`, `a-++`, `a+-`.
 
 ## 8. Modifiers (§8.1 applies to the final section only)
 
@@ -207,7 +212,7 @@ what a human types while refactoring.
 
 | Case | Kind | Behaviour |
 | --- | --- | --- |
-| Contradictory pair: `++` with `-`, either order (`a++-`, `a-++`, `a-/b++`) | **Warning** | Reported once as `inject-examples: warn: <doc>:<line>: "#region:<ref>": "+/-" contradicts "++"; using "#region:<ref-without-the-minus>"`. The **`++` reading wins**; the block is injected as if the `-` were absent; the run continues; the run **exits 1** |
+| Contradictory pair: `++` with `-`, either order (`a++-`, `a-++`) | **Warning** | Reported once as `inject-examples: warn: <doc>:<line>: "#region:<ref>": "+/-" contradicts "++"; using "#region:<ref-without-the-minus>"`. The **`++` reading wins**; the block is injected as if the `-` were absent; the run continues; the run **exits 1** |
 | `+` with `-` (`a+-`, `a-+`) | **Warning** | Same shape: contradictory, `+` wins |
 | One modifier named twice (`a+++`, `a---`) | **Error** | Malformed, not contradictory — §9 |
 | A modifier anywhere but the end | **Error** | §7 rule 3, §9 |
