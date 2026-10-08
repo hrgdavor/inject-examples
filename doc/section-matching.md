@@ -12,11 +12,8 @@ The marker that carries one looks like this:
 [label](path#region:<section-reference>)
 ```
 
-`inject:` is a consumer project's own marker prefix — how *their* tooling flags
-a line as an injection marker before rewriting it into the form above (the
-`inject:` prefix is a concern of the consumer, not of this grammar). `region:` is
-a fixed fragment keyword, **not** a name to match: it is what tells the tool,
-"this fragment is a section reference, resolve it against the file." This
+`region:` is a fixed fragment keyword, **not** a name to match: it is what tells the
+tool, "this fragment is a section reference, resolve it against the file." This
 document specifies only the reference text after `region:`; it does not change
 the marker prefix, the fragment keyword, fences, gitignore, the CLI, or the JSON
 rule. Those are out of scope and unchanged.
