@@ -37,6 +37,7 @@ import {
     normalize,
     parseIgnoreFile,
     parseMarker,
+    planMarker,
     regionDirective,
     resolveMarker,
     ruleFor,
@@ -910,6 +911,103 @@ test('planSection: contradiction resolves to the dominant reading with a warning
     }
     // A non-contradictory reference carries no warning.
     assert.equal(planSection(ANCHORS, 'getUsers').reference.warning, null);
+});
+
+// ---------------------------------------------------------------------------
+// Step 7 — warning surfaces through the library (planMarker/updateDocument)
+// and the CLI (exit code + stderr line), and the delegation is byte-identical
+// ---------------------------------------------------------------------------
+
+test('planMarker carries the section warning for a contradiction', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const plan = planMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:getUsers++-)'), read);
+    assert.equal(plan.text, resolveSection(ANCHORS, 'getUsers++-'));
+    assert.ok(plan.warning !== null, 'warning surfaced through planMarker');
+    assert.equal(plan.warning.kind, 'contradiction');
+    assert.match(plan.warning.message, /"\+\+" contradicts "-"/);
+    assert.match(plan.warning.message, /using "#region:getUsers\+\+"/);
+    // resolveMarker stays a string and drops the warning.
+    assert.equal(typeof resolveMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:getUsers)'), read), 'string');
+});
+
+test('updateDocument reports a warning and stays idempotent', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const doc = [
+        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:getUsers++-)',
+        '```java',
+        'stale',
+        '```',
+    ].join('\n');
+    const first = updateDocument(doc, { readFile: read });
+    assert.equal(first.results.length, 1);
+    assert.ok(first.results[0].warning !== null, 'the contradiction warning rides on the result');
+    assert.equal(first.changed, true);
+    assert.match(first.text, /if \("getUsers"\.equals/);
+    assert.doesNotMatch(first.text, /stale/);
+
+    const second = updateDocument(first.text, { readFile: read });
+    assert.equal(second.changed, false, 'a second pass is a no-op');
+    assert.ok(second.results[0].warning !== null, 'the warning is reported again on the second pass');
+});
+
+test('updateDocument: an over-concrete reference is an error, not a warning', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const doc = [
+        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:getUsers+++)',
+        '```java',
+        'x',
+        '```',
+    ].join('\n');
+    // `a+++`-shaped references throw (strict), the error is not a warning.
+    assert.throws(() => updateDocument(doc, { readFile: read }), /more than one modifier/);
+});
+
+test('CLI: a contradiction warns and forces exit 1 even when the block is fresh', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-warn-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    const java = [
+        'class C {',
+        '    void f() {',
+        '        if ("getUsers".equals(m)) {',
+        '            go();',
+        '        }',
+        '    }',
+        '}',
+    ].join('\n');
+    writeFileSync(join(dir, 'C.java'), java + '\n');
+    const docPath = join(dir, 'doc.md');
+    writeFileSync(docPath, [
+        '[C.java](./C.java#region:getUsers++-)',
+        '',
+        '```java',
+        'stale',
+        '```',
+    ].join('\n'));
+
+    // Capture stderr to assert the warning line, mirroring the failure-warning shape.
+    const captured = [];
+    const original = console.error;
+    console.error = (...a) => captured.push(a.join(' '));
+    try {
+        assert.equal(main([docPath]), 1, 'a warning exits 1');
+        assert.equal(main([docPath, '--check']), 1, 'a warning exits 1 in --check even when nothing is stale');
+    } finally {
+        console.error = original;
+    }
+
+    const line = captured.find((s) => /warn:.*getUsers\+\+-.*contradicts/.test(s));
+    assert.ok(line, `warning line printed, saw: ${JSON.stringify(captured)}`);
+    assert.ok(line.startsWith('inject-examples: warn:'), 'same shape as a failure warning');
+    assert.ok(line.includes(':1:'), 'reports the marker line (1-based)');
+    assert.ok(line.includes('#region:getUsers++-'), 'quotes the raw marker');
+    assert.ok(line.includes('"++" contradicts "-"'), 'the contradiction message');
+    assert.ok(line.includes('using "#region:getUsers++"'), 'the canonical reference');
+    assert.match(line, /"\+\+" contradicts "-"/);
+    assert.match(line, /using "#region:getUsers\+\+"/);
+    // --check with nothing stale but a warning still returns 1 (asserted above),
+    // and the document was written by the first (non-check) run.
+    assert.match(readFileSync(docPath, 'utf8'), /if \("getUsers"\.equals/);
 });
 
 // ---------------------------------------------------------------------------

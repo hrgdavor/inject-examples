@@ -19,7 +19,18 @@
 
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { SectionReferenceError } from './lib/section.mjs';
+import {
+    SectionReferenceError,
+    resolveSection,
+    planSection,
+    parseReference,
+    isSingleSegment,
+    finalSegment,
+    scanBlocks,
+    masked,
+    commentsIn,
+    extractDeclaration,
+} from './lib/section.mjs';
 
 /** A fence is a line starting with this; three backticks, per CommonMark. */
 export const FENCE = '```';
@@ -129,418 +140,32 @@ export function codeReference(reference) {
     return { scope, name: reference.slice(modifier[1].length) };
 }
 
-/** A line that opens a doc comment, or one of a run of `///` lines. */
-const DOC_OPEN = /^\s*\/\*[*!]/;
-const DOC_RUN = /^\s*\/\/\//;
 
-/** A Java/C#/TypeScript decorator, or a Rust attribute. */
-const ANNOTATION_LINE = /^\s*(?:@[\w.$]|#\[)/;
-
-/** The keyword and the name of a class-like declaration. */
-const DECLARATION_KEYWORD =
-    /\b(?:class|interface|enum|record|struct|trait|object|union)\s+([A-Za-z_$][\w$]*)\b/;
-
-/** Keywords that can stand where a name would, but never declare one. */
-const NOT_A_NAME = new Set([
-    'if', 'for', 'while', 'switch', 'catch', 'return', 'new', 'do', 'else',
-    'throw', 'await', 'yield', 'typeof', 'delete', 'void', 'in', 'of',
-    'instanceof', 'super', 'this', 'with', 'case', 'when', 'sizeof',
-]);
-
-/** A statement keyword a declaration's prefix may not start with. */
-const STATEMENT_BEFORE = /^(?:return|throw|new|await|yield|delete|typeof|case|else|do)\b/;
-
-/** What may precede a declared name: modifiers and a type, nothing else. */
-const PREFIX = /^[\w$<>\[\],.?*&:@\s]*$/;
-
-/** The offset of the line `offset` falls on, given each line's start. */
-function lineOf(starts, offset) {
-    let low = 0;
-    let high = starts.length - 1;
-    while (low < high) {
-        const middle = (low + high + 1) >> 1;
-        if (starts[middle] <= offset) low = middle;
-        else high = middle - 1;
-    }
-    return low;
-}
-
-/** How far a line is indented. */
-function indentWidth(line) {
-    return line.length - line.trimStart().length;
-}
-
-/** The balance of (), [] and {} on one line. */
-function bracketBalance(line) {
-    let depth = 0;
-    for (const char of line) {
-        if (char === '(' || char === '[' || char === '{') depth++;
-        else if (char === ')' || char === ']' || char === '}') depth--;
-    }
-    return depth;
-}
-
-/** The index of the first non-blank line at or after `from`, or -1. */
-function nextNonBlank(lines, from) {
-    for (let i = from; i < lines.length; i++) {
-        if (lines[i].trim() !== '') return i;
-    }
-    return -1;
-}
-
-/** The offset at which the line holding `offset` ends. */
-function endOfLine(text, offset) {
-    const newline = text.indexOf('\n', offset);
-    return newline === -1 ? text.length : newline;
-}
-
-/** The offset of the bracket that closes the one at `open`, or -1. */
-function matchingBracket(text, open, closer) {
-    let depth = 0;
-    for (let i = open; i < text.length; i++) {
-        if (text[i] === text[open]) depth++;
-        else if (text[i] === closer) {
-            depth--;
-            if (depth === 0) return i;
-        }
-    }
-    return -1;
-}
-
-/** Escape a name for use inside a regular expression. */
-function escapeRegExp(text) {
-    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * `text` with every comment and string literal blanked to spaces, newlines
- * kept. Offsets and line structure are untouched, so a brace inside a string
- * or a comment cannot be mistaken for the end of a declaration's body.
- *
- * `#` opens a line comment except before `[`, which keeps a Rust attribute
- * (`#[derive(Debug)]`) readable while hiding a Python or shell comment.
- */
-function strippedCode(text) {
-    const out = text.split('');
-    const blank = (from, to) => {
-        for (let i = from; i < to && i < out.length; i++) {
-            if (out[i] !== '\n') out[i] = ' ';
-        }
-    };
-
-    let i = 0;
-    while (i < text.length) {
-        const char = text[i];
-        const next = text[i + 1];
-        if (char === '/' && next === '/') {
-            const end = endOfLine(text, i);
-            blank(i, end);
-            i = end;
-        } else if (char === '/' && next === '*') {
-            const close = text.indexOf('*/', i + 2);
-            const end = close === -1 ? text.length : close + 2;
-            blank(i, end);
-            i = end;
-        } else if (char === '#' && next !== '[') {
-            const end = endOfLine(text, i);
-            blank(i, end);
-            i = end;
-        } else if (char === '"' || char === "'" || char === '`') {
-            const quote = text.startsWith(char.repeat(3), i) ? char.repeat(3) : char;
-            let j = i + quote.length;
-            while (j < text.length) {
-                if (text[j] === '\\') {
-                    j += 2;
-                    continue;
-                }
-                if (text.startsWith(quote, j)) {
-                    j += quote.length;
-                    break;
-                }
-                j++;
-            }
-            const end = Math.min(j, text.length);
-            blank(i, end);
-            i = end;
-        } else {
-            i++;
-        }
-    }
-    return out.join('');
-}
-
-/**
- * Whether one stripped line declares something named `name`, and where the
- * declaration's header ends — after the name for a class-like declaration,
- * after the parameter list for a method.
- *
- * @returns {{ kind: 'class' | 'method', headerFrom: number } | null}
- */
-function declarationOn(source, start, length, name) {
-    if (name === '' || NOT_A_NAME.has(name)) return null;
-    const line = source.slice(start, start + length);
-    const escape = escapeRegExp(name);
-
-    const keyword = DECLARATION_KEYWORD.exec(line);
-    if (keyword && keyword[1] === name) {
-        return { kind: 'class', headerFrom: start + keyword.index + keyword[0].length };
-    }
-
-    // `name(…)` — a method, function, constructor or object-literal method.
-    const call = new RegExp(`(^|[^\\w$.])${escape}\\s*\\(`, 'g');
-    let match;
-    while ((match = call.exec(line)) !== null) {
-        const at = start + match.index + match[1].length;
-        const before = source.slice(start, at);
-        // A Go receiver, `func (c *Cart) Add(…)`, belongs to the declaration
-        // but not to the name.
-        const prefix = before.trim().replace(/^func\s*\([^)]*\)\s*/, 'func ');
-        if (prefix !== '' && (!PREFIX.test(prefix) || STATEMENT_BEFORE.test(prefix))) continue;
-        const paren = start + match.index + match[0].length - 1;
-        const close = matchingBracket(source, paren, ')');
-        if (close === -1) continue;
-        return { kind: 'method', headerFrom: close + 1 };
-    }
-
-    // `const name = (…) =>`, a class field `name = (…) =>`, `name = function …`
-    // — an assignment that defines a function, where an `=` replaces the
-    // return type a method would carry.
-    const assigned = new RegExp(
-        `(^|[^\\w$.])(?:const\\s+|let\\s+|var\\s+)?${escape}\\b(?:\\s*:\\s*[^=\\n]+)?\\s*=\\s*(?:async\\s+)?`,
-        'g',
-    );
-    while ((match = assigned.exec(line)) !== null) {
-        const after = start + match.index + match[0].length;
-        const rest = source.slice(after, start + length);
-        const arrow = rest.indexOf('=>');
-        const fn = /^function\b/.exec(rest);
-        if (arrow !== -1 && (fn === null || arrow < fn.index)) {
-            return { kind: 'method', headerFrom: after + arrow };
-        }
-        if (fn) return { kind: 'method', headerFrom: after + fn[0].length };
-    }
-    return null;
-}
-
-/**
- * The range of a declaration whose body is the braces opened at `open`.
- *
- * @returns {{ kind: string, declLine: number, endLine: number, open: number,
- *             close: number, openLine: number } | null}
- */
-function braced(source, starts, kind, declLine, open) {
-    const close = matchingBracket(source, open, '}');
-    if (close === -1) return null;
-    return {
-        kind,
-        declLine,
-        openLine: lineOf(starts, open),
-        open,
-        close,
-        endLine: lineOf(starts, close),
-    };
-}
-
-/**
- * Where a declaration found on `declLine` begins and ends.
- *
- * @returns {{ kind: string, declLine: number, endLine: number, open?: number,
- *             close?: number, openLine?: number, expression?: number,
- *             indented?: boolean } | null}
- */
-function declarationRange(lines, source, starts, declLine, declaration) {
-    const from = declaration.headerFrom;
-    const lineEnd = endOfLine(source, starts[declLine]);
-    const rest = source.slice(from, Math.max(from, lineEnd));
-
-    const terminators = [
-        { at: rest.indexOf('{'), kind: 'brace' },
-        { at: rest.indexOf(';'), kind: 'none' },
-        { at: rest.indexOf('=>'), kind: 'arrow' },
-    ].filter((option) => option.at !== -1).sort((left, right) => left.at - right.at);
-
-    const first = terminators[0];
-    if (first?.kind === 'none') return null; // a declaration with no body
-
-    if (first?.kind === 'arrow') {
-        const body = rest.slice(first.at + 2).indexOf('{');
-        if (body === -1) {
-            // An expression-bodied arrow function: the body is the expression.
-            return { kind: declaration.kind, declLine, endLine: declLine, expression: from + first.at + 2 };
-        }
-        return braced(source, starts, declaration.kind, declLine, from + first.at + 2 + body);
-    }
-    if (first?.kind === 'brace') {
-        return braced(source, starts, declaration.kind, declLine, from + first.at);
-    }
-
-    // Nothing on the declaration's own line: an Allman brace, or an indented
-    // block on the next non-blank line (Python, Ruby, …).
-    const next = nextNonBlank(lines, declLine + 1);
-    if (next === -1) return null;
-
-    if (/^\s*\{/.test(lines[next])) {
-        return braced(source, starts, declaration.kind, declLine, starts[next] + lines[next].indexOf('{'));
-    }
-
-    const indent = indentWidth(lines[declLine]);
-    if (indentWidth(lines[next]) > indent) {
-        let end = next;
-        for (let i = next + 1; i < lines.length; i++) {
-            if (lines[i].trim() === '') continue; // a blank line inside the block
-            if (indentWidth(lines[i]) <= indent) break;
-            end = i;
-        }
-        return { kind: declaration.kind, declLine, endLine: end, indented: true };
-    }
-    return null;
-}
-
-/** The first line of the annotation block directly above `declLine`, or -1. */
-function annotationStart(lines, declLine) {
-    let found = -1;
-    for (let i = declLine - 1; i >= 0; i--) {
-        if (lines[i].trim() === '') break;
-        if (ANNOTATION_LINE.test(lines[i])) {
-            found = i;
-            break;
-        }
-    }
-    if (found === -1) return -1;
-
-    let start = found;
-    for (let i = found - 1; i >= 0; i--) {
-        if (lines[i].trim() === '' || !ANNOTATION_LINE.test(lines[i])) break;
-        start = i;
-    }
-
-    // The block must be annotations all the way. A statement between the
-    // declaration and the annotation means there is no annotation block.
-    let depth = 0;
-    for (let i = start; i < declLine; i++) {
-        if (depth === 0 && !ANNOTATION_LINE.test(lines[i])) return -1;
-        depth += bracketBalance(lines[i]);
-    }
-    return depth === 0 ? start : -1;
-}
-
-/** The first line of the doc comment directly above `top`, or -1. */
-function docCommentStart(lines, top) {
-    const previous = top - 1;
-    if (previous < 0 || lines[previous].trim() === '') return -1;
-
-    if (DOC_RUN.test(lines[previous])) {
-        let start = previous;
-        while (start - 1 >= 0 && DOC_RUN.test(lines[start - 1])) start--;
-        return start;
-    }
-    if (!/\*\/\s*$/.test(lines[previous])) return -1;
-    for (let i = previous; i >= 0; i--) {
-        if (lines[i].trim() === '') return -1;
-        if (DOC_OPEN.test(lines[i])) return i;
-    }
-    return -1;
-}
-
-/** The text one declaration contributes, under one scope. */
-function renderDeclaration(lines, source, starts, range, scope) {
-    if (scope === 'body') {
-        if (range.indented) return lines.slice(range.declLine + 1, range.endLine + 1).join('\n');
-        if (range.expression !== undefined) {
-            return source.slice(range.expression, endOfLine(source, range.expression)).trim();
-        }
-        if (range.openLine === range.endLine) return source.slice(range.open + 1, range.close).trim();
-        return lines.slice(range.openLine + 1, range.endLine).join('\n');
-    }
-
-    let start = range.declLine;
-    if (scope === 'annotated' || scope === 'documented') {
-        const annotated = annotationStart(lines, range.declLine);
-        if (annotated !== -1) start = annotated;
-        if (scope === 'documented') {
-            const documented = docCommentStart(lines, start);
-            if (documented !== -1) start = documented;
-        }
-    }
-    return lines.slice(start, range.endLine + 1).join('\n');
-}
-
-/**
- * The text a named declaration occupies, or null when `name` declares nothing.
- *
- * A declaration is a method, constructor, function or class-like declaration
- * (`class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`) whose
- * name is `name`. A class name beats a same-named constructor; two real
- * declarations of one name — an overload pair — are an error, exactly as two
- * regions of one name are.
- *
- * The matcher is a heuristic, not a parser: it reads declaration-shaped lines
- * and counts brackets over text whose comments and string literals are
- * blanked, which covers the ordinary spellings of Java, C#, C/C++,
- * JavaScript/TypeScript, Go, Rust, PHP, Kotlin and Swift. Python and Ruby,
- * whose bodies are indented rather than braced, are followed by indentation.
- *
- * @param {string} text
- * @param {string} name
- * @param {'declaration' | 'body' | 'annotated' | 'documented'} [scope]
- * @returns {string | null}
- */
-export function extractDeclaration(text, name, scope = 'declaration') {
-    const source = text.replace(/\r\n/g, '\n');
-    const lines = source.split('\n');
-    const starts = [];
-    let offset = 0;
-    for (const line of lines) {
-        starts.push(offset);
-        offset += line.length + 1;
-    }
-    const stripped = strippedCode(source);
-
-    const found = [];
-    for (let i = 0; i < lines.length; i++) {
-        const declaration = declarationOn(stripped, starts[i], lines[i].length, name);
-        if (!declaration) continue;
-        const range = declarationRange(lines, stripped, starts, i, declaration);
-        if (range) found.push(range);
-    }
-    if (found.length === 0) return null;
-
-    const classes = found.filter((range) => range.kind === 'class');
-    const chosen = classes.length > 0 ? classes : found;
-    if (chosen.length > 1) {
-        throw new Error(`"${name}" is declared ${chosen.length} times; names must be unique`);
-    }
-    return renderDeclaration(lines, stripped, starts, chosen[0], scope);
-}
-
-/** Whether the file carries an explicit `#region <name>` directive. */
-function hasRegionDirective(text, name) {
-    return text.replace(/\r\n/g, '\n').split('\n').some((line) => {
-        const directive = regionDirective(line);
-        return directive !== null && directive.kind === 'region' && directive.name === name;
-    });
-}
+// The code rule and the declaration reader delegate to the single scanner
+// implementation in `lib/section.mjs` (contract §10). Only `index.mjs` reads
+// the disk. The old `codeReference` above is superseded by `parseReference`
+// but kept exported unchanged for its existing tests.
 
 /**
  * The default rule: code, and every other type no rule claims.
  *
  * An explicit `#region <name>` directive wins wherever the file has one, and
- * the reference's scope modifier is ignored for it — a region is already
- * exactly its body. Otherwise the name is looked for as a declaration, and the
- * modifier decides how much of it comes along. Nothing matching is an error.
+ * the reference's scope modifier is ignored for it. Otherwise the reference is
+ * matched by the precedence in the contract (`lib/section.mjs`), which covers
+ * declarations, condition literals and comment anchors. Nothing matching is an
+ * error.
  */
 export function extractCodeRegion(text, region) {
-    const { scope, name } = codeReference(region);
-    if (name === '') throw new Error(`"#region:${region}" names nothing`);
-
-    if (hasRegionDirective(text, region)) return extractRegion(text, region);
-    if (name !== region && hasRegionDirective(text, name)) return extractRegion(text, name);
-
-    const declaration = extractDeclaration(text, name, scope);
-    if (declaration !== null) return declaration;
-
-    throw new Error(`no "#region ${name}" found, and no method or inner class named "${name}"`);
+    return resolveSection(text, region);
 }
+
+/**
+ * The text a single named declaration contributes, or null when the name
+ * declares nothing (kept working: a name, not a path; it never matches a
+ * `#region` directive). Backed by the block scanner; see
+ * `lib/section.mjs` `extractDeclaration`.
+ */
+export { extractDeclaration };
 
 /**
  * The rule for `.json`: a region is a list of keys, because JSON has no
@@ -788,8 +413,28 @@ export function fileReader(root = process.cwd()) {
  * @param {{ resolve: (text: string, region: string, path: string) => string }} [rule]
  */
 export function resolveMarker(marker, read, rule = ruleFor(marker.path)) {
+    return planMarker(marker, read, rule).text;
+}
+
+/**
+ * The text a marker stands for, plus the section warning when the built-in
+ * code rule resolved a contradictory modifier (contract §11). A pure rule
+ * interface returns a string, so the warning rides alongside it here rather
+ * than through `resolveMarker`, which stays string-only for its tests.
+ *
+ * @param {{ path: string, region: string | null }} marker
+ * @param {(relativePath: string) => string} read resolves a path to its text
+ * @param {{ name: string, resolve: (text: string, region: string, path: string) => string }} [rule]
+ * @returns {{ text: string, warning: object | null }}
+ */
+export function planMarker(marker, read, rule = ruleFor(marker.path)) {
     const text = read(marker.path);
-    return marker.region === null ? normalize(text) : rule.resolve(text, marker.region, marker.path);
+    if (marker.region === null) return { text: normalize(text), warning: null };
+    if (rule === CODE_RULE) {
+        const plan = planSection(text, marker.region);
+        return { text: plan.text, warning: plan.reference.warning };
+    }
+    return { text: rule.resolve(text, marker.region, marker.path), warning: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -1171,16 +816,19 @@ export function updateDocument(text, options = {}) {
         seen.add(marker.raw);
 
         if (isIgnored && isIgnored(marker.path)) {
-            results.push({ marker, content: null, changed: false, skipped: true });
+            results.push({ marker, content: null, changed: false, skipped: true, warning: null });
             continue;
         }
 
         let content;
+        let warning = null;
         try {
-            content = resolveMarker(marker, read, ruleFor(marker.path, rules));
+            const plan = planMarker(marker, read, ruleFor(marker.path, rules));
+            content = plan.text;
+            warning = plan.warning;
         } catch (err) {
             if (!lenient) throw new Error(`${marker.raw}: ${err.message}`);
-            results.push({ marker, content: null, changed: false, skipped: true, failure: err.message });
+            results.push({ marker, content: null, changed: false, skipped: true, failure: err.message, warning: null });
             continue;
         }
 
@@ -1189,12 +837,12 @@ export function updateDocument(text, options = {}) {
             injected = injectInto(lines, marker.raw, content, marker.index, fileLanguage(marker.path));
         } catch (err) {
             if (!lenient || !(err instanceof IncludeError)) throw err;
-            results.push({ marker, content: null, changed: false, skipped: true, failure: err.message });
+            results.push({ marker, content: null, changed: false, skipped: true, failure: err.message, warning });
             continue;
         }
 
         lines = injected.lines;
-        results.push({ marker, content, changed: injected.changed, skipped: false });
+        results.push({ marker, content, changed: injected.changed, skipped: false, warning });
     }
 
     results.reverse();
