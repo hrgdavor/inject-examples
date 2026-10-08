@@ -560,6 +560,13 @@ Only `cli.mjs`, `index.mjs`, `README.md` and `LICENSE` ship (`files` in
 `cli.mjs` define what this tool does, and their author is more experienced in
 JavaScript, so the Zig code is the one that moves when the two disagree.
 
+> The Zig port and the differential harness (`tools/compare-zig.mjs`) are
+> **paused** while file-section matching is formalised in JavaScript. The port
+> tracks an earlier revision of the `#region:<reference>` syntax and is not
+> currently verified against the current one — see
+> [doc/section-matching.md](./doc/section-matching.md). Porting resumes with its
+> own plan, written after the JavaScript syntax is settled.
+
 `build.zig`, `build.zig.zon` and `src/` hold a second implementation of this
 exact tool in Zig, written against Zig 0.16.0 (this checkout used the toolchain
 at `D:\wrk\zig\16\zig.exe`). It is not a rewrite-with-ideas: its job is to
