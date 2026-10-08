@@ -39,10 +39,11 @@
   {"name":"ex-cart-line-body","input":"test/fixtures/Example.java","reference":"Cart/Line-","text":"        private final String name;\n        private final int quantity;\n\n        Line(String name, int quantity) {\n            this.name = name;\n            this.quantity = quantity;\n        }\n\n        String render() {\n            return name + \" x\" + quantity;\n        }","error":null,"warning":null},
   {"name":"ex-line-tostring-error","input":"test/fixtures/Example.java","reference":"Line/toString","text":null,"error":"no section named \"toString\" in \"Line\"","warning":null},
   {"name":"ex-render-extra-error","input":"test/fixtures/Example.java","reference":"Cart/Line/render/extra","text":null,"error":"no section named \"extra\" in \"render\"","warning":null},
-  {"name":"a-getusers-condition","input":"test/fixtures/Anchors.java","reference":"getUsers","text":"        if (\"getUsers\".equals(methodName)) {\n            System.out.println(\"users\");\n        }","error":null,"warning":null},
-  {"name":"a-getusers-body","input":"test/fixtures/Anchors.java","reference":"getUsers-","text":"            System.out.println(\"users\");","error":null,"warning":null},
+  {"name":"a-getusers-anchor","input":"test/fixtures/Anchors.java","reference":"getUsers","text":"    public void handler() { //getUsers\n        System.out.println(\"anchor same line\");\n    }","error":null,"warning":null},
+  {"name":"a-getusers-anchor-body","input":"test/fixtures/Anchors.java","reference":"getUsers-","text":"        System.out.println(\"anchor same line\");","error":null,"warning":null},
   {"name":"a-dispatch-getusers","input":"test/fixtures/Anchors.java","reference":"dispatch/getUsers","text":"        if (\"getUsers\".equals(methodName)) {\n            System.out.println(\"users\");\n        }","error":null,"warning":null},
-  {"name":"a-getorders-else-if","input":"test/fixtures/Anchors.java","reference":"getOrders","text":"        } else if (\"getOrders\".equals(methodName)) {\n            System.out.println(\"orders\");\n        }","error":null,"warning":null},
+  {"name":"a-getorders-anchor","input":"test/fixtures/Anchors.java","reference":"getOrders","text":"    public void other() {\n        //getOrders\n        System.out.println(\"anchor next line\");\n    }","error":null,"warning":null},
+  {"name":"a-dispatch-getorders","input":"test/fixtures/Anchors.java","reference":"dispatch/getOrders","text":"        } else if (\"getOrders\".equals(methodName)) {\n            System.out.println(\"orders\");\n        }","error":null,"warning":null},
   {"name":"a-handler-anchor","input":"test/fixtures/Anchors.java","reference":"handler/getUsers","text":"    public void handler() { //getUsers\n        System.out.println(\"anchor same line\");\n    }","error":null,"warning":null},
   {"name":"a-handler-anchor-body","input":"test/fixtures/Anchors.java","reference":"handler/getUsers-","text":"        System.out.println(\"anchor same line\");","error":null,"warning":null},
   {"name":"a-other-anchor","input":"test/fixtures/Anchors.java","reference":"other/getOrders","text":"    public void other() {\n        //getOrders\n        System.out.println(\"anchor next line\");\n    }","error":null,"warning":null},
@@ -52,5 +53,5 @@
   {"name":"ts-table-region","input":"test/fixtures/example.ts","reference":"table","text":"| name | qty |\n| ---- | --- |\n| bolt | 12  |","error":null,"warning":null},
   {"name":"ts-table-ignores-modifier","input":"test/fixtures/example.ts","reference":"table+","text":"| name | qty |\n| ---- | --- |\n| bolt | 12  |","error":null,"warning":null},
   {"name":"ts-config-region","input":"test/fixtures/example.ts","reference":"config","text":"export const config = { retries: 3 };","error":null,"warning":null},
-  {"name":"walkorder-conditions-before-anchors","input":"test/fixtures/Anchors.java","reference":"getUsers","text":"        if (\"getUsers\".equals(methodName)) {\n            System.out.println(\"users\");\n        }","error":null,"warning":null}
+  {"name":"walkorder-siblings-before-deeper","input":"test/fixtures/Anchors.java","reference":"getUsers","text":"    public void handler() { //getUsers\n        System.out.println(\"anchor same line\");\n    }","error":null,"warning":null}
 ]

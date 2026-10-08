@@ -39,9 +39,12 @@ these documents disagree, these documents win**; it will not be updated.
 
 The plan's scanner layer (step 5) builds `scanBlocks` in `lib/section.mjs` for structural
 scanning — classes, methods, properties, region directives, comment anchors. The per-language
-`if`-clause detection that feeds matcher 5 (**condition literal**, contract §6) is provided by
-the language-aware scanners in `./src/js/scanner/`. Each one masks out comments and string
-literals for its target language, then reports every `if` clause whose header spans up to the
+`if`-clause detection that feeds matcher 5 (**condition literal**, contract §6) has sample
+implementations in `./src/js/scanner/`, which an implementation of the spec can reuse or copy;
+`lib/section.mjs` carries its own dependency-free mask so the vendorable module stays a single
+file. Spec consumers may substitute whatever lexical information they already have (a TreeSitter
+parse, an IDE index) — see the "Tokenizers" section of `doc/section-matching.md`. Each scanner
+masks out comments and string literals for its target language, then reports every `if` clause whose header spans up to the
 opening brace contain `targetString`:
 
 | File | Function | Language support |
@@ -94,3 +97,9 @@ sign-off** (step 9, task 5): the settled reference is commit `656d280`, named in
 human reviews the syntax against a real document outside the fixtures.
 The plan set itself is complete: every step is written, each cites the contract rather than restating it,
 and each carries its own acceptance checklist and verification commands.
+
+**Amendment (2026-10-08, maintainer):** the walk rule changed from depth-first to
+**sibling-first** (breadth first) — see the amendment at the end of
+[00-contract.md](00-contract.md) and rule 5 of `doc/section-matching.md`. The
+implementation, the tests and the golden vectors were updated with it, so the
+settled SHA above predates the amendment.

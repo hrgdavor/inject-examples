@@ -28,7 +28,10 @@ Written against the JavaScript implementation at commit `10646fb` (the
 revision that drops the `region:` fragment keyword): the implementation in
 `lib/section.mjs` and `index.mjs` at that revision is authoritative, and a port
 that disagrees with it is wrong by definition. Markers now carry the reference
-directly as `#<section-reference>`.
+directly as `#<section-reference>`. Rule 5 was amended by maintainer decision
+after that commit: a segment is searched *sibling first* — every scope at one
+depth is tried before the walk descends into any block — replacing the original
+depth-first walk (see [Matcher precedence](#matcher-precedence)).
 
 ## Contents
 
@@ -41,6 +44,7 @@ directly as `#<section-reference>`.
 - [Contradictory modifiers are a warning](#contradictory-modifiers-are-a-warning)
 - [Worked examples](#worked-examples)
 - [Heuristic, not a parser](#heuristic-not-a-parser)
+- [Tokenizers](#tokenizers)
 - [The vendorable module boundary](#the-vendorable-module-boundary)
 
 ## Grammar
@@ -67,12 +71,17 @@ never path separators. Each bullet below is an error when violated:
    `add+`, `add++` (see [Canonicalisation](#canonicalisation-and-compatibility-spellings)).
 4. A bare name is a path of one segment, and keeps today's meaning: search the
    whole file, at any depth.
-5. First match wins, walking depth-first and left to right. A trailing modifier
-   never changes which match is found.
- 6. The reference `add` matches a `#region add`
+5. First match wins, walking **sibling first**: every scope at one depth is
+   searched, left to right, before the walk descends into any block they
+   contain.
+   A declaration in a scope is therefore never shadowed by a same-named block
+   nested inside an earlier sibling — `doSomeAction` resolves to the method, not
+   to an `if ("doSomeAction"…)` inside a method that comes sooner in the file. A
+   trailing modifier never changes which match is found.
+  6. The reference `add` matches a `#region add`
    directive, a `void add()` method, a `String add` property, a `class add`, a
    `//add` anchor, or an `if ("add".equals(...))` block — whichever the walk
-   finds first.
+   finds first, the shallowest candidate winning.
 
 ## Matcher precedence
 
@@ -86,21 +95,24 @@ also ends the whole search.
 | 2 | **Class-like declaration** | `class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`, `union` named `<name>` in this scope | the declaration, or the modified part |
 | 3 | **Method / function** | a named method, constructor, function or arrow-valued property in this scope **that has a body** | the declaration, or the modified part |
 | 4 | **Property** | a field or constant named `<name>` (`private int getUsers = 0;`, `static final String X = …`) | the whole statement |
-| 5 | **Condition literal** | a statement block whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace |
-| 6 | **Comment anchor** | a braced block whose first non-blank line is `//<name>` or `/*<name>*/` | the block, anchor comment through closing brace |
+| 5 | **Condition literal** | a statement block **in this scope** whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace |
+| 6 | **Comment anchor** | a braced block **in this scope** whose first non-blank line is `//<name>` or `/*<name>*/` | the block, anchor comment through closing brace |
 
 A class-like name beats a same-named constructor. Body-less members (interface
 methods, `abstract` declarations) have nothing to inject and are skipped. A
 `#region`/`#endregion` line is never an anchor, and a comment that is not the
 first thing in the block is not an anchor either.
 
-**The walk.** Within one scope the table is tried top to bottom and the first
-match wins. When a scope yields no match, the walker descends into every block
-that scope contains, left to right, depth first, and retries the same segment —
-so `render` finds `Line.render` even though it is nested inside `Cart`. For a
-multi-segment reference the same descent happens one step at a time: once
-`Cart` matches, later segments are searched **only inside `Cart`**, with the
-same precedence and the same depth-first descent.
+**The walk.** Within one scope the table is tried top to bottom against that
+scope's own members — matchers 5 and 6 never sweep deeper blocks — and the first
+match wins. When no scope at the current depth matches, the walker descends one
+level, into every block those scopes contain left to right, and retries the same
+segment there; so `render` finds `Line.render` even though it is nested inside
+`Cart`, while a `doSomeAction` method is found before the same-named block
+nested in a method that precedes it. For a multi-segment reference the same
+descent happens one step at a time: once `Cart` matches, later segments are
+searched **only inside `Cart`**, with the same precedence and the same
+sibling-first descent.
 
 ## The six rules
 
@@ -111,7 +123,8 @@ The grammar above, in short form (each violated in some cases below):
 - The modifier is trailing and applies to the final segment; `-add` and `add-`
   mean the same thing.
 - A bare name is a one-segment path and searches the whole file.
-- First match wins, depth first and left to right.
+- First match wins, sibling first and left to right: a shallower candidate
+  always beats a deeper one, whatever the source order.
 
 ## Canonicalisation and compatibility spellings
 
@@ -251,17 +264,37 @@ documented `toString()` and an inner `Line` with a `render()`:
 | `Cart/Cart` | error: `Cart` is not a container (a class is a scope, not a section) |
 
 Given `test/fixtures/Anchors.java` — a method `dispatch` whose body holds an
-`if ("getUsers".equals(methodName)) { … }` block, and another method whose body
-opens with the anchor comment `{ //getUsers`:
+`if ("getUsers".equals(methodName)) { … }` block, a `handler` method opened by
+the anchor comment `{ //getUsers`, and an `other` method whose body opens with
+`//getOrders`:
 
 | Reference | Result |
 | --- | --- |
-| `getUsers` | the `if` block, header line through closing brace |
-| `getUsers-` | the `if` block's body only (the line inside the braces) |
-| `dispatch/getUsers` | the same `if` match, reached explicitly via the method's scope |
-| `getUsers` (anchor case) | the `//getUsers` anchor line plus the block body, through the closing brace |
-| `getUsers-` (anchor case) | the block body only, the anchor comment excluded |
+| `getUsers` | the `handler` anchor block — `handler` is a member of the class scope, so it is matched before the `if` block nested inside `dispatch`, even though `dispatch` comes sooner |
+| `getUsers-` | `handler`'s body only, the anchor comment excluded |
+| `getOrders` | the `other` anchor block, for the same reason — it beats the `else if ("getOrders"…)` inside `dispatch` |
+| `dispatch/getUsers` | the `if` block, header line through closing brace, reached explicitly via the method's scope |
+| `dispatch/getOrders` | the `else if` segment, header line through closing brace |
+| `handler/getUsers` | identical to `getUsers` |
+| `other/getOrders` | identical to `getOrders` |
 | `getusers` | error: case-sensitive exact-byte matching |
+
+The rule that decided the first row, in the shape that motivated it — a method
+and a same-named block inside an earlier method of the same class:
+
+```java
+class Svc {
+    void bar() {                                  // comes sooner
+        if ("doSomeAction".equals(m)) { legacy(); }
+    }
+    void doSomeAction() { current(); }
+}
+```
+
+| Reference | Result |
+| --- | --- |
+| `doSomeAction` | the method — matched at the class's depth, before the walk descends into `bar` |
+| `bar/doSomeAction` | the `if` block inside `bar`, reached explicitly via the method's scope |
 
 ## Heuristic, not a parser
 
@@ -273,12 +306,37 @@ matching step is:
    text blanked to spaces of the same length.
 2. Track `{` / `}` over the blanked text to know where each block opens and
    closes. Indentation closes blocks in brace-less scopes (Python, Ruby).
-3. At each step offer the current scope's candidates in matcher-precedence order;
-   the first match for a segment ends the lookup at that scope.
+3. Offer the scopes of one depth, left to right, each in matcher-precedence
+   order; the first match ends the lookup for the whole depth. Only a depth
+   that yields nothing is descended (rule 5).
 
 Consumers must not expect a real parser: declarations are found by
 shape and by name, not by type information, and a name that occurs inside a
 string or a comment is never a declaration.
+
+## Tokenizers
+
+The only language-sensitive work in a match is lexical: blanking comments and
+string literals, and reading a statement header for matcher 5. Nothing else in
+this spec needs a language's grammar.
+
+This repository ships sample tokenizers for exactly that work, in
+`src/js/scanner/` — `scanJS.js`, `scanJava.js`, `scanZig.js`. Each is a pure
+function `(source, targetString)` that masks its language's comments and strings
+(template literals, Java text blocks, Zig multiline strings and *nested* block
+comments) and reports every `if` clause whose header, up to the opening brace,
+carries the target — the matcher-5 candidate list. `lib/section.mjs` keeps its
+own dependency-free mask so the vendorable module stays a single file; the
+scanners are the reference shape an implementation of this spec can reuse or
+copy.
+
+An implementation is free to use whatever lexical information it already has —
+a TreeSitter parse, an IDE index, a compiler frontend — instead. The substitute
+must only keep the observable rules of this document: exact-byte, case-sensitive
+names; a name inside a comment or string is never a declaration; the matcher
+precedence; the sibling-first walk. `test/vectors/section-vectors.json` is the
+conformance set such a substitution has to reproduce, gated by
+`node tools/section-vectors.mjs --check`.
 
 ## The vendorable module boundary
 

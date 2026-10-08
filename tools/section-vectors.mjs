@@ -67,10 +67,11 @@ const cases = [
     { name: 'ex-render-extra-error', input: EXAMPLE, reference: 'Cart/Line/render/extra' },
 
     // Resolution — Anchors.java (condition literals, anchors, walk order).
-    { name: 'a-getusers-condition', input: ANCHORS, reference: 'getUsers' },
-    { name: 'a-getusers-body', input: ANCHORS, reference: 'getUsers-' },
+    { name: 'a-getusers-anchor', input: ANCHORS, reference: 'getUsers' },
+    { name: 'a-getusers-anchor-body', input: ANCHORS, reference: 'getUsers-' },
     { name: 'a-dispatch-getusers', input: ANCHORS, reference: 'dispatch/getUsers' },
-    { name: 'a-getorders-else-if', input: ANCHORS, reference: 'getOrders' },
+    { name: 'a-getorders-anchor', input: ANCHORS, reference: 'getOrders' },
+    { name: 'a-dispatch-getorders', input: ANCHORS, reference: 'dispatch/getOrders' },
     { name: 'a-handler-anchor', input: ANCHORS, reference: 'handler/getUsers' },
     { name: 'a-handler-anchor-body', input: ANCHORS, reference: 'handler/getUsers-' },
     { name: 'a-other-anchor', input: ANCHORS, reference: 'other/getOrders' },
@@ -83,8 +84,9 @@ const cases = [
     { name: 'ts-table-ignores-modifier', input: TS, reference: 'table+' },
     { name: 'ts-config-region', input: TS, reference: 'config' },
 
-    // Walk order — dispatch's condition beats handler's anchor.
-    { name: 'walkorder-conditions-before-anchors', input: ANCHORS, reference: 'getUsers' },
+    // Walk order — the shallower sibling beats a deeper block that comes sooner:
+    // handler's anchor (a member of the class scope) beats dispatch's condition.
+    { name: 'walkorder-siblings-before-deeper', input: ANCHORS, reference: 'getUsers' },
 ];
 
 function warningOf(ref) {

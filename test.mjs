@@ -328,21 +328,24 @@ test('section-matching: nested references on Example.java', () => {
 
 // --- 2c: anchors and condition literals on Anchors.java ---
 test('section-matching: anchors and condition literals on Anchors.java', () => {
-    // Condition literal: first match wins (dispatch comes before handler).
+    // Sibling before deeper: handler's anchor is a member of the class scope,
+    // so it beats the condition literal nested inside dispatch, even though
+    // dispatch comes first in the file.
     assert.equal(extractCodeRegion(ANCHORS, 'getUsers'),
-        '        if ("getUsers".equals(methodName)) {\n'
-        + '            System.out.println("users");\n'
-        + '        }');
+        '    public void handler() { //getUsers\n'
+        + '        System.out.println("anchor same line");\n'
+        + '    }');
     assert.equal(extractCodeRegion(ANCHORS, 'getUsers-'),
-        '            System.out.println("users");');
+        '        System.out.println("anchor same line");');
     assert.equal(extractCodeRegion(ANCHORS, 'dispatch/getUsers'),
         '        if ("getUsers".equals(methodName)) {\n'
         + '            System.out.println("users");\n'
         + '        }');
     assert.equal(extractCodeRegion(ANCHORS, 'getOrders'),
-        '        } else if ("getOrders".equals(methodName)) {\n'
-        + '            System.out.println("orders");\n'
-        + '        }');
+        '    public void other() {\n'
+        + '        //getOrders\n'
+        + '        System.out.println("anchor next line");\n'
+        + '    }');
 
     // Anchor: same-line comment anchor on handler, next-line on other.
     assert.equal(extractCodeRegion(ANCHORS, 'handler/getUsers'),
@@ -395,9 +398,9 @@ test('section-matching: grammar errors throw the §9 shapes', () => {
 
 // --- 2e: contradictory modifiers resolve to the dominant reading ---
 test('section-matching: contradictory modifiers resolve to the dominant reading', () => {
-    const expected = '        if ("getUsers".equals(methodName)) {\n'
-        + '            System.out.println("users");\n'
-        + '        }';
+    const expected = '    public void handler() { //getUsers\n'
+        + '        System.out.println("anchor same line");\n'
+        + '    }';
 
     assert.equal(extractCodeRegion(ANCHORS, 'getUsers++-'), expected,
         '++ wins over trailing -');
@@ -788,13 +791,23 @@ test('resolveSection: nested references', () => {
 
 // --- §12 Anchors.java: condition literals and comment anchors ---
 test('resolveSection: anchors and condition literals', () => {
+    // Sibling before deeper: the anchor on handler is a member of the class
+    // scope, so it beats the condition literal nested inside dispatch.
     assert.equal(resolveSection(ANCHORS, 'getUsers'),
+        '    public void handler() { //getUsers\n'
+        + '        System.out.println("anchor same line");\n'
+        + '    }');
+    assert.equal(resolveSection(ANCHORS, 'getUsers-'), '        System.out.println("anchor same line");');
+    assert.equal(resolveSection(ANCHORS, 'dispatch/getUsers'),
         '        if ("getUsers".equals(methodName)) {\n'
         + '            System.out.println("users");\n'
         + '        }');
-    assert.equal(resolveSection(ANCHORS, 'getUsers-'), '            System.out.println("users");');
-    assert.equal(resolveSection(ANCHORS, 'dispatch/getUsers'), resolveSection(ANCHORS, 'getUsers'));
     assert.equal(resolveSection(ANCHORS, 'getOrders'),
+        '    public void other() {\n'
+        + '        //getOrders\n'
+        + '        System.out.println("anchor next line");\n'
+        + '    }');
+    assert.equal(resolveSection(ANCHORS, 'dispatch/getOrders'),
         '        } else if ("getOrders".equals(methodName)) {\n'
         + '            System.out.println("orders");\n'
         + '        }');
@@ -817,25 +830,50 @@ test('resolveSection: anchors and condition literals', () => {
         /no section named "getUsers" in "commentFromString"/);
 });
 
-// Walk order: the condition literal in `dispatch` outranks the `handler`
-// anchor, because the walk reaches dispatch first (source order, left to right).
-test('resolveSection: walk order picks the first block in source order', () => {
+// Walk order: a shallower sibling beats a deeper block, whatever the source
+// order and whatever the matcher precedence would have said at equal depth. The
+// anchor on `zzz` is a member of the class scope; the condition literal sits one
+// level deeper, inside `aaa`.
+test('resolveSection: walk order searches siblings before descending', () => {
     const text = [
         'class W {',                    // 0
-        '    void zzz() { //getUsers',  // 1 — anchor, but comes second
+        '    void zzz() { //getUsers',  // 1 — the shallower candidate
         '        a();',                 // 2
         '    }',                        // 3
-        '    void aaa() {',             // 4 — dispatch-like, comes first among conditions
-        '        if ("getUsers".equals(x)) {', // 5
+        '    void aaa() {',             // 4
+        '        if ("getUsers".equals(x)) {', // 5 — deeper, inside aaa
         '            b();',             // 6
         '        }',                    // 7
         '    }',                        // 8
         '}',                            // 9
     ].join('\n');
-    // matcher 5 (condition, in aaa) must beat matcher 6 (anchor on zzz), so the
-    // answer is the aaa if-block, not the zzz anchor.
     assert.equal(resolveSection(text, 'getUsers'),
+        '    void zzz() { //getUsers\n        a();\n    }');
+    // The deeper block stays reachable through its explicit scope.
+    assert.equal(resolveSection(text, 'aaa/getUsers'),
         '        if ("getUsers".equals(x)) {\n            b();\n        }');
+});
+
+// The motivating shape: a method and a same-named block inside an earlier
+// method of the same class. The method is the shallower sibling, so a bare
+// reference targets it; the block needs the explicit path.
+test('resolveSection: a method beats a same-named block in an earlier sibling method', () => {
+    const text = [
+        'class Svc {',                              // 0
+        '    void bar() {',                         // 1 — comes sooner
+        '        if ("doSomeAction".equals(m)) {',  // 2
+        '            legacy();',                    // 3
+        '        }',                                // 4
+        '    }',                                    // 5
+        '    void doSomeAction() {',                // 6
+        '        current();',                       // 7
+        '    }',                                    // 8
+        '}',                                        // 9
+    ].join('\n');
+    assert.equal(resolveSection(text, 'doSomeAction'),
+        '    void doSomeAction() {\n        current();\n    }');
+    assert.equal(resolveSection(text, 'bar/doSomeAction'),
+        '        if ("doSomeAction".equals(m)) {\n            legacy();\n        }');
 });
 
 // --- §12 error shapes ---
@@ -901,9 +939,9 @@ test('resolveSection: ambiguous name resolves to the first in the walk', () => {
 
 // --- Contradiction warnings (§11): the `++` reading wins, warning is set ---
 test('planSection: contradiction resolves to the dominant reading with a warning', () => {
-    const expected = '        if ("getUsers".equals(methodName)) {\n'
-        + '            System.out.println("users");\n'
-        + '        }';
+    const expected = '    public void handler() { //getUsers\n'
+        + '        System.out.println("anchor same line");\n'
+        + '    }';
     for (const ref of ['getUsers++-', 'getUsers-++', 'getUsers+-', 'getUsers-+']) {
         const plan = planSection(ANCHORS, ref);
         assert.equal(plan.text, expected, `${ref} resolves to the ++/dominant reading`);
@@ -942,7 +980,7 @@ test('updateDocument reports a warning and stays idempotent', () => {
     assert.equal(first.results.length, 1);
     assert.ok(first.results[0].warning !== null, 'the contradiction warning rides on the result');
     assert.equal(first.changed, true);
-    assert.match(first.text, /if \("getUsers"\.equals/);
+    assert.match(first.text, /public void handler\(\) \{ \/\/getUsers/);
     assert.doesNotMatch(first.text, /stale/);
 
     const second = updateDocument(first.text, { readFile: read });

@@ -279,3 +279,24 @@ The end state (step 9) is:
     than bumping the number.
   - `test.mjs:689` — `assert.equal(rules.length, 4)`, unrelated to this plan; leave it.
 - All porting is still frozen, and the freeze is recorded in the README.
+
+---
+
+## Amendment (maintainer decision, 2026-10-08): the walk is sibling-first
+
+§5 rule 5 and the §6 walk order are superseded. A segment is searched
+**breadth first**: every scope at one depth is tried with the full matcher
+table, left to right, before the walk descends into any of their blocks.
+Matcher 5 (condition literal) consequently considers only this scope's own
+statement blocks — it never sweeps deeper ones.
+
+The reason: a declaration must stay targetable when a same-named block sits
+inside an earlier sibling. `doSomeAction` now resolves to the method, not to an
+`if ("doSomeAction"…)` inside a method that comes sooner in the file.
+
+Consequences for §12, regenerated into `test/vectors/section-vectors.json`: on
+`Anchors.java` the bare references `getUsers` and `getOrders` resolve to the
+`handler` / `other` anchor blocks (the shallower siblings) instead of the
+condition literals inside `dispatch`; `dispatch/getUsers` and
+`dispatch/getOrders` still reach those. `doc/section-matching.md` carries the
+normative wording.
