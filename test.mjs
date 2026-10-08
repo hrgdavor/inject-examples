@@ -2046,11 +2046,25 @@ test('the documentation stays in sync with the files it shows', () => {
     const result = updateDocument(doc, { root: join(root, 'doc'), gitignore: false });
 
     assert.equal(result.changed, false, 'doc/usage.md must match its fixtures');
-    assert.equal(result.markers.length, 15, 'one marker per shown file, region or declaration');
+    // Not a marker *count* (it rotted the first time a marker was added and
+    // would rot again). The property the count approximated is that the
+    // document is honest: every marker is backed by a fenced block, every one
+    // resolves cleanly, and none of its content drifted.
+    const lines = doc.replace(/\r\n/g, '\n').split('\n');
+    const markers = findMarkers(lines);
+    const fenceOpens = fenceRanges(lines).map(([open]) => open);
+    for (const marker of markers) {
+        let j = marker.index + 1;
+        while (j < lines.length && lines[j].trim() === '') j++;   // a blank may separate marker and fence
+        assert.ok(fenceOpens.includes(j), `doc/usage.md:${marker.index + 1}: marker has no fenced block below it`);
+    }
     for (const entry of result.results) {
         assert.equal(entry.skipped, false);
         assert.equal(entry.failure, undefined);
+        assert.ok(entry.warning === null, `doc/usage.md:${entry.marker.index + 1}: unexpected section warning`);
+        assert.ok(existsSync(resolve(join(root, 'doc'), entry.marker.path)), `marker target exists: ${entry.marker.path}`);
     }
+    assert.ok(markers.length >= 15, 'the document still shows its files, regions and declarations');
 });
 
 // ---------------------------------------------------------------------------

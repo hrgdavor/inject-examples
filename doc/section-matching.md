@@ -27,8 +27,10 @@ statement body (`if`/`for`/`while`/`switch`/`try`/`catch`), or a block
 introduced only by an anchor comment. The file itself is scope 0; every block
 that scope contains is scope 1; and so on.
 
-Written against the JavaScript implementation as of the commit that adds this
-file, and frozen by `plan/section-matching/00-contract.md` once it is settled.
+Written against the JavaScript implementation at commit `656d280`, the frozen
+reference for this syntax: the implementation in `lib/section.mjs` at that
+revision is authoritative, and a port that disagrees with it is wrong by
+definition.
 
 ## Contents
 

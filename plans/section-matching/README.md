@@ -86,8 +86,11 @@ matching-language cases the resolver may later delegate to.
 | 6 resolve layer | ✅ done |
 | 7 wire into index | ✅ done |
 | 8 vectors | ✅ done |
-| 9 docs + settle | ⛔ not started |
+| 9 docs + settle | ✅ done |
 
-Working tree has steps 1–8 committed; step 9 is next. The plan set
-itself is complete: every step is written, each cites the contract rather than restating it,
+All nine steps are committed. The revision is **frozen and awaiting maintainer
+sign-off** (step 9, task 5): the settled reference is commit `656d280`, named in
+`doc/section-matching.md`; `lib/README.md` keeps its draft-API warning until a
+human reviews the syntax against a real document outside the fixtures.
+The plan set itself is complete: every step is written, each cites the contract rather than restating it,
 and each carries its own acceptance checklist and verification commands.

@@ -47,9 +47,10 @@ npx @hrg/inject-examples --check doc/usage.md
   current text. The second only reports: anything stale or failed ends with
   exit `1` and writes nothing — that is the CI hook.
 - This document ships with the repository, not with the npm package: the
-  package's `files` field contains only `cli.mjs`, `index.mjs`, `README.md`
-  and `LICENSE`, so the docs and their fixtures live in the source tree,
-  where CI can check them in.
+  package's `files` field contains `cli.mjs`, `index.mjs`, `README.md`,
+  `LICENSE`, the `lib/` module and `doc/section-matching.md`, but not this
+  guide or its fixtures — those live in the source tree, where CI can check
+  them in.
 
 ## What ships
 
@@ -87,6 +88,7 @@ The entire published package, verbatim:
   "exports": {
     ".": "./index.mjs",
     "./cli.mjs": "./cli.mjs",
+    "./lib/section.mjs": "./lib/section.mjs",
     "./package.json": "./package.json"
   },
   "bin": {
@@ -96,7 +98,9 @@ The entire published package, verbatim:
     "cli.mjs",
     "index.mjs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "lib",
+    "doc/section-matching.md"
   ],
   "engines": {
     "node": ">=18"
@@ -351,6 +355,69 @@ What the code rule does, and does not, promise:
   braces; Python and Ruby by indentation.
 - The declaration is injected verbatim, indentation and all, so a nested method
   keeps the indentation it has in its file.
+
+#### Section paths and code anchors
+
+A slash-separated reference descends block by block, so a name can be reached
+by its location rather than only by its (possibly ambiguous) name. `Cart` names
+the class, `Cart/Line` the inner class inside it, and `Cart/Line/render` the
+method inside that. This is the nested `render`, not the outer class:
+
+[../test/fixtures/Example.java](../test/fixtures/Example.java#region:Cart/Line/render)
+
+```java
+        String render() {
+            return name + " x" + quantity;
+        }
+```
+
+Within a scope a segment may also match a block by what it **contains**. A
+statement whose header carries the name as a double-quoted string is a
+**condition literal**; a block whose opening is marked by a leading comment is a
+**comment anchor**. `Anchors.java` has both — a `dispatch` method with an
+`if ("getUsers".equals(...))`, and a `handler` method opened with `//getUsers`:
+
+[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#region:dispatch/getUsers)
+
+```java
+        if ("getUsers".equals(methodName)) {
+            System.out.println("users");
+        }
+```
+
+The trailing modifier selects how much of the match comes along; here the
+condition's body alone, without the `if (...) {` header or its closing brace:
+
+[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#region:dispatch/getUsers-)
+
+```java
+            System.out.println("users");
+```
+
+A name that is hard to reach by path can be reached by its anchor comment
+instead. This reaches the `handler` block by the `//getUsers` that opens it:
+
+[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#region:handler/getUsers)
+
+```java
+    public void handler() { //getUsers
+        System.out.println("anchor same line");
+    }
+```
+
+The modifier is written **after** the segment (`render-`); the older **leading**
+spelling (`-render`) still works and is canonicalised, which is what the
+modifier table above shows. Asking for two readings at once — a `+` against a
+`-`, as in `getUsers++-` — resolves to the wider one, and the tool warns and
+exits `1` rather than silently guessing:
+
+```text
+inject-examples: warn: doc/usage.md:320: [../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#region:dispatch/getUsers++-): "++" contradicts "-"; using "#region:dispatch/getUsers++"
+```
+
+The full grammar is in [section-matching.md](./section-matching.md), and the
+matcher is one dependency-free module, [lib/section.mjs](../lib/section.mjs)
+(documented in its own [lib/README.md](../lib/README.md)).
 
 ### The JSON rule
 

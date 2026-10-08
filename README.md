@@ -123,6 +123,17 @@ then
 [test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
 ```
 
+That pair, written live in this very README, is kept honest by the tool — the
+block below is not typed by hand; `inject-examples` rewrites it from the file:
+
+[test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
+
+```ts
+| name | qty |
+| ---- | --- |
+| bolt | 12  |
+```
+
 Any of the usual comment prefixes is accepted, in any language:
 
 | Spelling | Seen in |
@@ -192,6 +203,61 @@ counted over text whose comments and string literals are blanked, so a `}`
 inside a string cannot end a body. Braced languages — Java, C#, C/C++, JS/TS,
 Go, Rust, PHP, Kotlin, Swift — are followed by their braces; Python and Ruby by
 indentation.
+
+#### Section paths and code anchors
+
+A name is hard to hit when a file has two methods called `render`. The code
+reference is therefore a **path**: slash-separated segments, each naming a block
+*inside* the one before it, so `Cart/Line/render` means the `render` method of
+the `Line` class of the `Cart` class. Only the last segment selects the text to
+inject; the ones before it are scopes to descend:
+
+````markdown
+[test/fixtures/Example.java](./test/fixtures/Example.java#region:Cart/Line/render)
+
+```java
+        String render() {
+            return name + " x" + quantity;
+        }
+```
+````
+
+Inside a scope a segment may also be matched by what a block **contains**, not
+just what it declares:
+
+- a **condition literal** — a statement whose header carries the name as a
+  double-quoted string. `dispatch/getUsers` selects the `if ("getUsers".equals(…))`
+  block, braces and all:
+
+````markdown
+[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:dispatch/getUsers)
+
+```java
+        if ("getUsers".equals(methodName)) {
+            System.out.println("users");
+        }
+```
+````
+
+- a **comment anchor** — a block whose opening is marked by a leading comment.
+  The block in the fixture opens `public void handler() { //getUsers`, so
+  `handler/getUsers` names it by that comment.
+
+The scope modifier is **trailing** (`render-`, `render+`, `render++`); the old
+leading spelling (`-render`, `+render`, `++render`) still works and is
+canonicalised. A reference that asks for two readings at once — a `+` against a
+`-`, as in `getUsers++-` — resolves to the wider reading, but the CLI warns and
+exits 1, because a contradiction is almost always a typo:
+
+```text
+inject-examples: warn: doc/usage.md:42: [a.java](./a.java#region:getUsers++-): "++" contradicts "-"; using "#region:getUsers++"
+```
+
+The full grammar — every accepted form, every error and its exact message — is
+spelled out in [doc/section-matching.md](./doc/section-matching.md). Matching
+lives in a single dependency-free module,
+[lib/section.mjs](./lib/section.mjs), which other projects can import directly
+(see [lib/README.md](./lib/README.md)).
 
 ### JSON — its own rule
 

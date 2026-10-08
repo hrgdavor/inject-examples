@@ -27,6 +27,7 @@
   "exports": {
     ".": "./index.mjs",
     "./cli.mjs": "./cli.mjs",
+    "./lib/section.mjs": "./lib/section.mjs",
     "./package.json": "./package.json"
   },
   "bin": {
@@ -36,7 +37,9 @@
     "cli.mjs",
     "index.mjs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "lib",
+    "doc/section-matching.md"
   ],
   "engines": {
     "node": ">=18"
