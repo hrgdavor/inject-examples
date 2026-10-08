@@ -35,6 +35,45 @@ these documents disagree, these documents win**; it will not be updated.
 - **Test counts drift, so nothing depends on them.** Prefer "assert this exact string",
   "assert this throws", "the whole suite is green" over "there are exactly N tests".
 
+## Language scanners
+
+The plan's scanner layer (step 5) builds `scanBlocks` in `lib/section.mjs` for structural
+scanning — classes, methods, properties, region directives, comment anchors. The per-language
+`if`-clause detection that feeds matcher 5 (**condition literal**, contract §6) is provided by
+the language-aware scanners in `./src/js/scanner/`. Each one masks out comments and string
+literals for its target language, then reports every `if` clause whose header spans up to the
+opening brace contain `targetString`:
+
+| File | Function | Language support |
+| --- | --- | --- |
+| [`src/js/scanner/scanJS.js`](src/js/scanner/scanJS.js) | `scanJS(source, targetString)` | JavaScript/TypeScript — single/double quotes, template literals, `//` and `/* */` |
+| [`src/js/scanner/scanJava.js`](src/js/scanner/scanJava.js) | `scanJava(source, targetString)` | Java — standard strings, text blocks (`"""`), `//` and `/* */` |
+| [`src/js/scanner/scanZig.js`](src/js/scanner/scanZig.js) | `scanZig(source, targetString)` | Zig — regular strings, multiline strings (`\`), line comments, **nested** block comments |
+
+All three are pure functions taking `(source, targetString)` and returning an array of match
+objects `{ type: 'if_clause', line, col, snippet }`, where `snippet` is the clause from `if` to
+`{` trimmed of surrounding whitespace. They skip the contents of comments and string literals so
+that `if` keywords and `{` braces appearing inside them do not produce false matches. Keyword
+detection is guarded by `isBoundary` from [`src/js/utils.js`](src/js/utils.js), so `gift` is not
+matched as `if`.
+
+Usage:
+
+```js
+import { scanJS } from './src/js/scanner/scanJS.js';
+
+const source = 'if ("getUsers".equals(methodName)) {\n    handle();\n}';
+const matches = scanJS(source, 'getUsers');
+console.log(matches[0]);
+// → { type: 'if_clause', line: 1, col: 1, snippet: 'if ("getUsers".equals(methodName))' }
+```
+
+Each scanner is self-contained and may be imported directly; there is no barrel index. They share
+the same `(source, targetString)` signature and return shape so step 5 can route by language
+without a parser (house rule §3.5: "This is a heuristic, not a parser"). The JS scanner is the
+reference implementation for the plan; the Java and Zig scanners mirror its shape for the
+matching-language cases the resolver may later delegate to.
+
 ## Status
 
 | Step | Status |
