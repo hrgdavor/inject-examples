@@ -252,6 +252,169 @@ test('extractCodeRegion reads declarations and fails loudly on nothing', () => {
 });
 
 // ---------------------------------------------------------------------------
+// File-section matching — contract pins (step 3 of plan/section-matching)
+// ---------------------------------------------------------------------------
+// Positive cases fail today because extractCodeRegion does not yet resolve
+// `/`-paths, trailing modifiers, condition literals or comment anchors.
+// The grammar-error tests assert the §9 catalogue shapes; those already
+// matching today's rejection message pass, the rest are the red state
+// step 4 resolves.
+
+const ANCHORS = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Anchors.java');
+const EXAMPLE = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Example.java');
+
+// --- 2a: existing Example.java modifiers must stay byte-identical ---
+test('section-matching: existing Example.java modifiers are unchanged', () => {
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString'),
+        '    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString-'),
+        '        return String.join(",", items);');
+    assert.equal(extractCodeRegion(EXAMPLE, '-toString'),
+        '        return String.join(",", items);');
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString+'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(extractCodeRegion(EXAMPLE, '+toString'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString++'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(extractCodeRegion(EXAMPLE, '++toString'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(extractCodeRegion(EXAMPLE, 'Line'),
+        '    public static class Line {\n'
+        + '        private final String name;\n'
+        + '        private final int quantity;\n'
+        + '\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n'
+        + '            this.quantity = quantity;\n'
+        + '        }\n'
+        + '\n'
+        + '        String render() {\n'
+        + '            return name + " x" + quantity;\n'
+        + '        }\n'
+        + '    }');
+});
+
+// --- 2b: nested references on Example.java (positive — fail today) ---
+test('section-matching: nested references on Example.java', () => {
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/render'),
+        '        String render() {\n            return name + " x" + quantity;\n        }');
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/render-'),
+        '            return name + " x" + quantity;');
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/-render'),
+        '            return name + " x" + quantity;');
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line-'),
+        '        private final String name;\n'
+        + '        private final int quantity;\n'
+        + '\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n'
+        + '            this.quantity = quantity;\n'
+        + '        }\n'
+        + '\n'
+        + '        String render() {\n'
+        + '            return name + " x" + quantity;\n'
+        + '        }');
+});
+
+// --- 2c: anchors and condition literals on Anchors.java ---
+test('section-matching: anchors and condition literals on Anchors.java', () => {
+    // Condition literal: first match wins (dispatch comes before handler).
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers'),
+        '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-'),
+        '            System.out.println("users");');
+    assert.equal(extractCodeRegion(ANCHORS, 'dispatch/getUsers'),
+        '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }');
+    assert.equal(extractCodeRegion(ANCHORS, 'getOrders'),
+        '        } else if ("getOrders".equals(methodName)) {\n'
+        + '            System.out.println("orders");\n'
+        + '        }');
+
+    // Anchor: same-line comment anchor on handler, next-line on other.
+    assert.equal(extractCodeRegion(ANCHORS, 'handler/getUsers'),
+        '    public void handler() { //getUsers\n'
+        + '        System.out.println("anchor same line");\n'
+        + '    }');
+    assert.equal(extractCodeRegion(ANCHORS, 'handler/getUsers-'),
+        '        System.out.println("anchor same line");');
+    assert.equal(extractCodeRegion(ANCHORS, 'other/getOrders'),
+        '    public void other() {\n'
+        + '        //getOrders\n'
+        + '        System.out.println("anchor next line");\n'
+        + '    }');
+    assert.equal(extractCodeRegion(ANCHORS, 'other/getOrders-'),
+        '        System.out.println("anchor next line");');
+
+    // Negative: string-literal mention is not a condition literal.
+    assert.throws(
+        () => extractCodeRegion(ANCHORS, 'commentFromString/getUsers'),
+        /no section named "getUsers" in "commentFromString"/,
+    );
+    assert.throws(
+        () => extractCodeRegion(ANCHORS, 'commentFromString/getUsers-'),
+        /no section named "getUsers" in "commentFromString"/,
+    );
+});
+
+// --- 2d: grammar errors throw the §9 shapes ---
+test('section-matching: grammar errors throw the §9 shapes', () => {
+    assert.throws(() => extractCodeRegion(EXAMPLE, ''), /names nothing/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/'),
+        /"#region:a\/" has an empty path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, '/a'),
+        /"#region:\/a" has an empty path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a//b'),
+        /"#region:a\/\/b" has an empty path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/+b'),
+        /"\+" may only modify the last path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/b/-c'),
+        /"\-" may only modify the last path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a+++'),
+        /"#region:a\+\+\+" carries more than one modifier/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a---'),
+        /"#region:a---" carries more than one modifier/);
+    assert.throws(
+        () => extractCodeRegion(EXAMPLE, 'a/b/c/d/e/f/g/h/i'),
+        /is deeper than 8 sections/,
+    );
+});
+
+// --- 2e: contradictory modifiers resolve to the dominant reading ---
+test('section-matching: contradictory modifiers resolve to the dominant reading', () => {
+    const expected = '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }';
+
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers++-'), expected,
+        '++ wins over trailing -');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-++'), expected,
+        '++ wins over leading -');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers+-'), expected,
+        '+ wins over trailing -');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-+'), expected,
+        '+ wins over leading -');
+
+    // TODO(step 4): assert the warning field once parseReference returns one.
+    // The contradiction warning is reported once per document, not per
+    // reference; the CLI prints it and exits 1. The parse layer returns a
+    // `warning` string; the CLI consumes it. Pin the resolved text above;
+    // the warning surface is pinned in the §11 unit tests in step 4.
+});
+
+// ---------------------------------------------------------------------------
 // Region rules by file type — the JSON rule
 // ---------------------------------------------------------------------------
 
