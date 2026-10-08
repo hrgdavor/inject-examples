@@ -419,6 +419,7 @@ test('section-matching: contradictory modifiers resolve to the dominant reading'
 // ---------------------------------------------------------------------------
 
 import { parseReference, isSingleSegment, finalSegment, SectionReferenceError, masked, commentsIn, scanBlocks } from './lib/section.mjs';
+import { resolveSection, planSection } from './lib/section.mjs';
 
 // Group 1: canonicalisation of single-segment references
 test('parseReference: single-segment canonicalisation', () => {
@@ -728,6 +729,187 @@ test('scanBlocks: region directives on example.ts', () => {
     assert.deepEqual([byName.config.startLine, byName.config.endLine], [6, 8]);
     const tableText = read('test/fixtures/example.ts').replace(/\r\n/g, '\n').split('\n').slice(byName.table.startLine + 1, byName.table.endLine).join('\n');
     assert.match(tableText, /\| name \| qty \|/);
+});
+
+// ---------------------------------------------------------------------------
+// Resolve layer — matcher precedence, scope walk, modifiers (step 6)
+// ---------------------------------------------------------------------------
+// These pin contract §12 acceptance bytes through `resolveSection` directly.
+// `extractCodeRegion` still delegates to the old code path until step 7, so
+// the step 3 tests (which call it) stay red until then.
+
+// --- §12 Example.java: today's bytes are reproduced byte-for-byte ---
+test('resolveSection: Example.java modifiers unchanged', () => {
+    assert.equal(resolveSection(EXAMPLE, 'toString'),
+        '    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(resolveSection(EXAMPLE, 'toString-'), '        return String.join(",", items);');
+    assert.equal(resolveSection(EXAMPLE, '-toString'), '        return String.join(",", items);');
+    assert.equal(resolveSection(EXAMPLE, 'toString+'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(resolveSection(EXAMPLE, '+toString'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(resolveSection(EXAMPLE, 'toString++'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(resolveSection(EXAMPLE, '++toString'), resolveSection(EXAMPLE, 'toString++'));
+    assert.equal(resolveSection(EXAMPLE, 'Line'),
+        '    public static class Line {\n'
+        + '        private final String name;\n        private final int quantity;\n\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n            this.quantity = quantity;\n        }\n\n'
+        + '        String render() {\n            return name + " x" + quantity;\n        }\n    }');
+});
+
+// --- §12 Example.java: slashed paths and descent ---
+test('resolveSection: nested references', () => {
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line'), resolveSection(EXAMPLE, 'Line'));
+    assert.equal(resolveSection(EXAMPLE, 'Cart/toString'), resolveSection(EXAMPLE, 'toString'));
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render'),
+        '        String render() {\n            return name + " x" + quantity;\n        }');
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render-'), '            return name + " x" + quantity;');
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/-render'), '            return name + " x" + quantity;');
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line-'),
+        '        private final String name;\n'
+        + '        private final int quantity;\n'
+        + '\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n'
+        + '            this.quantity = quantity;\n'
+        + '        }\n'
+        + '\n'
+        + '        String render() {\n'
+        + '            return name + " x" + quantity;\n'
+        + '        }');
+});
+
+// --- §12 Anchors.java: condition literals and comment anchors ---
+test('resolveSection: anchors and condition literals', () => {
+    assert.equal(resolveSection(ANCHORS, 'getUsers'),
+        '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }');
+    assert.equal(resolveSection(ANCHORS, 'getUsers-'), '            System.out.println("users");');
+    assert.equal(resolveSection(ANCHORS, 'dispatch/getUsers'), resolveSection(ANCHORS, 'getUsers'));
+    assert.equal(resolveSection(ANCHORS, 'getOrders'),
+        '        } else if ("getOrders".equals(methodName)) {\n'
+        + '            System.out.println("orders");\n'
+        + '        }');
+    assert.equal(resolveSection(ANCHORS, 'handler/getUsers'),
+        '    public void handler() { //getUsers\n'
+        + '        System.out.println("anchor same line");\n'
+        + '    }');
+    assert.equal(resolveSection(ANCHORS, 'handler/getUsers-'), '        System.out.println("anchor same line");');
+    assert.equal(resolveSection(ANCHORS, 'other/getOrders'),
+        '    public void other() {\n'
+        + '        //getOrders\n'
+        + '        System.out.println("anchor next line");\n'
+        + '    }');
+    assert.equal(resolveSection(ANCHORS, 'other/getOrders-'), '        System.out.println("anchor next line");');
+
+    // Negative: a string-literal mention is not a condition literal (§12).
+    assert.throws(() => resolveSection(ANCHORS, 'commentFromString/getUsers'),
+        /no section named "getUsers" in "commentFromString"/);
+    assert.throws(() => resolveSection(ANCHORS, 'commentFromString/getUsers-'),
+        /no section named "getUsers" in "commentFromString"/);
+});
+
+// Walk order: the condition literal in `dispatch` outranks the `handler`
+// anchor, because the walk reaches dispatch first (source order, left to right).
+test('resolveSection: walk order picks the first block in source order', () => {
+    const text = [
+        'class W {',                    // 0
+        '    void zzz() { //getUsers',  // 1 — anchor, but comes second
+        '        a();',                 // 2
+        '    }',                        // 3
+        '    void aaa() {',             // 4 — dispatch-like, comes first among conditions
+        '        if ("getUsers".equals(x)) {', // 5
+        '            b();',             // 6
+        '        }',                    // 7
+        '    }',                        // 8
+        '}',                            // 9
+    ].join('\n');
+    // matcher 5 (condition, in aaa) must beat matcher 6 (anchor on zzz), so the
+    // answer is the aaa if-block, not the zzz anchor.
+    assert.equal(resolveSection(text, 'getUsers'),
+        '        if ("getUsers".equals(x)) {\n            b();\n        }');
+});
+
+// --- §12 error shapes ---
+test('resolveSection: error shapes', () => {
+    assert.throws(() => resolveSection(EXAMPLE, 'Line/toString'),
+        /no section named "toString" in "Line"/);
+    assert.throws(() => resolveSection(EXAMPLE, 'Cart/Line/render/extra'),
+        /no section named "extra" in "render"/);
+    assert.throws(() => resolveSection(ANCHORS, 'getusers'),
+        /no "#region getusers" found/);
+    assert.throws(() => resolveSection(EXAMPLE, 'nope/deeper'),
+        /no section named "nope"/);
+});
+
+// --- Regions beat declarations and ignore the modifier (§6/§8) ---
+test('resolveSection: region directives', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const ts = read('test/fixtures/example.ts');
+    assert.equal(resolveSection(ts, 'table'), '| name | qty |\n| ---- | --- |\n| bolt | 12  |');
+    assert.equal(resolveSection(ts, 'table+'), resolveSection(ts, 'table'), 'region ignores modifier');
+    assert.equal(resolveSection(ts, 'table++'), resolveSection(ts, 'table'));
+    assert.equal(resolveSection(ts, 'config'), 'export const config = { retries: 3 };');
+});
+
+// A file-scope #region name beats a same-named declaration anywhere (§6 note).
+test('resolveSection: region outranks a declaration', () => {
+    const text = [
+        '// #region thing',  // 0
+        'region body',       // 1
+        '// #endregion',     // 2
+        'class C {',         // 3
+        '    void thing() {',// 4
+        '        x();',      // 5
+        '    }',             // 6
+        '}',                 // 7
+    ].join('\n');
+    assert.equal(resolveSection(text, 'thing'), 'region body');
+});
+
+// --- Ambiguity pin: two inner classes each have `render` ---
+test('resolveSection: ambiguous name resolves to the first in the walk', () => {
+    const text = [
+        'class Outer {',            // 0
+        '    class A {',            // 1
+        '        void render() {',  // 2
+        '            one();',       // 3
+        '        }',                // 4
+        '    }',                    // 5
+        '    class B {',            // 6
+        '        void render() {',  // 7
+        '            two();',       // 8
+        '        }',                // 9
+        '    }',                    // 10
+        '}',                        // 11
+    ].join('\n');
+    assert.equal(resolveSection(text, 'A/render'),
+        '        void render() {\n            one();\n        }');
+    assert.equal(resolveSection(text, 'B/render'),
+        '        void render() {\n            two();\n        }');
+    assert.equal(resolveSection(text, 'render'), resolveSection(text, 'A/render'),
+        'a bare name resolves to whichever comes first');
+});
+
+// --- Contradiction warnings (§11): the `++` reading wins, warning is set ---
+test('planSection: contradiction resolves to the dominant reading with a warning', () => {
+    const expected = '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }';
+    for (const ref of ['getUsers++-', 'getUsers-++', 'getUsers+-', 'getUsers-+']) {
+        const plan = planSection(ANCHORS, ref);
+        assert.equal(plan.text, expected, `${ref} resolves to the ++/dominant reading`);
+        assert.ok(plan.reference.warning !== null, `${ref} carries a contradiction warning`);
+    }
+    // A non-contradictory reference carries no warning.
+    assert.equal(planSection(ANCHORS, 'getUsers').reference.warning, null);
 });
 
 // ---------------------------------------------------------------------------
