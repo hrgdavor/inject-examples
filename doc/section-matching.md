@@ -24,12 +24,11 @@ statement body (`if`/`for`/`while`/`switch`/`try`/`catch`), or a block
 introduced only by an anchor comment. The file itself is scope 0; every block
 that scope contains is scope 1; and so on.
 
-Written against the JavaScript implementation at the commit this change lands
-in (see `git log` for the exact sha): the implementation in `lib/section.mjs`
-and `index.mjs` at that revision is authoritative, and a port that disagrees
-with it is wrong by definition. This revision breaks with the earlier
-`#region:` fragment keyword — markers now carry the reference directly as
-`#<section-reference>`.
+Written against the JavaScript implementation at commit `10646fb` (the
+revision that drops the `region:` fragment keyword): the implementation in
+`lib/section.mjs` and `index.mjs` at that revision is authoritative, and a port
+that disagrees with it is wrong by definition. Markers now carry the reference
+directly as `#<section-reference>`.
 
 ## Contents
 
