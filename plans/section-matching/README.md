@@ -18,7 +18,7 @@ sitting. **Read this index first, then exactly two documents: the contract, and 
 | 9 | [09-docs-and-settle.md](09-docs-and-settle.md) | Dogfooded docs, the vendoring README, and the settle/sign-off handoff | 00, 08 |
 
 The superseded single-document plan is kept for history at
-[inject-examples-section-matching.md](inject-examples-section-matching.md). **Where it and
+[inject-examples-section-matching.md](../inject-examples-section-matching.md). **Where it and
 these documents disagree, these documents win**; it will not be updated.
 
 ## How the split works
