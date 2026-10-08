@@ -1,3 +1,18 @@
+// ⚠ DISABLED — zig section-matching syntax not settled ⚠
+//
+// The Zig port under `src/` currently tracks the *earlier* revision of the
+// file-section-matching syntax: it knows regions, declarations and scopes
+// (extractCodeRegion / extractDeclaration), but it does NOT know the JSON-key
+// list form, the `-`/`+`/`++` scope trims on `#...`, the new
+// `extractRegion(name, text, scope)` argument order, the `parseMarker`
+// whole-file branch, or any of the changes landing in lib/section.mjs. Running
+// the differential harness against the current JavaScript would therefore only
+// emit false failures.
+//
+// It stays off until `doc/section-matching.md` (the shipped spec) is settled.
+// `--force` overrides the gate so a human can still invoke the old behaviour.
+// See plan/section-matching/01-freeze-porting.md.
+
 // Differential test: run `cli.mjs` and the Zig twin on the same corpus and
 // compare everything a user can see — stdout, stderr, exit code, and every byte
 // of every file the run touched — and report any difference.
@@ -165,7 +180,7 @@ const simpleDoc = (body = 'stale', fence = '```') => [
 ].join('\n');
 
 const regionDoc = (reference, body = 'stale') => [
-    `[fixtures/big.md](./fixtures/big.md#region:${reference})`,
+    `[fixtures/big.md](./fixtures/big.md#${reference})`,
     '',
     '```',
     body,
@@ -568,7 +583,7 @@ function fuzzScenarios(seed, rounds) {
     const some = (list, max) => Array.from({ length: Math.floor(random() * (max + 1)) }, () => pick(list));
 
     const targets = ['fixtures/one.md', 'fixtures/two.md', 'fixtures/three.md', 'fixtures/data.json', 'fixtures/code.ts', 'missing.md', 'fixtures/notes.txt'];
-    const references = ['', '#region:table', '#region:name', '#region:missing', '#region:add', '#region:-add', '#region:+add', '#region:++add', '#region:a,b', '#region:list.0', '#region:deep.key', '#region:', '#region:1e5'];
+    const references = ['', '#table', '#name', '#missing', '#add', '#-add', '#+add', '#++add', '#a,b', '#list.0', '#deep.key', '#', '#1e5'];
     const fences = ['```', '````', '```markdown', '   ```', '```js'];
     const bodies = ['stale', 'old body', '', 'real content', 'multi\nline', '  indented'];
     const prose = ['# Title', 'Some prose.', '', 'Text with `code` in it.', '- a list item', '> a quote'];
@@ -631,6 +646,16 @@ function fuzzScenarios(seed, rounds) {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+// The harness is disabled until the file-section-matching syntax is settled
+// (see plan/section-matching/01-freeze-porting.md). Bail out unless --force.
+if (!process.argv.includes('--force')) {
+    console.error(
+        'compare-zig: disabled — the Zig port does not yet track the current ' +
+        'file-section-matching syntax. Re-run with --force to override.',
+    );
+    process.exit(1);
+}
 
 rmSync(TMP, { recursive: true, force: true });
 mkdirSync(TMP, { recursive: true });

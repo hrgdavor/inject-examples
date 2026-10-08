@@ -18,7 +18,7 @@ sitting. **Read this index first, then exactly two documents: the contract, and 
 | 9 | [09-docs-and-settle.md](09-docs-and-settle.md) | Dogfooded docs, the vendoring README, and the settle/sign-off handoff | 00, 08 |
 
 The superseded single-document plan is kept for history at
-[inject-examples-section-matching.md](inject-examples-section-matching.md). **Where it and
+[inject-examples-section-matching.md](../inject-examples-section-matching.md). **Where it and
 these documents disagree, these documents win**; it will not be updated.
 
 ## How the split works
@@ -78,16 +78,19 @@ matching-language cases the resolver may later delegate to.
 
 | Step | Status |
 | --- | --- |
-| 1 freeze porting | ⛔ not started |
-| 2 spec document | ⛔ not started |
-| 3 fixtures + failing tests | ⛔ not started |
-| 4 parse layer | ⛔ not started |
-| 5 scanner layer | ⛔ not started |
-| 6 resolve layer | ⛔ not started |
-| 7 wire into index | ⛔ not started |
-| 8 vectors | ⛔ not started |
-| 9 docs + settle | ⛔ not started |
+| 1 freeze porting | ✅ done |
+| 2 spec document | ✅ done |
+| 3 fixtures + failing tests | ✅ done |
+| 4 parse layer | ✅ done |
+| 5 scanner layer | ✅ done |
+| 6 resolve layer | ✅ done |
+| 7 wire into index | ✅ done |
+| 8 vectors | ✅ done |
+| 9 docs + settle | ✅ done |
 
-Working tree is clean at `bc03bfe`; nothing in this plan set is implemented yet. The plan set
-itself is complete: every step is written, each cites the contract rather than restating it,
+All nine steps are committed. The revision is **frozen and awaiting maintainer
+sign-off** (step 9, task 5): the settled reference is commit `656d280`, named in
+`doc/section-matching.md`; `lib/README.md` keeps its draft-API warning until a
+human reviews the syntax against a real document outside the fixtures.
+The plan set itself is complete: every step is written, each cites the contract rather than restating it,
 and each carries its own acceptance checklist and verification commands.

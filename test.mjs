@@ -37,6 +37,7 @@ import {
     normalize,
     parseIgnoreFile,
     parseMarker,
+    planMarker,
     regionDirective,
     resolveMarker,
     ruleFor,
@@ -246,9 +247,767 @@ test('extractCodeRegion reads declarations and fails loudly on nothing', () => {
         '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
     assert.throws(
         () => extractCodeRegion(JAVA, 'missing'),
-        /no "#region missing" found, and no method or inner class named "missing"/,
+        /no "#region missing" found/,
     );
     assert.throws(() => extractCodeRegion(JAVA, '+'), /names nothing/);
+});
+
+// ---------------------------------------------------------------------------
+// File-section matching — contract pins (step 3 of plan/section-matching)
+// ---------------------------------------------------------------------------
+// Positive cases fail today because extractCodeRegion does not yet resolve
+// `/`-paths, trailing modifiers, condition literals or comment anchors.
+// The grammar-error tests assert the §9 catalogue shapes; those already
+// matching today's rejection message pass, the rest are the red state
+// step 4 resolves.
+
+const ANCHORS = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Anchors.java');
+const EXAMPLE = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Example.java');
+
+// --- 2a: existing Example.java modifiers must stay byte-identical ---
+test('section-matching: existing Example.java modifiers are unchanged', () => {
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString'),
+        '    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString-'),
+        '        return String.join(",", items);');
+    assert.equal(extractCodeRegion(EXAMPLE, '-toString'),
+        '        return String.join(",", items);');
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString+'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(extractCodeRegion(EXAMPLE, '+toString'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString++'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(extractCodeRegion(EXAMPLE, '++toString'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(extractCodeRegion(EXAMPLE, 'Line'),
+        '    public static class Line {\n'
+        + '        private final String name;\n'
+        + '        private final int quantity;\n'
+        + '\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n'
+        + '            this.quantity = quantity;\n'
+        + '        }\n'
+        + '\n'
+        + '        String render() {\n'
+        + '            return name + " x" + quantity;\n'
+        + '        }\n'
+        + '    }');
+});
+
+// --- 2b: nested references on Example.java (positive — fail today) ---
+test('section-matching: nested references on Example.java', () => {
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/render'),
+        '        String render() {\n            return name + " x" + quantity;\n        }');
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/render-'),
+        '            return name + " x" + quantity;');
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/-render'),
+        '            return name + " x" + quantity;');
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line-'),
+        '        private final String name;\n'
+        + '        private final int quantity;\n'
+        + '\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n'
+        + '            this.quantity = quantity;\n'
+        + '        }\n'
+        + '\n'
+        + '        String render() {\n'
+        + '            return name + " x" + quantity;\n'
+        + '        }');
+});
+
+// --- 2c: anchors and condition literals on Anchors.java ---
+test('section-matching: anchors and condition literals on Anchors.java', () => {
+    // Condition literal: first match wins (dispatch comes before handler).
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers'),
+        '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-'),
+        '            System.out.println("users");');
+    assert.equal(extractCodeRegion(ANCHORS, 'dispatch/getUsers'),
+        '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }');
+    assert.equal(extractCodeRegion(ANCHORS, 'getOrders'),
+        '        } else if ("getOrders".equals(methodName)) {\n'
+        + '            System.out.println("orders");\n'
+        + '        }');
+
+    // Anchor: same-line comment anchor on handler, next-line on other.
+    assert.equal(extractCodeRegion(ANCHORS, 'handler/getUsers'),
+        '    public void handler() { //getUsers\n'
+        + '        System.out.println("anchor same line");\n'
+        + '    }');
+    assert.equal(extractCodeRegion(ANCHORS, 'handler/getUsers-'),
+        '        System.out.println("anchor same line");');
+    assert.equal(extractCodeRegion(ANCHORS, 'other/getOrders'),
+        '    public void other() {\n'
+        + '        //getOrders\n'
+        + '        System.out.println("anchor next line");\n'
+        + '    }');
+    assert.equal(extractCodeRegion(ANCHORS, 'other/getOrders-'),
+        '        System.out.println("anchor next line");');
+
+    // Negative: string-literal mention is not a condition literal.
+    assert.throws(
+        () => extractCodeRegion(ANCHORS, 'commentFromString/getUsers'),
+        /no section named "getUsers" in "commentFromString"/,
+    );
+    assert.throws(
+        () => extractCodeRegion(ANCHORS, 'commentFromString/getUsers-'),
+        /no section named "getUsers" in "commentFromString"/,
+    );
+});
+
+// --- 2d: grammar errors throw the §9 shapes ---
+test('section-matching: grammar errors throw the §9 shapes', () => {
+    assert.throws(() => extractCodeRegion(EXAMPLE, ''), /names nothing/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/'),
+        /"#a\/" has an empty path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, '/a'),
+        /"#\/a" has an empty path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a//b'),
+        /"#a\/\/b" has an empty path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/+b'),
+        /"\+" may only modify the last path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/-b/c'),
+        /"\-" may only modify the last path segment/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a+++'),
+        /"#a\+\+\+" carries more than one modifier/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a---'),
+        /"#a---" carries more than one modifier/);
+    assert.throws(
+        () => extractCodeRegion(EXAMPLE, 'a/b/c/d/e/f/g/h/i'),
+        /is deeper than 8 sections/,
+    );
+});
+
+// --- 2e: contradictory modifiers resolve to the dominant reading ---
+test('section-matching: contradictory modifiers resolve to the dominant reading', () => {
+    const expected = '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }';
+
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers++-'), expected,
+        '++ wins over trailing -');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-++'), expected,
+        '++ wins over leading -');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers+-'), expected,
+        '+ wins over trailing -');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-+'), expected,
+        '+ wins over leading -');
+
+    // TODO(step 4): assert the warning field once parseReference returns one.
+    // The contradiction warning is reported once per document, not per
+    // reference; the CLI prints it and exits 1. The parse layer returns a
+    // `warning` string; the CLI consumes it. Pin the resolved text above;
+    // the warning surface is pinned in the §11 unit tests in step 4.
+});
+
+// ---------------------------------------------------------------------------
+// parseReference unit tests (step 4 of plan/section-matching)
+// ---------------------------------------------------------------------------
+
+import { parseReference, isSingleSegment, finalSegment, SectionReferenceError, masked, commentsIn, scanBlocks } from './lib/section.mjs';
+import { resolveSection, planSection } from './lib/section.mjs';
+
+// Group 1: canonicalisation of single-segment references
+test('parseReference: single-segment canonicalisation', () => {
+    const cases = [
+        ['add', 'add', ['add'], 'declaration'],
+        ['add-', 'add-', ['add'], 'body'],
+        ['add+', 'add+', ['add'], 'annotated'],
+        ['add++', 'add++', ['add'], 'documented'],
+        ['-add', 'add-', ['add'], 'body'],
+        ['+add', 'add+', ['add'], 'annotated'],
+        ['++add', 'add++', ['add'], 'documented'],
+    ];
+    for (const [raw, canonical, segments, scope] of cases) {
+        const r = parseReference(raw);
+        assert.equal(r.raw, raw);
+        assert.equal(r.canonical, canonical);
+        assert.deepEqual(r.segments, segments);
+        assert.equal(r.scope, scope);
+        assert.equal(r.warning, null);
+    }
+});
+
+// Group 2: multi-segment without modifiers
+test('parseReference: multi-segment without modifiers', () => {
+    const r = parseReference('Cart/Line/render');
+    assert.equal(r.raw, 'Cart/Line/render');
+    assert.equal(r.canonical, 'Cart/Line/render');
+    assert.deepEqual(r.segments, ['Cart', 'Line', 'render']);
+    assert.equal(r.scope, 'declaration');
+    assert.equal(r.warning, null);
+});
+
+// Group 3: modifier variants across segment positions
+test('parseReference: modifier variants produce same scope/segments', () => {
+    // Equivalence class 1: Cart/Line- (2 segments, body scope)
+    const class1 = ['Cart/Line-', 'Cart/-Line', '-Cart/Line'];
+    for (const raw of class1) {
+        const r = parseReference(raw);
+        assert.equal(r.canonical, 'Cart/Line-');
+        assert.deepEqual(r.segments, ['Cart', 'Line']);
+        assert.equal(r.scope, 'body');
+        assert.equal(r.warning, null);
+    }
+    // Equivalence class 2: Cart/Line/render- (3 segments, body scope)
+    const class2 = ['Cart/Line/render-', 'Cart/Line/-render'];
+    for (const raw of class2) {
+        const r = parseReference(raw);
+        assert.equal(r.canonical, 'Cart/Line/render-');
+        assert.deepEqual(r.segments, ['Cart', 'Line', 'render']);
+        assert.equal(r.scope, 'body');
+        assert.equal(r.warning, null);
+    }
+});
+
+// Group 4: grammar errors throw §9 shapes
+test('parseReference: grammar errors throw §9 shapes', () => {
+    assert.throws(() => parseReference(''), /names nothing/);
+    assert.throws(() => parseReference('a/'), /has an empty path segment/);
+    assert.throws(() => parseReference('/a'), /has an empty path segment/);
+    assert.throws(() => parseReference('a//b'), /has an empty path segment/);
+    assert.throws(() => parseReference('a/+b'), /"\+\" may only modify the last path segment/);
+    assert.throws(() => parseReference('a/-b/c'), /"\-" may only modify the last path segment/);
+    assert.throws(() => parseReference('a+++'), /carries more than one modifier/);
+    assert.throws(() => parseReference('a---'), /carries more than one modifier/);
+    assert.throws(() => parseReference('a/b/c/d/e/f/g/h/i'), /is deeper than 8 sections/);
+    assert.throws(() => parseReference('-a-'), /carries more than one modifier/);
+});
+
+// Group 5: contradictory modifiers return warning
+test('parseReference: contradictory modifiers return warning', () => {
+    const cases = [
+        ['a++-', '++', 'documented'],
+        ['a-++', '++', 'documented'],
+        ['a+-', '+', 'annotated'],
+        ['a-+', '+', 'annotated'],
+        ['a-/b++', '++', 'documented'],
+    ];
+    for (const [raw, kept, scope] of cases) {
+        const r = parseReference(raw);
+        assert.equal(r.scope, scope);
+        assert.notEqual(r.warning, null);
+        assert.equal(r.warning.kind, 'contradiction');
+        assert.equal(r.warning.kept, kept);
+        assert.equal(r.warning.dropped, '-');
+        assert.equal(r.canonical, r.canonical.replace(/--/, '')); // canonical drops the '-'
+    }
+});
+
+// Group 6: boundary - a+++ throws, a++- warns
+test('parseReference: boundary between error and warning', () => {
+    assert.throws(() => parseReference('a+++'), /carries more than one modifier/);
+    assert.throws(() => parseReference('a---'), /carries more than one modifier/);
+
+    const r1 = parseReference('a++-');
+    assert.equal(r1.warning.kind, 'contradiction');
+    assert.equal(r1.scope, 'documented');
+
+    const r2 = parseReference('a+-');
+    assert.equal(r2.warning.kind, 'contradiction');
+    assert.equal(r2.scope, 'annotated');
+});
+
+// isSingleSegment / finalSegment accept Reference or string
+test('parseReference: isSingleSegment and finalSegment accept Reference or string', () => {
+    assert.equal(isSingleSegment('add'), true);
+    assert.equal(isSingleSegment('Cart/Line'), false);
+    assert.equal(isSingleSegment(parseReference('add')), true);
+    assert.equal(isSingleSegment(parseReference('Cart/Line')), false);
+
+    assert.equal(finalSegment('add'), 'add');
+    assert.equal(finalSegment('Cart/Line/render'), 'render');
+    assert.equal(finalSegment(parseReference('add')), 'add');
+    assert.equal(finalSegment(parseReference('Cart/Line/render')), 'render');
+});
+
+// SectionReferenceError is an Error subclass
+test('parseReference: SectionReferenceError is Error subclass', () => {
+    try {
+        parseReference('');
+    } catch (e) {
+        assert.ok(e instanceof SectionReferenceError);
+        assert.ok(e instanceof Error);
+    }
+});
+
+// error messages quote raw reference
+test('parseReference: error messages quote raw reference', () => {
+    assert.throws(
+        () => parseReference('Cart/-Line/render'),
+        /"#Cart\/-Line\/render"/
+    );
+});
+
+// ---------------------------------------------------------------------------
+// Scanner layer — mask pass and block scanner (step 5 of plan/section-matching)
+// ---------------------------------------------------------------------------
+
+// The mask blanks comments and string literals to spaces but preserves
+// length and every newline offset.
+test('masked preserves length and newline offsets', () => {
+    const tricky = [
+        'class X {',           // 0
+        '    String s = "}";', // 1 — a brace in a string
+        '    /* } */',         // 2 — a brace in a block comment
+        '    // }',            // 3 — a brace in a line comment
+        "    '#!/bin/sh',",    // 4 — '#' starts a comment (not before '[')
+        '    let t = "a // b";', // 5 — '//' inside a string
+        '    let u = "\\`x";',  // 6 — escaped backtick inside a string
+        '    const v = `}',     // 7 — unterminated template literal
+        '}',                    // 8
+        '/* never closed',      // 9 — unterminated block comment runs to EOF
+    ].join('\n');
+    const m = masked(tricky);
+    assert.equal(m.length, tricky.length);
+    for (let i = 0; i < tricky.length; i++) {
+        if (tricky[i] === '\n') assert.equal(m[i], '\n', `newline at offset ${i}`);
+    }
+});
+
+// Braces, `region` words and `//` inside strings or comments must not survive
+// the mask, so they cannot affect the bracket structure it produces.
+test('masked blanks strings and comments, not structure', () => {
+    assert.equal(masked('String s = "}";'),  'String s =    ;');   // quotes and brace blanked
+    assert.equal(masked('/* } */'),          '       ');           // 7 chars
+    assert.equal(masked('// }'),             '    ');              // 4 chars
+    assert.equal(masked('"a // b"'),         '        ');          // 8 chars, // inside string
+});
+
+test('masked keeps Rust attributes but blanks # comments', () => {
+    assert.equal(masked('#[derive(Foo)]'), '#[derive(Foo)]'); // `#` before `[` survives
+    assert.equal(masked('# comment'), '         ');           // 9 chars, `#` comment blanked
+});
+
+test('masked handles triple-quoted strings', () => {
+    assert.equal(masked('"""a}b"""'), '         ');           // 9 chars, all blanked
+});
+
+// The comment scanner reads the original text and does not report comment
+// markers that sit inside string literals.
+test('commentsIn finds real comments, not those in strings', () => {
+    const c = commentsIn('x = "//not a comment"; // real');
+    assert.equal(c.length, 1);
+    assert.equal(c[0].text.trim(), 'real');
+});
+
+// The block scanner, on a fixture with a nested class and a constructor and
+// a method: children are the blocks inside each body, in source order.
+test('scanBlocks: nested class and its members', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const s = scanBlocks(read('test/fixtures/Example.java'));
+    const cart = s.blocks.find((b) => b.kind === 'class' && b.name === 'Cart');
+    assert.equal(cart.openLine, 6);
+    assert.equal(cart.closeLine, 29);
+    const line = s.blocks.find((b) => b.kind === 'class' && b.name === 'Line');
+    assert.ok(line.parent === cart, 'Line is inside Cart');
+    assert.equal(line.openLine, 16);
+    assert.equal(line.closeLine, 28);
+    const render = s.blocks.find((b) => b.kind === 'method' && b.name === 'render');
+    assert.ok(render.parent === line, 'render is inside Line');
+    assert.equal(render.openLine, 25);
+    assert.equal(render.closeLine, 27);
+});
+
+// Body-less members (an interface method) are present as a name with no
+// injectable span; a same-name method with a body has a span.
+test('scanBlocks: body-less interface method has no span', () => {
+    const s = scanBlocks('interface I {\n  void bar();\n  void baz() {\n    x();\n  }\n}');
+    const bar = s.blocks.find((b) => b.name === 'bar');
+    assert.ok(bar, 'bar is present as a name');
+    assert.equal(bar.kind, 'method');
+    assert.equal(bar.openLine, null, 'bar has no body');
+    assert.equal(bar.closeLine, null);
+    const baz = s.blocks.find((b) => b.name === 'baz');
+    assert.equal(baz.openLine, 2);
+    assert.equal(baz.closeLine, 4);
+});
+
+// Allman brace on the next line, and the two arrow forms.
+test('scanBlocks: Allman brace, arrow body, expression arrow', () => {
+    const allman = scanBlocks('class A {\n  void run()\n  {\n    go();\n  }\n}');
+    const run = allman.blocks.find((b) => b.name === 'run');
+    assert.equal(run.declLine, 1);
+    assert.equal(run.openLine, 2);
+    assert.equal(run.closeLine, 4);
+    const arrow = scanBlocks('const sub = (a, b) => {\n  return a - b;\n};');
+    const sub = arrow.blocks.find((b) => b.name === 'sub');
+    assert.equal(sub.kind, 'method');
+    assert.equal(sub.openLine, 0);
+    assert.equal(sub.closeLine, 2);
+    assert.equal(sub.expression, undefined, 'a braced arrow is not expression-bodied');
+    const expr = scanBlocks('const add = (a, b) => a + b;');
+    const add = expr.blocks.find((b) => b.name === 'add');
+    assert.equal(add.kind, 'method');
+    assert.notEqual(add.expression, undefined, 'an expression arrow records the body offset');
+});
+
+// Indented blocks (Python/Ruby): no brace, body delimited by indentation.
+test('scanBlocks: indented (Python) method', () => {
+    const s = scanBlocks('class Foo:\n    def bar(self):\n        return 1\n    def baz(self):\n        return 2');
+    const foo = s.blocks.find((b) => b.name === 'Foo');
+    assert.equal(foo.indented, true);
+    const bar = s.blocks.find((b) => b.name === 'bar');
+    assert.equal(bar.indented, true);
+    assert.equal(bar.declLine, 1);
+});
+
+// Condition literals (matcher 5): a string literal on a statement header,
+// read from the code not a comment; adjacent literals join (token paste).
+test('scanBlocks: condition literals on statement headers', () => {
+    const s = scanBlocks('class T {\n  void f(Object m) {\n    if ("getUsers".equals(m)) {\n      h();\n    }\n    while ("tick".equals(c)) {\n      t();\n    }\n    String unused = "getUsers";\n  }\n}');
+    const ifStmt = s.blocks.find((b) => b.kind === 'statement' && b.declLine === 2);
+    assert.deepEqual(ifStmt.conditions.pasted, ['getUsers']);
+    const whileStmt = s.blocks.find((b) => b.kind === 'statement' && b.declLine === 5);
+    assert.deepEqual(whileStmt.conditions.pasted, ['tick']);
+    // A literal on a non-statement line yields nothing: no statement block
+    // there, so `getUsers` on the `String unused` line is not reported.
+    assert.equal(s.blocks.find((b) => b.kind === 'statement' && b.declLine === 8), undefined);
+});
+
+test('scanBlocks: token-pasted adjacent literals', () => {
+    const s = scanBlocks('void f() {\n  if ("get" "Users".equals(m)) {\n    g();\n  }\n}');
+    const stmt = s.blocks.find((b) => b.kind === 'statement');
+    assert.deepEqual(stmt.conditions.exact, ['get', 'Users']);
+    assert.deepEqual(stmt.conditions.pasted, ['getUsers']);
+});
+
+// A literal inside a comment is not a condition literal.
+test('scanBlocks: comment string is not a condition literal', () => {
+    const s = scanBlocks('void f() {\n  // if ("hidden".equals(m)) {\n  if ("shown".equals(m)) {\n    g();\n  }\n}');
+    const stmts = s.blocks.filter((b) => b.kind === 'statement');
+    assert.equal(stmts.length, 1, 'only the real if opens a block');
+    assert.deepEqual(stmts[0].conditions.pasted, ['shown']);
+});
+
+// Comment anchors (matcher 6): same-line and next-line, `//` and `/* */`,
+// `#region` never anchors, a non-first comment never anchors.
+test('scanBlocks: comment anchors', () => {
+    const s = scanBlocks('class A {\n  void one() { //getUsers\n    x();\n  }\n  void two() {\n    //getOrders\n    y();\n  }\n  void three() {\n    /*star*/\n    z();\n  }\n}');
+    assert.equal(s.blocks.find((b) => b.name === 'one').anchor.name, 'getUsers');
+    assert.equal(s.blocks.find((b) => b.name === 'one').anchor.line, 1);
+    assert.equal(s.blocks.find((b) => b.name === 'two').anchor.name, 'getOrders');
+    assert.equal(s.blocks.find((b) => b.name === 'two').anchor.line, 5);
+    assert.equal(s.blocks.find((b) => b.name === 'three').anchor.name, 'star');
+});
+
+test('scanBlocks: #region line is not an anchor; non-first comment is not an anchor', () => {
+    const s = scanBlocks('class A {\n  void region() {\n    // #region foo\n    x();\n  }\n  void late() {\n    code();\n    //notFirst\n    y();\n  }\n}');
+    assert.equal(s.blocks.find((b) => b.name === 'region').anchor, null);
+    assert.equal(s.blocks.find((b) => b.name === 'late').anchor, null);
+});
+
+test('scanBlocks: the anchor name is the whole trimmed comment body', () => {
+    const s = scanBlocks('class A {\n  void one() {\n    // getUsers\n    x();\n  }\n  void two() {\n    // getUsers and more\n    x();\n  }\n}');
+    assert.equal(s.blocks.find((b) => b.name === 'one').anchor.name, 'getUsers');
+    assert.equal(s.blocks.find((b) => b.name === 'two').anchor, null, 'multi-word body is not an anchor');
+});
+
+// Region directives: example.ts has top-level `table` and `config` regions,
+// the injected text being the lines strictly between the directives.
+test('scanBlocks: region directives on example.ts', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const s = scanBlocks(read('test/fixtures/example.ts'));
+    const byName = {};
+    for (const r of s.regions) byName[r.name] = r;
+    assert.equal(s.regions.length, 2);
+    assert.deepEqual([byName.table.startLine, byName.table.endLine], [0, 4]);
+    assert.deepEqual([byName.config.startLine, byName.config.endLine], [6, 8]);
+    const tableText = read('test/fixtures/example.ts').replace(/\r\n/g, '\n').split('\n').slice(byName.table.startLine + 1, byName.table.endLine).join('\n');
+    assert.match(tableText, /\| name \| qty \|/);
+});
+
+// ---------------------------------------------------------------------------
+// Resolve layer — matcher precedence, scope walk, modifiers (step 6)
+// ---------------------------------------------------------------------------
+// These pin contract §12 acceptance bytes through `resolveSection` directly.
+// `extractCodeRegion` still delegates to the old code path until step 7, so
+// the step 3 tests (which call it) stay red until then.
+
+// --- §12 Example.java: today's bytes are reproduced byte-for-byte ---
+test('resolveSection: Example.java modifiers unchanged', () => {
+    assert.equal(resolveSection(EXAMPLE, 'toString'),
+        '    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(resolveSection(EXAMPLE, 'toString-'), '        return String.join(",", items);');
+    assert.equal(resolveSection(EXAMPLE, '-toString'), '        return String.join(",", items);');
+    assert.equal(resolveSection(EXAMPLE, 'toString+'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(resolveSection(EXAMPLE, '+toString'),
+        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
+    assert.equal(resolveSection(EXAMPLE, 'toString++'),
+        '    /** Add one item to this cart. */\n'
+        + '    @Override\n'
+        + '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }');
+    assert.equal(resolveSection(EXAMPLE, '++toString'), resolveSection(EXAMPLE, 'toString++'));
+    assert.equal(resolveSection(EXAMPLE, 'Line'),
+        '    public static class Line {\n'
+        + '        private final String name;\n        private final int quantity;\n\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n            this.quantity = quantity;\n        }\n\n'
+        + '        String render() {\n            return name + " x" + quantity;\n        }\n    }');
+});
+
+// --- §12 Example.java: slashed paths and descent ---
+test('resolveSection: nested references', () => {
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line'), resolveSection(EXAMPLE, 'Line'));
+    assert.equal(resolveSection(EXAMPLE, 'Cart/toString'), resolveSection(EXAMPLE, 'toString'));
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render'),
+        '        String render() {\n            return name + " x" + quantity;\n        }');
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render-'), '            return name + " x" + quantity;');
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/-render'), '            return name + " x" + quantity;');
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line-'),
+        '        private final String name;\n'
+        + '        private final int quantity;\n'
+        + '\n'
+        + '        Line(String name, int quantity) {\n'
+        + '            this.name = name;\n'
+        + '            this.quantity = quantity;\n'
+        + '        }\n'
+        + '\n'
+        + '        String render() {\n'
+        + '            return name + " x" + quantity;\n'
+        + '        }');
+});
+
+// --- §12 Anchors.java: condition literals and comment anchors ---
+test('resolveSection: anchors and condition literals', () => {
+    assert.equal(resolveSection(ANCHORS, 'getUsers'),
+        '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }');
+    assert.equal(resolveSection(ANCHORS, 'getUsers-'), '            System.out.println("users");');
+    assert.equal(resolveSection(ANCHORS, 'dispatch/getUsers'), resolveSection(ANCHORS, 'getUsers'));
+    assert.equal(resolveSection(ANCHORS, 'getOrders'),
+        '        } else if ("getOrders".equals(methodName)) {\n'
+        + '            System.out.println("orders");\n'
+        + '        }');
+    assert.equal(resolveSection(ANCHORS, 'handler/getUsers'),
+        '    public void handler() { //getUsers\n'
+        + '        System.out.println("anchor same line");\n'
+        + '    }');
+    assert.equal(resolveSection(ANCHORS, 'handler/getUsers-'), '        System.out.println("anchor same line");');
+    assert.equal(resolveSection(ANCHORS, 'other/getOrders'),
+        '    public void other() {\n'
+        + '        //getOrders\n'
+        + '        System.out.println("anchor next line");\n'
+        + '    }');
+    assert.equal(resolveSection(ANCHORS, 'other/getOrders-'), '        System.out.println("anchor next line");');
+
+    // Negative: a string-literal mention is not a condition literal (§12).
+    assert.throws(() => resolveSection(ANCHORS, 'commentFromString/getUsers'),
+        /no section named "getUsers" in "commentFromString"/);
+    assert.throws(() => resolveSection(ANCHORS, 'commentFromString/getUsers-'),
+        /no section named "getUsers" in "commentFromString"/);
+});
+
+// Walk order: the condition literal in `dispatch` outranks the `handler`
+// anchor, because the walk reaches dispatch first (source order, left to right).
+test('resolveSection: walk order picks the first block in source order', () => {
+    const text = [
+        'class W {',                    // 0
+        '    void zzz() { //getUsers',  // 1 — anchor, but comes second
+        '        a();',                 // 2
+        '    }',                        // 3
+        '    void aaa() {',             // 4 — dispatch-like, comes first among conditions
+        '        if ("getUsers".equals(x)) {', // 5
+        '            b();',             // 6
+        '        }',                    // 7
+        '    }',                        // 8
+        '}',                            // 9
+    ].join('\n');
+    // matcher 5 (condition, in aaa) must beat matcher 6 (anchor on zzz), so the
+    // answer is the aaa if-block, not the zzz anchor.
+    assert.equal(resolveSection(text, 'getUsers'),
+        '        if ("getUsers".equals(x)) {\n            b();\n        }');
+});
+
+// --- §12 error shapes ---
+test('resolveSection: error shapes', () => {
+    assert.throws(() => resolveSection(EXAMPLE, 'Line/toString'),
+        /no section named "toString" in "Line"/);
+    assert.throws(() => resolveSection(EXAMPLE, 'Cart/Line/render/extra'),
+        /no section named "extra" in "render"/);
+    assert.throws(() => resolveSection(ANCHORS, 'getusers'),
+        /no "#region getusers" found/);
+    assert.throws(() => resolveSection(EXAMPLE, 'nope/deeper'),
+        /no section named "nope"/);
+});
+
+// --- Regions beat declarations and ignore the modifier (§6/§8) ---
+test('resolveSection: region directives', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const ts = read('test/fixtures/example.ts');
+    assert.equal(resolveSection(ts, 'table'), '| name | qty |\n| ---- | --- |\n| bolt | 12  |');
+    assert.equal(resolveSection(ts, 'table+'), resolveSection(ts, 'table'), 'region ignores modifier');
+    assert.equal(resolveSection(ts, 'table++'), resolveSection(ts, 'table'));
+    assert.equal(resolveSection(ts, 'config'), 'export const config = { retries: 3 };');
+});
+
+// A file-scope #region name beats a same-named declaration anywhere (§6 note).
+test('resolveSection: region outranks a declaration', () => {
+    const text = [
+        '// #region thing',  // 0
+        'region body',       // 1
+        '// #endregion',     // 2
+        'class C {',         // 3
+        '    void thing() {',// 4
+        '        x();',      // 5
+        '    }',             // 6
+        '}',                 // 7
+    ].join('\n');
+    assert.equal(resolveSection(text, 'thing'), 'region body');
+});
+
+// --- Ambiguity pin: two inner classes each have `render` ---
+test('resolveSection: ambiguous name resolves to the first in the walk', () => {
+    const text = [
+        'class Outer {',            // 0
+        '    class A {',            // 1
+        '        void render() {',  // 2
+        '            one();',       // 3
+        '        }',                // 4
+        '    }',                    // 5
+        '    class B {',            // 6
+        '        void render() {',  // 7
+        '            two();',       // 8
+        '        }',                // 9
+        '    }',                    // 10
+        '}',                        // 11
+    ].join('\n');
+    assert.equal(resolveSection(text, 'A/render'),
+        '        void render() {\n            one();\n        }');
+    assert.equal(resolveSection(text, 'B/render'),
+        '        void render() {\n            two();\n        }');
+    assert.equal(resolveSection(text, 'render'), resolveSection(text, 'A/render'),
+        'a bare name resolves to whichever comes first');
+});
+
+// --- Contradiction warnings (§11): the `++` reading wins, warning is set ---
+test('planSection: contradiction resolves to the dominant reading with a warning', () => {
+    const expected = '        if ("getUsers".equals(methodName)) {\n'
+        + '            System.out.println("users");\n'
+        + '        }';
+    for (const ref of ['getUsers++-', 'getUsers-++', 'getUsers+-', 'getUsers-+']) {
+        const plan = planSection(ANCHORS, ref);
+        assert.equal(plan.text, expected, `${ref} resolves to the ++/dominant reading`);
+        assert.ok(plan.reference.warning !== null, `${ref} carries a contradiction warning`);
+    }
+    // A non-contradictory reference carries no warning.
+    assert.equal(planSection(ANCHORS, 'getUsers').reference.warning, null);
+});
+
+// ---------------------------------------------------------------------------
+// Step 7 — warning surfaces through the library (planMarker/updateDocument)
+// and the CLI (exit code + stderr line), and the delegation is byte-identical
+// ---------------------------------------------------------------------------
+
+test('planMarker carries the section warning for a contradiction', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const plan = planMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers++-)'), read);
+    assert.equal(plan.text, resolveSection(ANCHORS, 'getUsers++-'));
+    assert.ok(plan.warning !== null, 'warning surfaced through planMarker');
+    assert.equal(plan.warning.kind, 'contradiction');
+    assert.match(plan.warning.message, /"\+\+" contradicts "-"/);
+    assert.match(plan.warning.message, /using "#getUsers\+\+"/);
+    // resolveMarker stays a string and drops the warning.
+    assert.equal(typeof resolveMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers)'), read), 'string');
+});
+
+test('updateDocument reports a warning and stays idempotent', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const doc = [
+        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers++-)',
+        '```java',
+        'stale',
+        '```',
+    ].join('\n');
+    const first = updateDocument(doc, { readFile: read });
+    assert.equal(first.results.length, 1);
+    assert.ok(first.results[0].warning !== null, 'the contradiction warning rides on the result');
+    assert.equal(first.changed, true);
+    assert.match(first.text, /if \("getUsers"\.equals/);
+    assert.doesNotMatch(first.text, /stale/);
+
+    const second = updateDocument(first.text, { readFile: read });
+    assert.equal(second.changed, false, 'a second pass is a no-op');
+    assert.ok(second.results[0].warning !== null, 'the warning is reported again on the second pass');
+});
+
+test('updateDocument: an over-concrete reference is an error, not a warning', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const doc = [
+        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers+++)',
+        '```java',
+        'x',
+        '```',
+    ].join('\n');
+    // `a+++`-shaped references throw (strict), the error is not a warning.
+    assert.throws(() => updateDocument(doc, { readFile: read }), /more than one modifier/);
+});
+
+test('CLI: a contradiction warns and forces exit 1 even when the block is fresh', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-warn-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    const java = [
+        'class C {',
+        '    void f() {',
+        '        if ("getUsers".equals(m)) {',
+        '            go();',
+        '        }',
+        '    }',
+        '}',
+    ].join('\n');
+    writeFileSync(join(dir, 'C.java'), java + '\n');
+    const docPath = join(dir, 'doc.md');
+    writeFileSync(docPath, [
+        '[C.java](./C.java#getUsers++-)',
+        '',
+        '```java',
+        'stale',
+        '```',
+    ].join('\n'));
+
+    // Capture stderr to assert the warning line, mirroring the failure-warning shape.
+    const captured = [];
+    const original = console.error;
+    console.error = (...a) => captured.push(a.join(' '));
+    try {
+        assert.equal(main([docPath]), 1, 'a warning exits 1');
+        assert.equal(main([docPath, '--check']), 1, 'a warning exits 1 in --check even when nothing is stale');
+    } finally {
+        console.error = original;
+    }
+
+    const line = captured.find((s) => /warn:.*getUsers\+\+-.*contradicts/.test(s));
+    assert.ok(line, `warning line printed, saw: ${JSON.stringify(captured)}`);
+    assert.ok(line.startsWith('inject-examples: warn:'), 'same shape as a failure warning');
+    assert.ok(line.includes(':1:'), 'reports the marker line (1-based)');
+    assert.ok(line.includes('#getUsers++-'), 'quotes the raw marker');
+    assert.ok(line.includes('"++" contradicts "-"'), 'the contradiction message');
+    assert.ok(line.includes('using "#getUsers++"'), 'the canonical reference');
+    assert.match(line, /"\+\+" contradicts "-"/);
+    assert.match(line, /using "#getUsers\+\+"/);
+    // --check with nothing stale but a warning still returns 1 (asserted above),
+    // and the document was written by the first (non-check) run.
+    assert.match(readFileSync(docPath, 'utf8'), /if \("getUsers"\.equals/);
 });
 
 // ---------------------------------------------------------------------------
@@ -312,11 +1071,11 @@ test('resolveMarker resolves a region by the file type', () => {
     const files = { 'data.json': JSON_DOC, 'code.ts': 'const add = (a) => a;\n' };
     const read = reader(files);
     assert.equal(
-        resolveMarker(parseMarker('[data.json](./data.json#region:name)'), read),
+        resolveMarker(parseMarker('[data.json](./data.json#name)'), read),
         '{\n  "name": "acme"\n}',
     );
     assert.equal(
-        resolveMarker(parseMarker('[code.ts](./code.ts#region:add)'), read),
+        resolveMarker(parseMarker('[code.ts](./code.ts#add)'), read),
         'const add = (a) => a;',
     );
     assert.equal(
@@ -328,7 +1087,7 @@ test('resolveMarker resolves a region by the file type', () => {
 
 test('updateDocument injects a JSON selection and is idempotent', () => {
     const files = { 'data.json': JSON_DOC };
-    const doc = ['[data.json](./data.json#region:scripts)', '```', 'stale', '```'].join('\n');
+    const doc = ['[data.json](./data.json#scripts)', '```', 'stale', '```'].join('\n');
     const read = reader(files);
 
     const first = updateDocument(doc, { readFile: read });
@@ -342,7 +1101,7 @@ test('updateDocument injects a JSON selection and is idempotent', () => {
 
 test('updateDocument takes a custom rule set', () => {
     const files = { 'notes.txt': 'one\n-- eight --\ntwo\n' };
-    const doc = ['[notes.txt](./notes.txt#region:eight)', '```', 'stale', '```'].join('\n');
+    const doc = ['[notes.txt](./notes.txt#eight)', '```', 'stale', '```'].join('\n');
     const custom = {
         name: 'dashes',
         extensions: ['txt'],
@@ -362,23 +1121,24 @@ test('parseMarker reads a whole-file marker', () => {
     assert.deepEqual(parseMarker('[fixtures/a.md](./fixtures/a.md)'), {
         raw: '[fixtures/a.md](./fixtures/a.md)',
         path: 'fixtures/a.md',
-        region: null,
+        reference: null,
     });
     assert.deepEqual(parseMarker('[fixtures/a.md](fixtures/a.md)')?.path, 'fixtures/a.md');
     assert.deepEqual(parseMarker('  [a.md](./a.md)  ')?.raw, '[a.md](./a.md)', 'outer space is trimmed');
 });
 
 test('parseMarker reads a region marker', () => {
-    assert.deepEqual(parseMarker('[src/app.ts](./src/app.ts#region:table)'), {
-        raw: '[src/app.ts](./src/app.ts#region:table)',
+    assert.deepEqual(parseMarker('[src/app.ts](./src/app.ts#table)'), {
+        raw: '[src/app.ts](./src/app.ts#table)',
         path: 'src/app.ts',
-        region: 'table',
+        reference: 'table',
     });
 });
 
 test('parseMarker leaves ordinary links alone', () => {
     assert.equal(parseMarker('[the docs](./docs/README.md)'), null, 'label must name the path');
-    assert.equal(parseMarker('[a.md](./a.md#install)'), null, 'only `region:` is special');
+    assert.deepEqual(parseMarker('[a.md](./a.md#install)'), { raw: '[a.md](./a.md#install)', path: 'a.md', reference: 'install' }, 'any fragment names a section');
+    assert.equal(parseMarker('[install](#install)'), null, 'an in-page link (no path) is navigation, not a marker');
     assert.equal(parseMarker('[https://x.dev](https://x.dev)'), null, 'a URL is not a path');
     assert.equal(parseMarker('[a.md](./a.md) and more'), null, 'the line must be only the link');
     assert.equal(parseMarker('plain text'), null);
@@ -409,7 +1169,7 @@ test('resolveMarker reads a whole file or one region of it', () => {
     const read = reader(files);
     assert.equal(resolveMarker(parseMarker('[whole.md](./whole.md)'), read), 'one\ntwo');
     assert.equal(
-        resolveMarker(parseMarker('[big.md](./big.md#region:table)'), read),
+        resolveMarker(parseMarker('[big.md](./big.md#table)'), read),
         '| a |',
     );
 });
@@ -531,7 +1291,7 @@ const DOC = [
     '',
     'Some prose.',
     '',
-    '[fixtures/big.md](./fixtures/big.md#region:table)',
+    '[fixtures/big.md](./fixtures/big.md#table)',
     '',
     '```markdown',
     'stale region',
@@ -851,11 +1611,11 @@ test('lenient tolerates region and fence failures and keeps their blocks', () =>
     const read = reader(files);
 
     // A region that does not exist.
-    let doc = ['[big.md](./big.md#region:missing)', '```', 'old', '```'].join('\n');
+    let doc = ['[big.md](./big.md#missing)', '```', 'old', '```'].join('\n');
     let result = updateDocument(doc, { readFile: read, lenient: true });
-    assert.equal(
+    assert.match(
         result.results[0].failure,
-        'no "#region missing" found, and no method or inner class named "missing"',
+        /no "#region missing" found/,
     );
     assert.match(result.text, /old/);
 
@@ -1245,11 +2005,11 @@ test('the region markers in index.mjs and test.mjs resolve to real code', () => 
     const root = dirname(fileURLToPath(import.meta.url));
     const read = fileReader(root);
 
-    const parse = resolveMarker(parseMarker('[index.mjs](index.mjs#region:parseMarker)'), read);
+    const parse = resolveMarker(parseMarker('[index.mjs](index.mjs#parseMarker)'), read);
     assert.match(parse, /^\/\*\*\n \* Read one line as an injection marker/);
     assert.match(parse, /export function parseMarker\(line\)/);
 
-    const testCode = resolveMarker(parseMarker('[test.mjs](test.mjs#region:update-document-test)'), read);
+    const testCode = resolveMarker(parseMarker('[test.mjs](test.mjs#update-document-test)'), read);
     assert.match(testCode, /updateDocument rewrites every marker and is idempotent/);
     assert.match(testCode, /a second pass is a no-op/);
 });
@@ -1287,11 +2047,25 @@ test('the documentation stays in sync with the files it shows', () => {
     const result = updateDocument(doc, { root: join(root, 'doc'), gitignore: false });
 
     assert.equal(result.changed, false, 'doc/usage.md must match its fixtures');
-    assert.equal(result.markers.length, 15, 'one marker per shown file, region or declaration');
+    // Not a marker *count* (it rotted the first time a marker was added and
+    // would rot again). The property the count approximated is that the
+    // document is honest: every marker is backed by a fenced block, every one
+    // resolves cleanly, and none of its content drifted.
+    const lines = doc.replace(/\r\n/g, '\n').split('\n');
+    const markers = findMarkers(lines);
+    const fenceOpens = fenceRanges(lines).map(([open]) => open);
+    for (const marker of markers) {
+        let j = marker.index + 1;
+        while (j < lines.length && lines[j].trim() === '') j++;   // a blank may separate marker and fence
+        assert.ok(fenceOpens.includes(j), `doc/usage.md:${marker.index + 1}: marker has no fenced block below it`);
+    }
     for (const entry of result.results) {
         assert.equal(entry.skipped, false);
         assert.equal(entry.failure, undefined);
+        assert.ok(entry.warning === null, `doc/usage.md:${entry.marker.index + 1}: unexpected section warning`);
+        assert.ok(existsSync(resolve(join(root, 'doc'), entry.marker.path)), `marker target exists: ${entry.marker.path}`);
     }
+    assert.ok(markers.length >= 15, 'the document still shows its files, regions and declarations');
 });
 
 // ---------------------------------------------------------------------------
@@ -1348,6 +2122,47 @@ test('every link in the docs is functional', () => {
                     assert.ok(existsSync(target), `${rel}:${i + 1}: ${dest} does not exist`);
                 }
             }
+        }
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Golden vectors — assert the committed JSON against a live implementation
+// call (step 8 of plan/section-matching). `--check` catches "the implementation
+// changed, the file did not"; this catches "someone relaxed a case so --check
+// would still pass".
+// ---------------------------------------------------------------------------
+test('section vectors match a live implementation call', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const vectors = JSON.parse(readFileSync(join(root, 'test/vectors/section-vectors.json'), 'utf8'));
+    assert.ok(Array.isArray(vectors) && vectors.length >= 50, 'a substantial vector set');
+
+    for (const c of vectors) {
+        let ref = null;
+        let parseErr = null;
+        try { ref = parseReference(c.reference); } catch (e) { parseErr = e; }
+
+        // Warnings are the parser's own; compare the projected fields.
+        const liveWarning = ref && ref.warning
+            ? { kind: ref.warning.kind, kept: ref.warning.kept, dropped: ref.warning.dropped }
+            : null;
+        assert.deepEqual(c.warning, liveWarning, `${c.name}: warning`);
+
+        if (parseErr) {
+            assert.equal(c.text, null, `${c.name}: a grammar error has no text`);
+            assert.ok(c.error !== null, `${c.name}: a grammar error records its message`);
+            assert.equal(c.error, parseErr.message, `${c.name}: grammar error message`);
+            continue;
+        }
+        // Parse-success vectors carry a resolution result (text or error) or
+        // are parse-only probes (both null) whose value is the parsed warning.
+        if (c.text !== null) {
+            assert.equal(c.error, null, `${c.name}: exactly one of text/error`);
+            assert.equal(resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference), c.text,
+                `${c.name}: text`);
+        } else if (c.error !== null) {
+            assert.throws(() => resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference),
+                (e) => { assert.equal(e.message, c.error, `${c.name}: error message`); return true; });
         }
     }
 });

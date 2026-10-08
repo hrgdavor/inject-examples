@@ -60,9 +60,9 @@ Usage:
   .json file, which has no comments, takes a comma-separated list of dotted
   key paths, rendered as valid JSON:
 
-      [src/app.ts](./src/app.ts#region:table)
-      [src/app.ts](./src/app.ts#region:++table)
-      [package.json](./package.json#region:scripts.test,name)
+      [src/app.ts](./src/app.ts#table)
+      [src/app.ts](./src/app.ts#++table)
+      [package.json](./package.json#scripts.test,name)
 
 Arguments:
   file|dir             Markdown document(s) to update. A directory expands to
@@ -370,12 +370,23 @@ function processDocument(file, options, gitignore) {
         }
     }
 
+    // A section warning is a finding, not decoration: printed in every mode,
+    // regardless of --quiet, and it forces a non-zero exit (§11).
+    for (const { marker, warning } of result.results) {
+        if (warning) {
+            console.error(`inject-examples: warn: ${display(file)}:${marker.index + 1}: ${marker.raw}: ${warning.message}`);
+        }
+    }
+
     const stale = result.results.filter((entry) => entry.changed);
     const failed = result.results.filter((entry) => entry.skipped && entry.failure);
+    const warned = result.results.filter((entry) => entry.warning);
     const skippedCount = result.results.filter((entry) => entry.skipped && !entry.failure).length;
     const checked = total - skippedCount - failed.length;
     const skipNote = skippedCount > 0 ? `, ${skippedCount} marker(s) skipped` : '';
     const failedNote = failed.length > 0 ? `, ${failed.length} failed` : '';
+    const warnNote = warned.length > 0 ? `, ${warned.length} warning(s)` : '';
+    const warnExit = warned.length > 0 ? FAILED : OK;   // §11: a warning is a finding
 
     if (options.out !== null) {
         const out = resolve(options.out);
@@ -388,8 +399,8 @@ function processDocument(file, options, gitignore) {
                 return FAILED;
             }
             if (!changed) {
-                console.log(`\n${display(options.out)} is up to date with respect to ${display(file)}.`);
-                return OK;
+                console.log(`\n${display(options.out)} is up to date with respect to ${display(file)}${warnNote}.`);
+                return warnExit;
             }
             console.error(`\n${display(options.out)} is stale with respect to ${display(file)}${current === null ? ' (the file does not exist)' : ''}.`);
             console.error(`Run: inject-examples --out ${display(options.out)} ${display(file)}`);
@@ -402,11 +413,11 @@ function processDocument(file, options, gitignore) {
                 return FAILED;
             }
             console.log(!changed
-                ? `\n${display(file)} is already in sync with ${display(options.out)}${skipNote}.`
+                ? `\n${display(file)} is already in sync with ${display(options.out)}${skipNote}${warnNote}.`
                 : stale.length > 0
-                    ? `\n${display(file)} would write ${display(options.out)}: ${stale.length} of ${checked} block(s) updated${skipNote}.`
-                    : `\n${display(file)} would write ${display(options.out)}${skipNote}.`);
-            return OK;
+                    ? `\n${display(file)} would write ${display(options.out)}: ${stale.length} of ${checked} block(s) updated${skipNote}${warnNote}.`
+                    : `\n${display(file)} would write ${display(options.out)}${skipNote}${warnNote}.`);
+            return warnExit;
         }
 
         mkdirSync(dirname(out), { recursive: true });
@@ -415,8 +426,8 @@ function processDocument(file, options, gitignore) {
             console.log(`\n${display(file)} -> ${display(options.out)} updated: ${failed.length} marker(s) could not be resolved and were left as written${skipNote}.`);
             return FAILED;
         }
-        console.log(`\n${display(file)} -> ${display(options.out)} ${changed ? 'updated' : 'already up to date'}${skipNote}.`);
-        return OK;
+        console.log(`\n${display(file)} -> ${display(options.out)} ${changed ? 'updated' : 'already up to date'}${skipNote}${warnNote}.`);
+        return warnExit;
     }
 
     if (options.check) {
@@ -431,16 +442,16 @@ function processDocument(file, options, gitignore) {
             return FAILED;
         }
         console.log(skippedCount > 0
-            ? `\n${display(file)} is up to date: ${checked} checked, ${skippedCount} skipped.`
-            : `\n${display(file)} matches all ${total} marker(s).`);
-        return OK;
+            ? `\n${display(file)} is up to date: ${checked} checked, ${skippedCount} skipped${warnNote}.`
+            : `\n${display(file)} matches all ${total} marker(s)${warnNote}.`);
+        return warnExit;
     }
 
     if (options.dryRun) {
         console.log(stale.length > 0
-            ? `\n${display(file)} would update ${stale.length} of ${checked} block(s)${skipNote}${failedNote}.`
-            : `\n${display(file)} already up to date${skipNote}${failedNote}.`);
-        return failed.length > 0 ? FAILED : OK;
+            ? `\n${display(file)} would update ${stale.length} of ${checked} block(s)${skipNote}${failedNote}${warnNote}.`
+            : `\n${display(file)} already up to date${skipNote}${failedNote}${warnNote}.`);
+        return (failed.length > 0 || warned.length > 0) ? FAILED : OK;
     }
 
     if (result.changed) writeFileSync(file, result.text, 'utf8');
@@ -448,8 +459,8 @@ function processDocument(file, options, gitignore) {
         console.log(`\n${display(file)}: ${stale.length} updated, ${failed.length} failed${skipNote}.`);
         return FAILED;
     }
-    console.log(`\n${display(file)} ${result.changed ? 'updated' : 'already up to date'}${skipNote}.`);
-    return OK;
+    console.log(`\n${display(file)} ${result.changed ? 'updated' : 'already up to date'}${skipNote}${warnNote}.`);
+    return warnExit;
 }
 
 // Only run when this file *is* the program: importing it (as a wrapper does)

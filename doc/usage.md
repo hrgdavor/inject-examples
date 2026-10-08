@@ -47,9 +47,10 @@ npx @hrg/inject-examples --check doc/usage.md
   current text. The second only reports: anything stale or failed ends with
   exit `1` and writes nothing — that is the CI hook.
 - This document ships with the repository, not with the npm package: the
-  package's `files` field contains only `cli.mjs`, `index.mjs`, `README.md`
-  and `LICENSE`, so the docs and their fixtures live in the source tree,
-  where CI can check them in.
+  package's `files` field contains `cli.mjs`, `index.mjs`, `README.md`,
+  `LICENSE`, the `lib/` module and `doc/section-matching.md`, but not this
+  guide or its fixtures — those live in the source tree, where CI can check
+  them in.
 
 ## What ships
 
@@ -87,6 +88,7 @@ The entire published package, verbatim:
   "exports": {
     ".": "./index.mjs",
     "./cli.mjs": "./cli.mjs",
+    "./lib/section.mjs": "./lib/section.mjs",
     "./package.json": "./package.json"
   },
   "bin": {
@@ -96,7 +98,9 @@ The entire published package, verbatim:
     "cli.mjs",
     "index.mjs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "lib",
+    "doc/section-matching.md"
   ],
   "engines": {
     "node": ">=18"
@@ -105,7 +109,9 @@ The entire published package, verbatim:
     "access": "public"
   },
   "scripts": {
-    "test": "node --test test.mjs"
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check",
+    "vectors": "node tools/section-vectors.mjs",
+    "compare:zig": "node tools/compare-zig.mjs"
   }
 }
 ```
@@ -160,21 +166,21 @@ block is replaced in place — so a file whose *content* contains a line that
 looks like a marker still works: injected content is data, not a new marker.
 
 This is the real code that decides whether a line is a marker, injected from
-`index.mjs` by its region:
+`index.mjs` by its section:
 
-[../index.mjs](../index.mjs#region:parseMarker)
+[../index.mjs](../index.mjs#parseMarker)
 
 ```javascript
 /**
  * Read one line as an injection marker, or return null.
  *
  * A marker is a line that is nothing but a link to a real path, labelled with
- * that same path — optionally naming a region in the fragment:
+ * that same path — optionally naming a section in the fragment:
  *
  *     [fixtures/example-1/before.md](./fixtures/example-1/before.md)
- *     [fixtures/example-4/source.md](./fixtures/example-4/source.md#region:table)
+ *     [fixtures/example-4/source.md](./fixtures/example-4/source.md#table)
  *
- * @returns {{ raw: string, path: string, region: string | null } | null}
+ * @returns {{ raw: string, path: string, reference: string | null } | null}
  */
 export function parseMarker(line) {
     const match = LINK.exec(line.trim());
@@ -192,14 +198,13 @@ export function parseMarker(line) {
 
     // Normalise away a leading `./` so `path` is directly usable as a path.
     const relativePath = withoutDotSlash(path);
+    // An empty path means an in-page navigation link (`[text](#anchor)`), never
+    // a marker: a marker names a file.
     if (relativePath === '') return null;
 
-    if (fragment === '') return { raw: line.trim(), path: relativePath, region: null };
+    if (fragment === '') return { raw: line.trim(), path: relativePath, reference: null };
 
-    // An unknown fragment means this is an ordinary link, not a marker.
-    const region = /^region:(.+)$/.exec(fragment);
-    if (!region) return null;
-    return { raw: line.trim(), path: relativePath, region: region[1] };
+    return { raw: line.trim(), path: relativePath, reference: fragment };
 }
 ```
 
@@ -209,7 +214,7 @@ When only part of a file belongs in the document, the file carries region
 directives and the marker names the region. The next block is one region of
 `test/fixtures/example.ts`:
 
-[../test/fixtures/example.ts](../test/fixtures/example.ts#region:table)
+[../test/fixtures/example.ts](../test/fixtures/example.ts#table)
 
 ```typescript
 | name | qty |
@@ -221,7 +226,7 @@ The same file, a different region, through the same kind of marker — two
 markers may point at different regions of one file, because the duplicate
 rule only forbids identical marker text:
 
-[../test/fixtures/example.ts](../test/fixtures/example.ts#region:config)
+[../test/fixtures/example.ts](../test/fixtures/example.ts#config)
 
 ```typescript
 export const config = { retries: 3 };
@@ -240,7 +245,7 @@ prefix is stripped before the name is read. The rules:
 
 ## Region rules by file type
 
-`#region:<reference>` means "the piece of this file called `<reference>`". What
+`#<reference>` means "the piece of this file called `<reference>`". What
 the reference may say — and what comes back — depends on the file's **type**:
 each type has one rule, and the reference is handed to the rule that claims the
 file's extension. Two rules ship, and a third is a few lines in a `regionRules`
@@ -266,14 +271,14 @@ comes with it:
 
 | Reference | Injected text |
 | --- | --- |
-| `#region:add` | the declaration: signature through closing brace |
-| `#region:-add` | the body only, without the signature |
-| `#region:+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
-| `#region:++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
+| `#add` | the declaration: signature through closing brace |
+| `#-add` | the body only, without the signature |
+| `#+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| `#++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
 
 All four, against `test/fixtures/Example.java` — first the declaration itself:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#region:toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#toString)
 
 ```java
     public String toString() {
@@ -283,7 +288,7 @@ All four, against `test/fixtures/Example.java` — first the declaration itself:
 
 then its body alone:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#region:-toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#-toString)
 
 ```java
         return String.join(",", items);
@@ -291,7 +296,7 @@ then its body alone:
 
 then the declaration with its annotation:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#region:+toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#+toString)
 
 ```java
     @Override
@@ -302,7 +307,7 @@ then the declaration with its annotation:
 
 then annotation and doc comment together:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#region:++toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#++toString)
 
 ```java
     /** Add one item to this cart. */
@@ -314,7 +319,7 @@ then annotation and doc comment together:
 
 The name may equally be a class-like declaration, nested or not:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#region:Line)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#Line)
 
 ```java
     public static class Line {
@@ -350,30 +355,93 @@ What the code rule does, and does not, promise:
 - The declaration is injected verbatim, indentation and all, so a nested method
   keeps the indentation it has in its file.
 
+#### Section paths and code anchors
+
+A slash-separated reference descends block by block, so a name can be reached
+by its location rather than only by its (possibly ambiguous) name. `Cart` names
+the class, `Cart/Line` the inner class inside it, and `Cart/Line/render` the
+method inside that. This is the nested `render`, not the outer class:
+
+[../test/fixtures/Example.java](../test/fixtures/Example.java#Cart/Line/render)
+
+```java
+        String render() {
+            return name + " x" + quantity;
+        }
+```
+
+Within a scope a segment may also match a block by what it **contains**. A
+statement whose header carries the name as a double-quoted string is a
+**condition literal**; a block whose opening is marked by a leading comment is a
+**comment anchor**. `Anchors.java` has both — a `dispatch` method with an
+`if ("getUsers".equals(...))`, and a `handler` method opened with `//getUsers`:
+
+[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#dispatch/getUsers)
+
+```java
+        if ("getUsers".equals(methodName)) {
+            System.out.println("users");
+        }
+```
+
+The trailing modifier selects how much of the match comes along; here the
+condition's body alone, without the `if (...) {` header or its closing brace:
+
+[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#dispatch/getUsers-)
+
+```java
+            System.out.println("users");
+```
+
+A name that is hard to reach by path can be reached by its anchor comment
+instead. This reaches the `handler` block by the `//getUsers` that opens it:
+
+[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#handler/getUsers)
+
+```java
+    public void handler() { //getUsers
+        System.out.println("anchor same line");
+    }
+```
+
+The modifier is written **after** the segment (`render-`); the older **leading**
+spelling (`-render`) still works and is canonicalised, which is what the
+modifier table above shows. Asking for two readings at once — a `+` against a
+`-`, as in `getUsers++-` — resolves to the wider one, and the tool warns and
+exits `1` rather than silently guessing:
+
+```text
+inject-examples: warn: doc/usage.md:320: [../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#dispatch/getUsers++-): "++" contradicts "-"; using "#dispatch/getUsers++"
+```
+
+The full grammar is in [section-matching.md](./section-matching.md), and the
+matcher is one dependency-free module, [lib/section.mjs](../lib/section.mjs)
+(documented in its own [lib/README.md](../lib/README.md)).
+
 ### The JSON rule
 
 JSON has no comments to hang a region directive on, so `.json` gets a rule of
-its own: `#region:<reference>` names one or more **keys**, comma-separated,
+its own: `#<reference>` names one or more **keys**, comma-separated,
 each a dotted path from the top level. The selected values are rendered as
 valid JSON — braces and all — in the order they are listed.
 
 Top-level keys and a nested one, from `package.json`:
 
-[../package.json](../package.json#region:name,version,scripts.test)
+[../package.json](../package.json#name,version,scripts.test)
 
 ```json
 {
   "name": "@hrg/inject-examples",
   "version": "1.1.0",
   "scripts": {
-    "test": "node --test test.mjs"
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check"
   }
 }
 ```
 
 An array keeps only the elements named, in order:
 
-[../package.json](../package.json#region:keywords.0,keywords.2)
+[../package.json](../package.json#keywords.0,keywords.2)
 
 ```json
 {
@@ -527,9 +595,9 @@ block should be stay strict in every mode. The README's
 The CLI is a thin wrapper over one function, `updateDocument(text, options)`;
 the library is pure and reads only through the `readFile` you hand it, which
 is why the test suite drives it in memory. The block below is the real test
-that drives the engine — a live marker into `test.mjs`'s region:
+that drives the engine — a live marker into `test.mjs`, by its section:
 
-[../test.mjs](../test.mjs#region:update-document-test)
+[../test.mjs](../test.mjs#update-document-test)
 
 ```javascript
 test('updateDocument rewrites every marker and is idempotent', () => {

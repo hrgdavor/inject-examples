@@ -19,11 +19,11 @@ your README cannot drift from the files your tests use.
 ```
 ````
 
-Prefix a fragment with `#region:<name>` to inject just one part of a larger
+Add a `#<name>` fragment to inject just one part of a larger
 file, so a sample can show a slice of a big source file without duplicating it:
 
 ```markdown
-[test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
+[test/fixtures/example.ts](./test/fixtures/example.ts#table)
 ```
 
 What the name may be depends on the file's type: a `#region` directive, a
@@ -87,7 +87,7 @@ A line is a marker when **all** of these hold:
 - The label names the same path as the destination, with or without a leading
   `./`.
 - The destination is a path, not a URL (no `http:`, `mailto:`, etc.).
-- Any fragment is either absent or exactly `#region:<name>`.
+- A fragment names the section to inject.
 
 So `[test/fixtures/after.md](./test/fixtures/after.md)` injects, while
 `[the docs](./doc/usage.md)` and `[install](./doc/usage.md#install)` are
@@ -120,7 +120,18 @@ between them:
 then
 
 ```markdown
-[test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
+[test/fixtures/example.ts](./test/fixtures/example.ts#table)
+```
+
+That pair, written live in this very README, is kept honest by the tool — the
+block below is not typed by hand; `inject-examples` rewrites it from the file:
+
+[test/fixtures/example.ts](./test/fixtures/example.ts#table)
+
+```ts
+| name | qty |
+| ---- | --- |
+| bolt | 12  |
 ```
 
 Any of the usual comment prefixes is accepted, in any language:
@@ -145,7 +156,7 @@ Rules:
 
 ## Region rules by file type
 
-`#region:<reference>` means "the piece of this file called `<reference>`". What
+`#<reference>` means "the piece of this file called `<reference>`". What
 the reference may say — and what comes back — is decided by the file's
 **type**: each type has one rule, and the reference is handed to the rule that
 claims the file's extension. Two rules ship; the library takes more.
@@ -160,7 +171,7 @@ function or class-like declaration (`class`, `interface`, `enum`, `record`,
 code needs no region comments added to it:
 
 ````markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#region:++toString)
+[test/fixtures/Example.java](./test/fixtures/Example.java#++toString)
 
 ```java
     /** Add one item to this cart. */
@@ -176,10 +187,10 @@ with it:
 
 | Reference | Injected text |
 | --- | --- |
-| `#region:add` | the declaration: signature through closing brace |
-| `#region:-add` | the body only, without the signature |
-| `#region:+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
-| `#region:++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
+| `#add` | the declaration: signature through closing brace |
+| `#-add` | the body only, without the signature |
+| `#+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| `#++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
 
 A declaration is injected verbatim, indentation and all. Region names must be
 unique, and so must declaration names — two methods named `add` are an error,
@@ -193,6 +204,61 @@ inside a string cannot end a body. Braced languages — Java, C#, C/C++, JS/TS,
 Go, Rust, PHP, Kotlin, Swift — are followed by their braces; Python and Ruby by
 indentation.
 
+#### Section paths and code anchors
+
+A name is hard to hit when a file has two methods called `render`. The code
+reference is therefore a **path**: slash-separated segments, each naming a block
+*inside* the one before it, so `Cart/Line/render` means the `render` method of
+the `Line` class of the `Cart` class. Only the last segment selects the text to
+inject; the ones before it are scopes to descend:
+
+````markdown
+[test/fixtures/Example.java](./test/fixtures/Example.java#Cart/Line/render)
+
+```java
+        String render() {
+            return name + " x" + quantity;
+        }
+```
+````
+
+Inside a scope a segment may also be matched by what a block **contains**, not
+just what it declares:
+
+- a **condition literal** — a statement whose header carries the name as a
+  double-quoted string. `dispatch/getUsers` selects the `if ("getUsers".equals(…))`
+  block, braces and all:
+
+````markdown
+[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#dispatch/getUsers)
+
+```java
+        if ("getUsers".equals(methodName)) {
+            System.out.println("users");
+        }
+```
+````
+
+- a **comment anchor** — a block whose opening is marked by a leading comment.
+  The block in the fixture opens `public void handler() { //getUsers`, so
+  `handler/getUsers` names it by that comment.
+
+The scope modifier is **trailing** (`render-`, `render+`, `render++`); the old
+leading spelling (`-render`, `+render`, `++render`) still works and is
+canonicalised. A reference that asks for two readings at once — a `+` against a
+`-`, as in `getUsers++-` — resolves to the wider reading, but the CLI warns and
+exits 1, because a contradiction is almost always a typo:
+
+```text
+inject-examples: warn: doc/usage.md:42: [a.java](./a.java#getUsers++-): "++" contradicts "-"; using "#getUsers++"
+```
+
+The full grammar — every accepted form, every error and its exact message — is
+spelled out in [doc/section-matching.md](./doc/section-matching.md). Matching
+lives in a single dependency-free module,
+[lib/section.mjs](./lib/section.mjs), which other projects can import directly
+(see [lib/README.md](./lib/README.md)).
+
 ### JSON — its own rule
 
 JSON has no comments to hang a region directive on, so `.json` files get a rule
@@ -201,7 +267,7 @@ written as dotted paths from the top level, and the selection is rendered as
 valid JSON — braces and all:
 
 ````markdown
-[package.json](./package.json#region:name,scripts.test)
+[package.json](./package.json#name,scripts.test)
 
 ```json
 {
@@ -550,13 +616,19 @@ Only `cli.mjs`, `index.mjs`, `README.md` and `LICENSE` ship (`files` in
 
 ## The Zig port
 
+> **Paused.** The Zig port and the differential harness (`tools/compare-zig.mjs`)
+> are paused while file-section matching is formalised in JavaScript; the port
+> tracks an earlier revision of the syntax and is not currently verified against
+> the current one. Resume with its own plan once `doc/section-matching.md` is
+> settled.
+
 **The JavaScript implementation is the source of truth.** `index.mjs` and
 `cli.mjs` define what this tool does, and their author is more experienced in
 JavaScript, so the Zig code is the one that moves when the two disagree.
 
 > The Zig port and the differential harness (`tools/compare-zig.mjs`) are
 > **paused** while file-section matching is formalised in JavaScript. The port
-> tracks an earlier revision of the `#region:<reference>` syntax and is not
+> tracks an earlier revision of the `#<reference>` fragment syntax and is not
 > currently verified against the current one — see
 > [doc/section-matching.md](./doc/section-matching.md). Porting resumes with its
 > own plan, written after the JavaScript syntax is settled.
