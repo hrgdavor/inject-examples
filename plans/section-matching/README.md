@@ -82,12 +82,12 @@ matching-language cases the resolver may later delegate to.
 | 2 spec document | ✅ done |
 | 3 fixtures + failing tests | ✅ done |
 | 4 parse layer | ✅ done |
-| 5 scanner layer | ⛔ not started |
+| 5 scanner layer | ✅ done |
 | 6 resolve layer | ⛔ not started |
 | 7 wire into index | ⛔ not started |
 | 8 vectors | ⛔ not started |
 | 9 docs + settle | ⛔ not started |
 
-Working tree has steps 1–4 committed; step 5 is next. The plan set
+Working tree has steps 1–5 committed; step 6 is next. The plan set
 itself is complete: every step is written, each cites the contract rather than restating it,
 and each carries its own acceptance checklist and verification commands.

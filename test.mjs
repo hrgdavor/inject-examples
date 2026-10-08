@@ -418,7 +418,7 @@ test('section-matching: contradictory modifiers resolve to the dominant reading'
 // parseReference unit tests (step 4 of plan/section-matching)
 // ---------------------------------------------------------------------------
 
-import { parseReference, isSingleSegment, finalSegment, SectionReferenceError } from './lib/section.mjs';
+import { parseReference, isSingleSegment, finalSegment, SectionReferenceError, masked, commentsIn, scanBlocks } from './lib/section.mjs';
 
 // Group 1: canonicalisation of single-segment references
 test('parseReference: single-segment canonicalisation', () => {
@@ -550,6 +550,184 @@ test('parseReference: error messages quote raw reference', () => {
         () => parseReference('Cart/-Line/render'),
         /"#region:Cart\/-Line\/render"/
     );
+});
+
+// ---------------------------------------------------------------------------
+// Scanner layer — mask pass and block scanner (step 5 of plan/section-matching)
+// ---------------------------------------------------------------------------
+
+// The mask blanks comments and string literals to spaces but preserves
+// length and every newline offset.
+test('masked preserves length and newline offsets', () => {
+    const tricky = [
+        'class X {',           // 0
+        '    String s = "}";', // 1 — a brace in a string
+        '    /* } */',         // 2 — a brace in a block comment
+        '    // }',            // 3 — a brace in a line comment
+        "    '#!/bin/sh',",    // 4 — '#' starts a comment (not before '[')
+        '    let t = "a // b";', // 5 — '//' inside a string
+        '    let u = "\\`x";',  // 6 — escaped backtick inside a string
+        '    const v = `}',     // 7 — unterminated template literal
+        '}',                    // 8
+        '/* never closed',      // 9 — unterminated block comment runs to EOF
+    ].join('\n');
+    const m = masked(tricky);
+    assert.equal(m.length, tricky.length);
+    for (let i = 0; i < tricky.length; i++) {
+        if (tricky[i] === '\n') assert.equal(m[i], '\n', `newline at offset ${i}`);
+    }
+});
+
+// Braces, `region` words and `//` inside strings or comments must not survive
+// the mask, so they cannot affect the bracket structure it produces.
+test('masked blanks strings and comments, not structure', () => {
+    assert.equal(masked('String s = "}";'),  'String s =    ;');   // quotes and brace blanked
+    assert.equal(masked('/* } */'),          '       ');           // 7 chars
+    assert.equal(masked('// }'),             '    ');              // 4 chars
+    assert.equal(masked('"a // b"'),         '        ');          // 8 chars, // inside string
+});
+
+test('masked keeps Rust attributes but blanks # comments', () => {
+    assert.equal(masked('#[derive(Foo)]'), '#[derive(Foo)]'); // `#` before `[` survives
+    assert.equal(masked('# comment'), '         ');           // 9 chars, `#` comment blanked
+});
+
+test('masked handles triple-quoted strings', () => {
+    assert.equal(masked('"""a}b"""'), '         ');           // 9 chars, all blanked
+});
+
+// The comment scanner reads the original text and does not report comment
+// markers that sit inside string literals.
+test('commentsIn finds real comments, not those in strings', () => {
+    const c = commentsIn('x = "//not a comment"; // real');
+    assert.equal(c.length, 1);
+    assert.equal(c[0].text.trim(), 'real');
+});
+
+// The block scanner, on a fixture with a nested class and a constructor and
+// a method: children are the blocks inside each body, in source order.
+test('scanBlocks: nested class and its members', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const s = scanBlocks(read('test/fixtures/Example.java'));
+    const cart = s.blocks.find((b) => b.kind === 'class' && b.name === 'Cart');
+    assert.equal(cart.openLine, 6);
+    assert.equal(cart.closeLine, 29);
+    const line = s.blocks.find((b) => b.kind === 'class' && b.name === 'Line');
+    assert.ok(line.parent === cart, 'Line is inside Cart');
+    assert.equal(line.openLine, 16);
+    assert.equal(line.closeLine, 28);
+    const render = s.blocks.find((b) => b.kind === 'method' && b.name === 'render');
+    assert.ok(render.parent === line, 'render is inside Line');
+    assert.equal(render.openLine, 25);
+    assert.equal(render.closeLine, 27);
+});
+
+// Body-less members (an interface method) are present as a name with no
+// injectable span; a same-name method with a body has a span.
+test('scanBlocks: body-less interface method has no span', () => {
+    const s = scanBlocks('interface I {\n  void bar();\n  void baz() {\n    x();\n  }\n}');
+    const bar = s.blocks.find((b) => b.name === 'bar');
+    assert.ok(bar, 'bar is present as a name');
+    assert.equal(bar.kind, 'method');
+    assert.equal(bar.openLine, null, 'bar has no body');
+    assert.equal(bar.closeLine, null);
+    const baz = s.blocks.find((b) => b.name === 'baz');
+    assert.equal(baz.openLine, 2);
+    assert.equal(baz.closeLine, 4);
+});
+
+// Allman brace on the next line, and the two arrow forms.
+test('scanBlocks: Allman brace, arrow body, expression arrow', () => {
+    const allman = scanBlocks('class A {\n  void run()\n  {\n    go();\n  }\n}');
+    const run = allman.blocks.find((b) => b.name === 'run');
+    assert.equal(run.declLine, 1);
+    assert.equal(run.openLine, 2);
+    assert.equal(run.closeLine, 4);
+    const arrow = scanBlocks('const sub = (a, b) => {\n  return a - b;\n};');
+    const sub = arrow.blocks.find((b) => b.name === 'sub');
+    assert.equal(sub.kind, 'method');
+    assert.equal(sub.openLine, 0);
+    assert.equal(sub.closeLine, 2);
+    assert.equal(sub.expression, undefined, 'a braced arrow is not expression-bodied');
+    const expr = scanBlocks('const add = (a, b) => a + b;');
+    const add = expr.blocks.find((b) => b.name === 'add');
+    assert.equal(add.kind, 'method');
+    assert.notEqual(add.expression, undefined, 'an expression arrow records the body offset');
+});
+
+// Indented blocks (Python/Ruby): no brace, body delimited by indentation.
+test('scanBlocks: indented (Python) method', () => {
+    const s = scanBlocks('class Foo:\n    def bar(self):\n        return 1\n    def baz(self):\n        return 2');
+    const foo = s.blocks.find((b) => b.name === 'Foo');
+    assert.equal(foo.indented, true);
+    const bar = s.blocks.find((b) => b.name === 'bar');
+    assert.equal(bar.indented, true);
+    assert.equal(bar.declLine, 1);
+});
+
+// Condition literals (matcher 5): a string literal on a statement header,
+// read from the code not a comment; adjacent literals join (token paste).
+test('scanBlocks: condition literals on statement headers', () => {
+    const s = scanBlocks('class T {\n  void f(Object m) {\n    if ("getUsers".equals(m)) {\n      h();\n    }\n    while ("tick".equals(c)) {\n      t();\n    }\n    String unused = "getUsers";\n  }\n}');
+    const ifStmt = s.blocks.find((b) => b.kind === 'statement' && b.declLine === 2);
+    assert.deepEqual(ifStmt.conditions.pasted, ['getUsers']);
+    const whileStmt = s.blocks.find((b) => b.kind === 'statement' && b.declLine === 5);
+    assert.deepEqual(whileStmt.conditions.pasted, ['tick']);
+    // A literal on a non-statement line yields nothing: no statement block
+    // there, so `getUsers` on the `String unused` line is not reported.
+    assert.equal(s.blocks.find((b) => b.kind === 'statement' && b.declLine === 8), undefined);
+});
+
+test('scanBlocks: token-pasted adjacent literals', () => {
+    const s = scanBlocks('void f() {\n  if ("get" "Users".equals(m)) {\n    g();\n  }\n}');
+    const stmt = s.blocks.find((b) => b.kind === 'statement');
+    assert.deepEqual(stmt.conditions.exact, ['get', 'Users']);
+    assert.deepEqual(stmt.conditions.pasted, ['getUsers']);
+});
+
+// A literal inside a comment is not a condition literal.
+test('scanBlocks: comment string is not a condition literal', () => {
+    const s = scanBlocks('void f() {\n  // if ("hidden".equals(m)) {\n  if ("shown".equals(m)) {\n    g();\n  }\n}');
+    const stmts = s.blocks.filter((b) => b.kind === 'statement');
+    assert.equal(stmts.length, 1, 'only the real if opens a block');
+    assert.deepEqual(stmts[0].conditions.pasted, ['shown']);
+});
+
+// Comment anchors (matcher 6): same-line and next-line, `//` and `/* */`,
+// `#region` never anchors, a non-first comment never anchors.
+test('scanBlocks: comment anchors', () => {
+    const s = scanBlocks('class A {\n  void one() { //getUsers\n    x();\n  }\n  void two() {\n    //getOrders\n    y();\n  }\n  void three() {\n    /*star*/\n    z();\n  }\n}');
+    assert.equal(s.blocks.find((b) => b.name === 'one').anchor.name, 'getUsers');
+    assert.equal(s.blocks.find((b) => b.name === 'one').anchor.line, 1);
+    assert.equal(s.blocks.find((b) => b.name === 'two').anchor.name, 'getOrders');
+    assert.equal(s.blocks.find((b) => b.name === 'two').anchor.line, 5);
+    assert.equal(s.blocks.find((b) => b.name === 'three').anchor.name, 'star');
+});
+
+test('scanBlocks: #region line is not an anchor; non-first comment is not an anchor', () => {
+    const s = scanBlocks('class A {\n  void region() {\n    // #region foo\n    x();\n  }\n  void late() {\n    code();\n    //notFirst\n    y();\n  }\n}');
+    assert.equal(s.blocks.find((b) => b.name === 'region').anchor, null);
+    assert.equal(s.blocks.find((b) => b.name === 'late').anchor, null);
+});
+
+test('scanBlocks: the anchor name is the whole trimmed comment body', () => {
+    const s = scanBlocks('class A {\n  void one() {\n    // getUsers\n    x();\n  }\n  void two() {\n    // getUsers and more\n    x();\n  }\n}');
+    assert.equal(s.blocks.find((b) => b.name === 'one').anchor.name, 'getUsers');
+    assert.equal(s.blocks.find((b) => b.name === 'two').anchor, null, 'multi-word body is not an anchor');
+});
+
+// Region directives: example.ts has top-level `table` and `config` regions,
+// the injected text being the lines strictly between the directives.
+test('scanBlocks: region directives on example.ts', () => {
+    const read = fileReader(dirname(fileURLToPath(import.meta.url)));
+    const s = scanBlocks(read('test/fixtures/example.ts'));
+    const byName = {};
+    for (const r of s.regions) byName[r.name] = r;
+    assert.equal(s.regions.length, 2);
+    assert.deepEqual([byName.table.startLine, byName.table.endLine], [0, 4]);
+    assert.deepEqual([byName.config.startLine, byName.config.endLine], [6, 8]);
+    const tableText = read('test/fixtures/example.ts').replace(/\r\n/g, '\n').split('\n').slice(byName.table.startLine + 1, byName.table.endLine).join('\n');
+    assert.match(tableText, /\| name \| qty \|/);
 });
 
 // ---------------------------------------------------------------------------
