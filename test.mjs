@@ -2110,3 +2110,44 @@ test('every link in the docs is functional', () => {
         }
     }
 });
+
+// ---------------------------------------------------------------------------
+// Golden vectors — assert the committed JSON against a live implementation
+// call (step 8 of plan/section-matching). `--check` catches "the implementation
+// changed, the file did not"; this catches "someone relaxed a case so --check
+// would still pass".
+// ---------------------------------------------------------------------------
+test('section vectors match a live implementation call', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const vectors = JSON.parse(readFileSync(join(root, 'test/vectors/section-vectors.json'), 'utf8'));
+    assert.ok(Array.isArray(vectors) && vectors.length >= 50, 'a substantial vector set');
+
+    for (const c of vectors) {
+        let ref = null;
+        let parseErr = null;
+        try { ref = parseReference(c.reference); } catch (e) { parseErr = e; }
+
+        // Warnings are the parser's own; compare the projected fields.
+        const liveWarning = ref && ref.warning
+            ? { kind: ref.warning.kind, kept: ref.warning.kept, dropped: ref.warning.dropped }
+            : null;
+        assert.deepEqual(c.warning, liveWarning, `${c.name}: warning`);
+
+        if (parseErr) {
+            assert.equal(c.text, null, `${c.name}: a grammar error has no text`);
+            assert.ok(c.error !== null, `${c.name}: a grammar error records its message`);
+            assert.equal(c.error, parseErr.message, `${c.name}: grammar error message`);
+            continue;
+        }
+        // Parse-success vectors carry a resolution result (text or error) or
+        // are parse-only probes (both null) whose value is the parsed warning.
+        if (c.text !== null) {
+            assert.equal(c.error, null, `${c.name}: exactly one of text/error`);
+            assert.equal(resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference), c.text,
+                `${c.name}: text`);
+        } else if (c.error !== null) {
+            assert.throws(() => resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference),
+                (e) => { assert.equal(e.message, c.error, `${c.name}: error message`); return true; });
+        }
+    }
+});

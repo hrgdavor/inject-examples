@@ -45,7 +45,8 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node --test test.mjs",
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check",
+    "vectors": "node tools/section-vectors.mjs",
     "compare:zig": "node tools/compare-zig.mjs"
   }
 }
