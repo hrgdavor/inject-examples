@@ -550,6 +550,12 @@ Only `cli.mjs`, `index.mjs`, `README.md` and `LICENSE` ship (`files` in
 
 ## The Zig port
 
+> **Paused.** The Zig port and the differential harness (`tools/compare-zig.mjs`)
+> are paused while file-section matching is formalised in JavaScript; the port
+> tracks an earlier revision of the syntax and is not currently verified against
+> the current one. Resume with its own plan once `doc/section-matching.md` is
+> settled.
+
 **The JavaScript implementation is the source of truth.** `index.mjs` and
 `cli.mjs` define what this tool does, and their author is more experienced in
 JavaScript, so the Zig code is the one that moves when the two disagree.
