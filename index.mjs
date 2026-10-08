@@ -19,6 +19,7 @@
 
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { SectionReferenceError } from './lib/section.mjs';
 
 /** A fence is a line starting with this; three backticks, per CommonMark. */
 export const FENCE = '```';

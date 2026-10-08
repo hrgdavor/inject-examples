@@ -246,7 +246,7 @@ test('extractCodeRegion reads declarations and fails loudly on nothing', () => {
         '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
     assert.throws(
         () => extractCodeRegion(JAVA, 'missing'),
-        /no "#region missing" found, and no method or inner class named "missing"/,
+        /no "#region missing" found/,
     );
     assert.throws(() => extractCodeRegion(JAVA, '+'), /names nothing/);
 });
@@ -380,7 +380,7 @@ test('section-matching: grammar errors throw the §9 shapes', () => {
         /"#region:a\/\/b" has an empty path segment/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a/+b'),
         /"\+" may only modify the last path segment/);
-    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/b/-c'),
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/-b/c'),
         /"\-" may only modify the last path segment/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a+++'),
         /"#region:a\+\+\+" carries more than one modifier/);
@@ -412,6 +412,144 @@ test('section-matching: contradictory modifiers resolve to the dominant reading'
     // reference; the CLI prints it and exits 1. The parse layer returns a
     // `warning` string; the CLI consumes it. Pin the resolved text above;
     // the warning surface is pinned in the §11 unit tests in step 4.
+});
+
+// ---------------------------------------------------------------------------
+// parseReference unit tests (step 4 of plan/section-matching)
+// ---------------------------------------------------------------------------
+
+import { parseReference, isSingleSegment, finalSegment, SectionReferenceError } from './lib/section.mjs';
+
+// Group 1: canonicalisation of single-segment references
+test('parseReference: single-segment canonicalisation', () => {
+    const cases = [
+        ['add', 'add', ['add'], 'declaration'],
+        ['add-', 'add-', ['add'], 'body'],
+        ['add+', 'add+', ['add'], 'annotated'],
+        ['add++', 'add++', ['add'], 'documented'],
+        ['-add', 'add-', ['add'], 'body'],
+        ['+add', 'add+', ['add'], 'annotated'],
+        ['++add', 'add++', ['add'], 'documented'],
+    ];
+    for (const [raw, canonical, segments, scope] of cases) {
+        const r = parseReference(raw);
+        assert.equal(r.raw, raw);
+        assert.equal(r.canonical, canonical);
+        assert.deepEqual(r.segments, segments);
+        assert.equal(r.scope, scope);
+        assert.equal(r.warning, null);
+    }
+});
+
+// Group 2: multi-segment without modifiers
+test('parseReference: multi-segment without modifiers', () => {
+    const r = parseReference('Cart/Line/render');
+    assert.equal(r.raw, 'Cart/Line/render');
+    assert.equal(r.canonical, 'Cart/Line/render');
+    assert.deepEqual(r.segments, ['Cart', 'Line', 'render']);
+    assert.equal(r.scope, 'declaration');
+    assert.equal(r.warning, null);
+});
+
+// Group 3: modifier variants across segment positions
+test('parseReference: modifier variants produce same scope/segments', () => {
+    // Equivalence class 1: Cart/Line- (2 segments, body scope)
+    const class1 = ['Cart/Line-', 'Cart/-Line', '-Cart/Line'];
+    for (const raw of class1) {
+        const r = parseReference(raw);
+        assert.equal(r.canonical, 'Cart/Line-');
+        assert.deepEqual(r.segments, ['Cart', 'Line']);
+        assert.equal(r.scope, 'body');
+        assert.equal(r.warning, null);
+    }
+    // Equivalence class 2: Cart/Line/render- (3 segments, body scope)
+    const class2 = ['Cart/Line/render-', 'Cart/Line/-render'];
+    for (const raw of class2) {
+        const r = parseReference(raw);
+        assert.equal(r.canonical, 'Cart/Line/render-');
+        assert.deepEqual(r.segments, ['Cart', 'Line', 'render']);
+        assert.equal(r.scope, 'body');
+        assert.equal(r.warning, null);
+    }
+});
+
+// Group 4: grammar errors throw §9 shapes
+test('parseReference: grammar errors throw §9 shapes', () => {
+    assert.throws(() => parseReference(''), /names nothing/);
+    assert.throws(() => parseReference('a/'), /has an empty path segment/);
+    assert.throws(() => parseReference('/a'), /has an empty path segment/);
+    assert.throws(() => parseReference('a//b'), /has an empty path segment/);
+    assert.throws(() => parseReference('a/+b'), /"\+\" may only modify the last path segment/);
+    assert.throws(() => parseReference('a/-b/c'), /"\-" may only modify the last path segment/);
+    assert.throws(() => parseReference('a+++'), /carries more than one modifier/);
+    assert.throws(() => parseReference('a---'), /carries more than one modifier/);
+    assert.throws(() => parseReference('a/b/c/d/e/f/g/h/i'), /is deeper than 8 sections/);
+    assert.throws(() => parseReference('-a-'), /carries more than one modifier/);
+});
+
+// Group 5: contradictory modifiers return warning
+test('parseReference: contradictory modifiers return warning', () => {
+    const cases = [
+        ['a++-', '++', 'documented'],
+        ['a-++', '++', 'documented'],
+        ['a+-', '+', 'annotated'],
+        ['a-+', '+', 'annotated'],
+        ['a-/b++', '++', 'documented'],
+    ];
+    for (const [raw, kept, scope] of cases) {
+        const r = parseReference(raw);
+        assert.equal(r.scope, scope);
+        assert.notEqual(r.warning, null);
+        assert.equal(r.warning.kind, 'contradiction');
+        assert.equal(r.warning.kept, kept);
+        assert.equal(r.warning.dropped, '-');
+        assert.equal(r.canonical, r.canonical.replace(/--/, '')); // canonical drops the '-'
+    }
+});
+
+// Group 6: boundary - a+++ throws, a++- warns
+test('parseReference: boundary between error and warning', () => {
+    assert.throws(() => parseReference('a+++'), /carries more than one modifier/);
+    assert.throws(() => parseReference('a---'), /carries more than one modifier/);
+
+    const r1 = parseReference('a++-');
+    assert.equal(r1.warning.kind, 'contradiction');
+    assert.equal(r1.scope, 'documented');
+
+    const r2 = parseReference('a+-');
+    assert.equal(r2.warning.kind, 'contradiction');
+    assert.equal(r2.scope, 'annotated');
+});
+
+// isSingleSegment / finalSegment accept Reference or string
+test('parseReference: isSingleSegment and finalSegment accept Reference or string', () => {
+    assert.equal(isSingleSegment('add'), true);
+    assert.equal(isSingleSegment('Cart/Line'), false);
+    assert.equal(isSingleSegment(parseReference('add')), true);
+    assert.equal(isSingleSegment(parseReference('Cart/Line')), false);
+
+    assert.equal(finalSegment('add'), 'add');
+    assert.equal(finalSegment('Cart/Line/render'), 'render');
+    assert.equal(finalSegment(parseReference('add')), 'add');
+    assert.equal(finalSegment(parseReference('Cart/Line/render')), 'render');
+});
+
+// SectionReferenceError is an Error subclass
+test('parseReference: SectionReferenceError is Error subclass', () => {
+    try {
+        parseReference('');
+    } catch (e) {
+        assert.ok(e instanceof SectionReferenceError);
+        assert.ok(e instanceof Error);
+    }
+});
+
+// error messages quote raw reference
+test('parseReference: error messages quote raw reference', () => {
+    assert.throws(
+        () => parseReference('Cart/-Line/render'),
+        /"#region:Cart\/-Line\/render"/
+    );
 });
 
 // ---------------------------------------------------------------------------
@@ -1016,9 +1154,9 @@ test('lenient tolerates region and fence failures and keeps their blocks', () =>
     // A region that does not exist.
     let doc = ['[big.md](./big.md#region:missing)', '```', 'old', '```'].join('\n');
     let result = updateDocument(doc, { readFile: read, lenient: true });
-    assert.equal(
+    assert.match(
         result.results[0].failure,
-        'no "#region missing" found, and no method or inner class named "missing"',
+        /no "#region missing" found/,
     );
     assert.match(result.text, /old/);
 

@@ -78,16 +78,16 @@ matching-language cases the resolver may later delegate to.
 
 | Step | Status |
 | --- | --- |
-| 1 freeze porting | ⛔ not started |
-| 2 spec document | ⛔ not started |
-| 3 fixtures + failing tests | ⛔ not started |
-| 4 parse layer | ⛔ not started |
+| 1 freeze porting | ✅ done |
+| 2 spec document | ✅ done |
+| 3 fixtures + failing tests | ✅ done |
+| 4 parse layer | ✅ done |
 | 5 scanner layer | ⛔ not started |
 | 6 resolve layer | ⛔ not started |
 | 7 wire into index | ⛔ not started |
 | 8 vectors | ⛔ not started |
 | 9 docs + settle | ⛔ not started |
 
-Working tree is clean at `bc03bfe`; nothing in this plan set is implemented yet. The plan set
+Working tree has steps 1–4 committed; step 5 is next. The plan set
 itself is complete: every step is written, each cites the contract rather than restating it,
 and each carries its own acceptance checklist and verification commands.
