@@ -374,19 +374,19 @@ test('section-matching: anchors and condition literals on Anchors.java', () => {
 test('section-matching: grammar errors throw the §9 shapes', () => {
     assert.throws(() => extractCodeRegion(EXAMPLE, ''), /names nothing/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a/'),
-        /"#region:a\/" has an empty path segment/);
+        /"#a\/" has an empty path segment/);
     assert.throws(() => extractCodeRegion(EXAMPLE, '/a'),
-        /"#region:\/a" has an empty path segment/);
+        /"#\/a" has an empty path segment/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a//b'),
-        /"#region:a\/\/b" has an empty path segment/);
+        /"#a\/\/b" has an empty path segment/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a/+b'),
         /"\+" may only modify the last path segment/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a/-b/c'),
         /"\-" may only modify the last path segment/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a+++'),
-        /"#region:a\+\+\+" carries more than one modifier/);
+        /"#a\+\+\+" carries more than one modifier/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a---'),
-        /"#region:a---" carries more than one modifier/);
+        /"#a---" carries more than one modifier/);
     assert.throws(
         () => extractCodeRegion(EXAMPLE, 'a/b/c/d/e/f/g/h/i'),
         /is deeper than 8 sections/,
@@ -550,7 +550,7 @@ test('parseReference: SectionReferenceError is Error subclass', () => {
 test('parseReference: error messages quote raw reference', () => {
     assert.throws(
         () => parseReference('Cart/-Line/render'),
-        /"#region:Cart\/-Line\/render"/
+        /"#Cart\/-Line\/render"/
     );
 });
 
@@ -920,20 +920,20 @@ test('planSection: contradiction resolves to the dominant reading with a warning
 
 test('planMarker carries the section warning for a contradiction', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
-    const plan = planMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:getUsers++-)'), read);
+    const plan = planMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers++-)'), read);
     assert.equal(plan.text, resolveSection(ANCHORS, 'getUsers++-'));
     assert.ok(plan.warning !== null, 'warning surfaced through planMarker');
     assert.equal(plan.warning.kind, 'contradiction');
     assert.match(plan.warning.message, /"\+\+" contradicts "-"/);
-    assert.match(plan.warning.message, /using "#region:getUsers\+\+"/);
+    assert.match(plan.warning.message, /using "#getUsers\+\+"/);
     // resolveMarker stays a string and drops the warning.
-    assert.equal(typeof resolveMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:getUsers)'), read), 'string');
+    assert.equal(typeof resolveMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers)'), read), 'string');
 });
 
 test('updateDocument reports a warning and stays idempotent', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
     const doc = [
-        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:getUsers++-)',
+        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers++-)',
         '```java',
         'stale',
         '```',
@@ -953,7 +953,7 @@ test('updateDocument reports a warning and stays idempotent', () => {
 test('updateDocument: an over-concrete reference is an error, not a warning', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
     const doc = [
-        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:getUsers+++)',
+        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers+++)',
         '```java',
         'x',
         '```',
@@ -978,7 +978,7 @@ test('CLI: a contradiction warns and forces exit 1 even when the block is fresh'
     writeFileSync(join(dir, 'C.java'), java + '\n');
     const docPath = join(dir, 'doc.md');
     writeFileSync(docPath, [
-        '[C.java](./C.java#region:getUsers++-)',
+        '[C.java](./C.java#getUsers++-)',
         '',
         '```java',
         'stale',
@@ -1000,11 +1000,11 @@ test('CLI: a contradiction warns and forces exit 1 even when the block is fresh'
     assert.ok(line, `warning line printed, saw: ${JSON.stringify(captured)}`);
     assert.ok(line.startsWith('inject-examples: warn:'), 'same shape as a failure warning');
     assert.ok(line.includes(':1:'), 'reports the marker line (1-based)');
-    assert.ok(line.includes('#region:getUsers++-'), 'quotes the raw marker');
+    assert.ok(line.includes('#getUsers++-'), 'quotes the raw marker');
     assert.ok(line.includes('"++" contradicts "-"'), 'the contradiction message');
-    assert.ok(line.includes('using "#region:getUsers++"'), 'the canonical reference');
+    assert.ok(line.includes('using "#getUsers++"'), 'the canonical reference');
     assert.match(line, /"\+\+" contradicts "-"/);
-    assert.match(line, /using "#region:getUsers\+\+"/);
+    assert.match(line, /using "#getUsers\+\+"/);
     // --check with nothing stale but a warning still returns 1 (asserted above),
     // and the document was written by the first (non-check) run.
     assert.match(readFileSync(docPath, 'utf8'), /if \("getUsers"\.equals/);
@@ -1071,11 +1071,11 @@ test('resolveMarker resolves a region by the file type', () => {
     const files = { 'data.json': JSON_DOC, 'code.ts': 'const add = (a) => a;\n' };
     const read = reader(files);
     assert.equal(
-        resolveMarker(parseMarker('[data.json](./data.json#region:name)'), read),
+        resolveMarker(parseMarker('[data.json](./data.json#name)'), read),
         '{\n  "name": "acme"\n}',
     );
     assert.equal(
-        resolveMarker(parseMarker('[code.ts](./code.ts#region:add)'), read),
+        resolveMarker(parseMarker('[code.ts](./code.ts#add)'), read),
         'const add = (a) => a;',
     );
     assert.equal(
@@ -1087,7 +1087,7 @@ test('resolveMarker resolves a region by the file type', () => {
 
 test('updateDocument injects a JSON selection and is idempotent', () => {
     const files = { 'data.json': JSON_DOC };
-    const doc = ['[data.json](./data.json#region:scripts)', '```', 'stale', '```'].join('\n');
+    const doc = ['[data.json](./data.json#scripts)', '```', 'stale', '```'].join('\n');
     const read = reader(files);
 
     const first = updateDocument(doc, { readFile: read });
@@ -1101,7 +1101,7 @@ test('updateDocument injects a JSON selection and is idempotent', () => {
 
 test('updateDocument takes a custom rule set', () => {
     const files = { 'notes.txt': 'one\n-- eight --\ntwo\n' };
-    const doc = ['[notes.txt](./notes.txt#region:eight)', '```', 'stale', '```'].join('\n');
+    const doc = ['[notes.txt](./notes.txt#eight)', '```', 'stale', '```'].join('\n');
     const custom = {
         name: 'dashes',
         extensions: ['txt'],
@@ -1121,23 +1121,24 @@ test('parseMarker reads a whole-file marker', () => {
     assert.deepEqual(parseMarker('[fixtures/a.md](./fixtures/a.md)'), {
         raw: '[fixtures/a.md](./fixtures/a.md)',
         path: 'fixtures/a.md',
-        region: null,
+        reference: null,
     });
     assert.deepEqual(parseMarker('[fixtures/a.md](fixtures/a.md)')?.path, 'fixtures/a.md');
     assert.deepEqual(parseMarker('  [a.md](./a.md)  ')?.raw, '[a.md](./a.md)', 'outer space is trimmed');
 });
 
 test('parseMarker reads a region marker', () => {
-    assert.deepEqual(parseMarker('[src/app.ts](./src/app.ts#region:table)'), {
-        raw: '[src/app.ts](./src/app.ts#region:table)',
+    assert.deepEqual(parseMarker('[src/app.ts](./src/app.ts#table)'), {
+        raw: '[src/app.ts](./src/app.ts#table)',
         path: 'src/app.ts',
-        region: 'table',
+        reference: 'table',
     });
 });
 
 test('parseMarker leaves ordinary links alone', () => {
     assert.equal(parseMarker('[the docs](./docs/README.md)'), null, 'label must name the path');
-    assert.equal(parseMarker('[a.md](./a.md#install)'), null, 'only `region:` is special');
+    assert.deepEqual(parseMarker('[a.md](./a.md#install)'), { raw: '[a.md](./a.md#install)', path: 'a.md', reference: 'install' }, 'any fragment names a section');
+    assert.equal(parseMarker('[install](#install)'), null, 'an in-page link (no path) is navigation, not a marker');
     assert.equal(parseMarker('[https://x.dev](https://x.dev)'), null, 'a URL is not a path');
     assert.equal(parseMarker('[a.md](./a.md) and more'), null, 'the line must be only the link');
     assert.equal(parseMarker('plain text'), null);
@@ -1168,7 +1169,7 @@ test('resolveMarker reads a whole file or one region of it', () => {
     const read = reader(files);
     assert.equal(resolveMarker(parseMarker('[whole.md](./whole.md)'), read), 'one\ntwo');
     assert.equal(
-        resolveMarker(parseMarker('[big.md](./big.md#region:table)'), read),
+        resolveMarker(parseMarker('[big.md](./big.md#table)'), read),
         '| a |',
     );
 });
@@ -1290,7 +1291,7 @@ const DOC = [
     '',
     'Some prose.',
     '',
-    '[fixtures/big.md](./fixtures/big.md#region:table)',
+    '[fixtures/big.md](./fixtures/big.md#table)',
     '',
     '```markdown',
     'stale region',
@@ -1610,7 +1611,7 @@ test('lenient tolerates region and fence failures and keeps their blocks', () =>
     const read = reader(files);
 
     // A region that does not exist.
-    let doc = ['[big.md](./big.md#region:missing)', '```', 'old', '```'].join('\n');
+    let doc = ['[big.md](./big.md#missing)', '```', 'old', '```'].join('\n');
     let result = updateDocument(doc, { readFile: read, lenient: true });
     assert.match(
         result.results[0].failure,
@@ -2004,11 +2005,11 @@ test('the region markers in index.mjs and test.mjs resolve to real code', () => 
     const root = dirname(fileURLToPath(import.meta.url));
     const read = fileReader(root);
 
-    const parse = resolveMarker(parseMarker('[index.mjs](index.mjs#region:parseMarker)'), read);
+    const parse = resolveMarker(parseMarker('[index.mjs](index.mjs#parseMarker)'), read);
     assert.match(parse, /^\/\*\*\n \* Read one line as an injection marker/);
     assert.match(parse, /export function parseMarker\(line\)/);
 
-    const testCode = resolveMarker(parseMarker('[test.mjs](test.mjs#region:update-document-test)'), read);
+    const testCode = resolveMarker(parseMarker('[test.mjs](test.mjs#update-document-test)'), read);
     assert.match(testCode, /updateDocument rewrites every marker and is idempotent/);
     assert.match(testCode, /a second pass is a no-op/);
 });

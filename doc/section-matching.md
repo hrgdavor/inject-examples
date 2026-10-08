@@ -1,7 +1,7 @@
 # File-section matching
 
 `doc/section-matching.md` is the normative specification of the
-`<section-reference>` that follows `#region:` in a marker fragment. It is
+`<section-reference>` that follows `#` in a marker fragment. It is
 written for an implementer who has never seen this repository: every rule needed
 to match a reference to a piece of a target file is here, and only here lives
 the definition of *what a section reference is*.
@@ -9,14 +9,14 @@ the definition of *what a section reference is*.
 The marker that carries one looks like this:
 
 ```text
-[label](path#region:<section-reference>)
+[label](path#<section-reference>)
 ```
 
-`region:` is a fixed fragment keyword, **not** a name to match: it is what tells the
-tool, "this fragment is a section reference, resolve it against the file." This
-document specifies only the reference text after `region:`; it does not change
-the marker prefix, the fragment keyword, fences, gitignore, the CLI, or the JSON
-rule. Those are out of scope and unchanged.
+Anything after `#` is the reference, resolved against the file: the fragment of
+a marker on a real path *is* a section reference (an in-page link, whose path is
+empty, is navigation and never a marker). This document specifies the reference
+grammar and its resolution only; it does not change fences, gitignore, the CLI,
+or the JSON rule.
 
 A reference resolves to a **section** — a span of text inside the target file.
 A **block** is a braced (or indented) span: a class-like body, a method body, a
@@ -24,10 +24,12 @@ statement body (`if`/`for`/`while`/`switch`/`try`/`catch`), or a block
 introduced only by an anchor comment. The file itself is scope 0; every block
 that scope contains is scope 1; and so on.
 
-Written against the JavaScript implementation at commit `656d280`, the frozen
-reference for this syntax: the implementation in `lib/section.mjs` at that
-revision is authoritative, and a port that disagrees with it is wrong by
-definition.
+Written against the JavaScript implementation at the commit this change lands
+in (see `git log` for the exact sha): the implementation in `lib/section.mjs`
+and `index.mjs` at that revision is authoritative, and a port that disagrees
+with it is wrong by definition. This revision breaks with the earlier
+`#region:` fragment keyword — markers now carry the reference directly as
+`#<section-reference>`.
 
 ## Contents
 
@@ -68,7 +70,7 @@ never path separators. Each bullet below is an error when violated:
    whole file, at any depth.
 5. First match wins, walking depth-first and left to right. A trailing modifier
    never changes which match is found.
-6. `region:` is not a name. The reference `add` matches a `#region add`
+ 6. The reference `add` matches a `#region add`
    directive, a `void add()` method, a `String add` property, a `class add`, a
    `//add` anchor, or an `if ("add".equals(...))` block — whichever the walk
    finds first.
@@ -111,7 +113,6 @@ The grammar above, in short form (each violated in some cases below):
   mean the same thing.
 - A bare name is a one-segment path and searches the whole file.
 - First match wins, depth first and left to right.
-- `region:` is the fragment keyword, not a name to match.
 
 ## Canonicalisation and compatibility spellings
 
@@ -181,12 +182,12 @@ as written even though it normalises to `Cart/Line-`:
 
 | Condition | Message shape |
 | --- | --- |
-| empty reference | `"#region:" names nothing` |
-| empty segment, leading/trailing `/`, `//` | `"#region:<raw>" has an empty path segment` |
-| `+`/`-` not at the end, after normalisation | `"<char>" may only modify the last path segment of "#region:<raw>"` |
-| the same modifier twice or thrice (`a+++`, `a---`) | `"#region:<raw>" carries more than one modifier` |
-| a detached leading modifier and a trailing one (`-a-`) | `"#region:<raw>" carries more than one modifier` |
-| more than 8 segments | `"#region:<raw>" is deeper than 8 sections` |
+| empty reference | `"#" names nothing` |
+| empty segment, leading/trailing `/`, `//` | `"#<raw>" has an empty path segment` |
+| `+`/`-` not at the end, after normalisation | `"<char>" may only modify the last path segment of "#<raw>"` |
+| the same modifier twice or thrice (`a+++`, `a---`) | `"#<raw>" carries more than one modifier` |
+| a detached leading modifier and a trailing one (`-a-`) | `"#<raw>" carries more than one modifier` |
+| more than 8 segments | `"#<raw>" is deeper than 8 sections` |
 | a segment matches nothing anywhere | `no "#region <name>" found, and no section named "<name>"` |
 | a class/block is matched but path remains | `"<name>" is not a container` |
 | a mid-path scope does not exist | `no section named "<name>" in "<previous>"` |
@@ -208,7 +209,7 @@ while refactoring, so it must not hold a whole document hostage.
 
 | Case | Kind | Behaviour |
 | --- | --- | --- |
-| `++` with `-` (`a++-`, `a-++`, `a-/b++`) | Warning | The **`++` reading wins**; the `-` is dropped. Reported once as `inject-examples: warn: <doc>:<line>: "#region:<ref>": "+/-" contradicts "++"; using "#region:<ref-without-the-minus>"`. The run continues, every block is written, and the run **exits 1** |
+| `++` with `-` (`a++-`, `a-++`, `a-/b++`) | Warning | The **`++` reading wins**; the `-` is dropped. Reported once as `inject-examples: warn: <doc>:<line>: "<marker>": "++" contradicts "-"; using "#<ref-without-the-minus>"`. The run continues, every block is written, and the run **exits 1** |
 | `+` with `-` (`a+-`, `a-+`) | Warning | Same shape: contradictory, `+` wins |
 | One modifier named twice (`a+++`, `a---`) | Error | Malformed, not contradictory — see [Errors](#errors) |
 | A modifier anywhere but the end | Error | See [Canonicalisation](#canonicalisation-and-compatibility-spellings) |

@@ -24,7 +24,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'test', 'vectors', 'section-vectors.json');
 
 // --- The case list, hard-coded and hand-reviewable, in fixed order. --------
-// `input` is a repo-relative path; `reference` is the `#region:` fragment
+// `input` is a repo-relative path; `reference` is the `#` fragment
 // content (without the prefix). `mode: 'parse'` checks the parser only
 // (grammar and canonicalisation); everything else runs the resolver.
 const EXAMPLE = 'test/fixtures/Example.java';

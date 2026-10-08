@@ -19,11 +19,11 @@ your README cannot drift from the files your tests use.
 ```
 ````
 
-Prefix a fragment with `#region:<name>` to inject just one part of a larger
+Add a `#<name>` fragment to inject just one part of a larger
 file, so a sample can show a slice of a big source file without duplicating it:
 
 ```markdown
-[test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
+[test/fixtures/example.ts](./test/fixtures/example.ts#table)
 ```
 
 What the name may be depends on the file's type: a `#region` directive, a
@@ -87,7 +87,7 @@ A line is a marker when **all** of these hold:
 - The label names the same path as the destination, with or without a leading
   `./`.
 - The destination is a path, not a URL (no `http:`, `mailto:`, etc.).
-- Any fragment is either absent or exactly `#region:<name>`.
+- A fragment names the section to inject.
 
 So `[test/fixtures/after.md](./test/fixtures/after.md)` injects, while
 `[the docs](./doc/usage.md)` and `[install](./doc/usage.md#install)` are
@@ -120,13 +120,13 @@ between them:
 then
 
 ```markdown
-[test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
+[test/fixtures/example.ts](./test/fixtures/example.ts#table)
 ```
 
 That pair, written live in this very README, is kept honest by the tool — the
 block below is not typed by hand; `inject-examples` rewrites it from the file:
 
-[test/fixtures/example.ts](./test/fixtures/example.ts#region:table)
+[test/fixtures/example.ts](./test/fixtures/example.ts#table)
 
 ```ts
 | name | qty |
@@ -156,7 +156,7 @@ Rules:
 
 ## Region rules by file type
 
-`#region:<reference>` means "the piece of this file called `<reference>`". What
+`#<reference>` means "the piece of this file called `<reference>`". What
 the reference may say — and what comes back — is decided by the file's
 **type**: each type has one rule, and the reference is handed to the rule that
 claims the file's extension. Two rules ship; the library takes more.
@@ -171,7 +171,7 @@ function or class-like declaration (`class`, `interface`, `enum`, `record`,
 code needs no region comments added to it:
 
 ````markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#region:++toString)
+[test/fixtures/Example.java](./test/fixtures/Example.java#++toString)
 
 ```java
     /** Add one item to this cart. */
@@ -187,10 +187,10 @@ with it:
 
 | Reference | Injected text |
 | --- | --- |
-| `#region:add` | the declaration: signature through closing brace |
-| `#region:-add` | the body only, without the signature |
-| `#region:+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
-| `#region:++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
+| `#add` | the declaration: signature through closing brace |
+| `#-add` | the body only, without the signature |
+| `#+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| `#++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
 
 A declaration is injected verbatim, indentation and all. Region names must be
 unique, and so must declaration names — two methods named `add` are an error,
@@ -213,7 +213,7 @@ the `Line` class of the `Cart` class. Only the last segment selects the text to
 inject; the ones before it are scopes to descend:
 
 ````markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#region:Cart/Line/render)
+[test/fixtures/Example.java](./test/fixtures/Example.java#Cart/Line/render)
 
 ```java
         String render() {
@@ -230,7 +230,7 @@ just what it declares:
   block, braces and all:
 
 ````markdown
-[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#region:dispatch/getUsers)
+[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#dispatch/getUsers)
 
 ```java
         if ("getUsers".equals(methodName)) {
@@ -250,7 +250,7 @@ canonicalised. A reference that asks for two readings at once — a `+` against 
 exits 1, because a contradiction is almost always a typo:
 
 ```text
-inject-examples: warn: doc/usage.md:42: [a.java](./a.java#region:getUsers++-): "++" contradicts "-"; using "#region:getUsers++"
+inject-examples: warn: doc/usage.md:42: [a.java](./a.java#getUsers++-): "++" contradicts "-"; using "#getUsers++"
 ```
 
 The full grammar — every accepted form, every error and its exact message — is
@@ -267,7 +267,7 @@ written as dotted paths from the top level, and the selection is rendered as
 valid JSON — braces and all:
 
 ````markdown
-[package.json](./package.json#region:name,scripts.test)
+[package.json](./package.json#name,scripts.test)
 
 ```json
 {
@@ -628,7 +628,7 @@ JavaScript, so the Zig code is the one that moves when the two disagree.
 
 > The Zig port and the differential harness (`tools/compare-zig.mjs`) are
 > **paused** while file-section matching is formalised in JavaScript. The port
-> tracks an earlier revision of the `#region:<reference>` syntax and is not
+> tracks an earlier revision of the `#<reference>` fragment syntax and is not
 > currently verified against the current one — see
 > [doc/section-matching.md](./doc/section-matching.md). Porting resumes with its
 > own plan, written after the JavaScript syntax is settled.

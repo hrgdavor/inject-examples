@@ -60,9 +60,9 @@ Usage:
   .json file, which has no comments, takes a comma-separated list of dotted
   key paths, rendered as valid JSON:
 
-      [src/app.ts](./src/app.ts#region:table)
-      [src/app.ts](./src/app.ts#region:++table)
-      [package.json](./package.json#region:scripts.test,name)
+      [src/app.ts](./src/app.ts#table)
+      [src/app.ts](./src/app.ts#++table)
+      [package.json](./package.json#scripts.test,name)
 
 Arguments:
   file|dir             Markdown document(s) to update. A directory expands to

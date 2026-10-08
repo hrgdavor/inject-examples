@@ -7,7 +7,7 @@
  * copied rather than typed, the document cannot drift from the file it shows.
  * A fence left without a language is given the file's, so the block highlights.
  *
- * What `#region:<name>` means depends on the file's type: each type has one
+ * What `#<name>` means depends on the file's type: each type has one
  * rule, and the reference is handed to the rule that claims the file's
  * extension. A code file resolves a region directive, or a method or inner
  * class by name; a `.json` file, which has no comments to hang a directive on,
@@ -115,7 +115,7 @@ export function extractRegion(text, name) {
 // Region rules by file type
 // ---------------------------------------------------------------------------
 //
-// A marker's `#region:<reference>` means "the piece of this file called
+// A marker's `#<reference>` means "the piece of this file called
 // <reference>". What the reference may say, and what comes back, depends on
 // the file's type: each type has one rule, and the reference is handed to the
 // rule that claims the file's extension. `code` is the fallback, so a single
@@ -155,8 +155,8 @@ export function codeReference(reference) {
  * declarations, condition literals and comment anchors. Nothing matching is an
  * error.
  */
-export function extractCodeRegion(text, region) {
-    return resolveSection(text, region);
+export function extractCodeRegion(text, reference) {
+    return resolveSection(text, reference);
 }
 
 /**
@@ -171,14 +171,14 @@ export { extractDeclaration };
  * The rule for `.json`: a region is a list of keys, because JSON has no
  * comments to hang a region directive on.
  *
- * `#region:a,b.c` names one or more dotted paths from the top level,
+ * `#a,b.c` names one or more dotted paths from the top level,
  * comma-separated. The selected values are rendered as valid JSON — one
  * object, braces and all — in the order they were named. An array keeps only
  * the elements named, in order, so `keywords.0` is a one-element array.
  */
-export function extractJsonRegion(text, region) {
-    const paths = region.split(',').map((path) => path.trim()).filter((path) => path !== '');
-    if (paths.length === 0) throw new Error(`"#region:${region}" names no keys`);
+export function extractJsonRegion(text, reference) {
+    const paths = reference.split(',').map((path) => path.trim()).filter((path) => path !== '');
+    if (paths.length === 0) throw new Error(`"#${reference}" names no keys`);
 
     let root;
     try {
@@ -240,7 +240,7 @@ function mergeSelections(left, right) {
  * claims: region directives and named declarations both resolve here.
  *
  * @type {{ name: string, extensions: string[],
- *          resolve: (text: string, region: string, path: string) => string }}
+ *          resolve: (text: string, reference: string, path: string) => string }}
  */
 export const CODE_RULE = { name: 'code', extensions: [], resolve: extractCodeRegion };
 
@@ -280,12 +280,12 @@ const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
  * Read one line as an injection marker, or return null.
  *
  * A marker is a line that is nothing but a link to a real path, labelled with
- * that same path — optionally naming a region in the fragment:
+ * that same path — optionally naming a section in the fragment:
  *
  *     [fixtures/example-1/before.md](./fixtures/example-1/before.md)
- *     [fixtures/example-4/source.md](./fixtures/example-4/source.md#region:table)
+ *     [fixtures/example-4/source.md](./fixtures/example-4/source.md#table)
  *
- * @returns {{ raw: string, path: string, region: string | null } | null}
+ * @returns {{ raw: string, path: string, reference: string | null } | null}
  */
 export function parseMarker(line) {
     const match = LINK.exec(line.trim());
@@ -303,14 +303,13 @@ export function parseMarker(line) {
 
     // Normalise away a leading `./` so `path` is directly usable as a path.
     const relativePath = withoutDotSlash(path);
+    // An empty path means an in-page navigation link (`[text](#anchor)`), never
+    // a marker: a marker names a file.
     if (relativePath === '') return null;
 
-    if (fragment === '') return { raw: line.trim(), path: relativePath, region: null };
+    if (fragment === '') return { raw: line.trim(), path: relativePath, reference: null };
 
-    // An unknown fragment means this is an ordinary link, not a marker.
-    const region = /^region:(.+)$/.exec(fragment);
-    if (!region) return null;
-    return { raw: line.trim(), path: relativePath, region: region[1] };
+    return { raw: line.trim(), path: relativePath, reference: fragment };
 }
 // #endregion
 
@@ -369,7 +368,7 @@ export function fenceRanges(lines) {
  * own examples must not inject themselves.
  *
  * @param {string[]} lines
- * @returns {Array<{ raw: string, path: string, region: string | null, index: number }>}
+ * @returns {Array<{ raw: string, path: string, reference: string | null, index: number }>}
  */
 export function findMarkers(lines) {
     const markers = [];
@@ -408,9 +407,9 @@ export function fileReader(root = process.cwd()) {
  * reference is a list of keys, a code reference may name a method or an inner
  * class — unless a rule is passed in.
  *
- * @param {{ path: string, region: string | null }} marker
+ * @param {{ path: string, reference: string | null }} marker
  * @param {(relativePath: string) => string} read resolves a path to its text
- * @param {{ resolve: (text: string, region: string, path: string) => string }} [rule]
+ * @param {{ resolve: (text: string, reference: string, path: string) => string }} [rule]
  */
 export function resolveMarker(marker, read, rule = ruleFor(marker.path)) {
     return planMarker(marker, read, rule).text;
@@ -422,19 +421,19 @@ export function resolveMarker(marker, read, rule = ruleFor(marker.path)) {
  * interface returns a string, so the warning rides alongside it here rather
  * than through `resolveMarker`, which stays string-only for its tests.
  *
- * @param {{ path: string, region: string | null }} marker
+ * @param {{ path: string, reference: string | null }} marker
  * @param {(relativePath: string) => string} read resolves a path to its text
- * @param {{ name: string, resolve: (text: string, region: string, path: string) => string }} [rule]
+ * @param {{ name: string, resolve: (text: string, reference: string, path: string) => string }} [rule]
  * @returns {{ text: string, warning: object | null }}
  */
 export function planMarker(marker, read, rule = ruleFor(marker.path)) {
     const text = read(marker.path);
-    if (marker.region === null) return { text: normalize(text), warning: null };
+    if (marker.reference === null) return { text: normalize(text), warning: null };
     if (rule === CODE_RULE) {
-        const plan = planSection(text, marker.region);
+        const plan = planSection(text, marker.reference);
         return { text: plan.text, warning: plan.reference.warning };
     }
-    return { text: rule.resolve(text, marker.region, marker.path), warning: null };
+    return { text: rule.resolve(text, marker.reference, marker.path), warning: null };
 }
 
 // ---------------------------------------------------------------------------

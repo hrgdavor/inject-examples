@@ -1,6 +1,6 @@
 # `lib/section.mjs` — the file-section matcher
 
-A single, dependency-free ES module that resolves a `#region:<reference>`
+A single, dependency-free ES module that resolves a `#<reference>`
 against the text of a file: it parses the reference, scans the file into a tree
 of blocks, applies the matcher precedence, and returns the bytes a reference
 stands for. It is the matcher behind
