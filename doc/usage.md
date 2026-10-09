@@ -112,9 +112,13 @@ The entire published package, verbatim:
   "scripts": {
     "test": "node --test test.mjs && node tools/section-vectors.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
+    "oracle": "node tools/mask-oracle.mjs",
     "compare:zig": "node tools/compare-zig.mjs",
     "demo": "bun tools/build-demo.mjs",
     "demo:check": "bun tools/build-demo.mjs --check"
+  },
+  "devDependencies": {
+    "highlight.js": "^11.12.0"
   }
 }
 ```
@@ -251,13 +255,14 @@ prefix is stripped before the name is read. The rules:
 `#<reference>` means "the piece of this file called `<reference>`". What
 the reference may say — and what comes back — depends on the file's **type**:
 each type has one rule, and the reference is handed to the rule that claims the
-file's extension. Two rules ship, and a third is a few lines in a `regionRules`
+file's extension. Five rules ship — JSON, YAML, TOML, INI and the `code`
+fallback — and a sixth is a few lines in a `regionRules`
 array (see [Adding a rule for another type](#adding-a-rule-for-another-type)).
 
 ### The default rule: code, and everything else
 
 One rule covers every type no other rule claims — source code, `README.md`,
-`.txt`, `.ini`, anything. In a file that carries an explicit region directive,
+`.txt`, anything. In a file that carries an explicit region directive,
 `#region <name>` opens and `#endregion` closes it and the lines strictly
 between them are injected, exactly as [Regions](#regions) describes.
 

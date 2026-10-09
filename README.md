@@ -162,7 +162,8 @@ Rules:
 `#<reference>` means "the piece of this file called `<reference>`". What
 the reference may say — and what comes back — is decided by the file's
 **type**: each type has one rule, and the reference is handed to the rule that
-claims the file's extension. Two rules ship; the library takes more.
+claims the file's extension. Five rules ship — JSON, YAML, TOML, INI and the
+`code` fallback; the library takes more.
 
 ### Code — the default rule
 
@@ -203,12 +204,21 @@ error (`--lenient` reports it and leaves the block as written).
 
 The match is not a parser: it reads declaration-shaped lines and counts brackets
 over text whose comments and string literals are blanked, so a `}` inside a
-string cannot end a body. For JavaScript/TypeScript, Java and Zig that blanking
-is done by a real tokenizer, exact to the language's syntax (template literals,
-text blocks, nested block comments); for every other type a best-effort union of
-the comment and string spellings stands in. Braced languages — Java, C#, C/C++,
-JS/TS, Go, Rust, PHP, Kotlin, Swift — are followed by their braces; Python and
-Ruby by indentation.
+string cannot end a body. That blanking is done by a real tokenizer for the
+eighteen languages in [`src/js/scanner/syntaxes.js`](./src/js/scanner/syntaxes.js)
+— JavaScript/TypeScript, Java, Zig, Go, Rust, Python, C#, Kotlin, PHP, Ruby, SQL,
+Shell, VB, Haskell, YAML, TOML and INI — exact to each language's own syntax:
+template literals, text blocks, nested block comments, raw and verbatim strings,
+doubling escapes, `<<EOF` heredocs, and a Rust `'a` lifetime that is not a char
+literal. For every other type a best-effort union of the comment and string
+spellings stands in, so an unknown type still resolves, just less precisely. The
+table is data: adding a language is one object there plus one extension line in
+`lexers.js`, and the places a language spells a member differently from the
+common shape — Ruby's paren-less `def add`, Haskell's `add x y = …` binding with
+its `name ::` signature, Rust's `impl Cart { … }` and its `name: Type,` fields —
+are declared there too, as shapes the resolver indexes rather than parses. Braced
+languages — Java, C#, C/C++, JS/TS, Go, Rust, PHP, Kotlin, Swift — are followed
+by their braces; Python and Ruby by indentation.
 
 #### Section paths and code anchors
 
@@ -217,6 +227,12 @@ reference is therefore a **path**: slash-separated segments, each naming a block
 *inside* the one before it, so `Cart/Line/render` means the `render` method of
 the `Line` class of the `Cart` class. Only the last segment selects the text to
 inject; the ones before it are scopes to descend:
+
+When a scope name is declared more than once at one level the path **retries the
+candidates**, taking the first that can hold the rest of the path — a Rust type's
+members live in its `impl` blocks, which are siblings of the `struct` with the
+same name, so `Cart/add` and `Cart/items` both resolve while a *last* segment
+still takes the first match in walk order.
 
 ````markdown
 [test/fixtures/Example.java](./test/fixtures/Example.java#Cart/Line/render)
@@ -291,6 +307,25 @@ top-level value that is not an object, or text that is not JSON is an error.
 Unlike the code rule this one *renders* the selection rather than copying
 bytes, because a selection of keys has to be re-printed to stay valid JSON.
 
+### YAML, TOML and INI — their own rules
+
+The three config formats have the same problem as JSON and the same answer: a
+reference is a dotted path to a key, and the selection is rendered with the
+ancestors that hold it, so the block is valid source on its own — a bare
+`port: 8080` is not a YAML document, `server:` above it makes one:
+
+| Reference | `.yaml` | `.toml` | `.ini` |
+| --- | --- | --- | --- |
+| `#server` | the `server:` mapping | the whole `[server]` table | the whole `[server]` section |
+| `#server.port` | `server:` and its `port:` entry | `[server]` and `port = 8080` | `[server]` and `port = 8080` |
+| `#a.b.c` | every ancestor, re-indented to two spaces per level | `[a.b]` and its key | an error — INI has sections and keys, no deeper |
+
+A YAML selection keeps its blank and nested lines; a TOML value that spans lines
+(an array, an inline table) comes with its continuation lines; INI quotes
+nothing back — both the `key = value` and the `key: value` spellings are read.
+A missing key, a missing table or section, and a path the format cannot express
+are all errors, reported by `--lenient` like any other broken include.
+
 ### Adding a rule for another type
 
 A rule is a plain object: a name, the extensions it claims, and a `resolve`.
@@ -298,13 +333,13 @@ A rule is a plain object: a name, the extensions it claims, and a `resolve`.
 your own:
 
 ```js
-const toml = {
-    name: 'toml',
-    extensions: ['toml'],
+const env = {
+    name: 'env',
+    extensions: ['env'],
     resolve: (text, region) => extractRegion(text, region),
 };
 
-updateDocument(doc, { regionRules: [toml, ...REGION_RULES] });
+updateDocument(doc, { regionRules: [env, ...REGION_RULES] });
 ```
 
 The first rule claiming the file's extension wins, and `code` is the fallback,
@@ -490,32 +525,43 @@ npx @hrg/inject-examples --check || {
 ## The demo page
 
 [`docs/index.html`](./docs/index.html) is a three-column page — the targets, the
-source file, and the document rendered the way GitHub renders it, code fences
+sample files, and the document rendered the way GitHub renders it, code fences
 syntax-highlighted and all. The document's lead — its title and intro before the
 first `##` — is the page banner in both places, so the rendered column starts at
-the first section. Every target syntax is clickable: clicking one highlights the
-lines that reference selects in the source, and the matching marker and injected
-block in the rendered Markdown. It is generated, never hand-written:
+the first section. Every target syntax is clickable: clicking one switches the
+middle column to that target's file, highlights the lines the reference selects,
+and marks the matching marker and injected block in the rendered Markdown. It is
+generated, never hand-written:
 
 - [`docs/demo.md`](./docs/demo.md) is the source: an ordinary Markdown document,
   readable on its own, whose markers this tool keeps in sync exactly as it keeps
-  `doc/usage.md`.
-- [`docs/samples/Inventory.java`](./docs/samples/Inventory.java) is the sample
-  those markers inject from.
+  `doc/usage.md`. It has a section per supported language and per config format —
+  Java, Go, Rust, Python, C#, Kotlin, PHP, Ruby, SQL, Shell, VB, Haskell, Zig,
+  YAML, TOML, INI and JSON.
+- [`docs/samples/`](./docs/samples) holds one small sample per section, each
+  written to show the construct its language needs a lexer for (a nested comment,
+  a raw string, a heredoc, a doubled quote) beside a member to select.
 - [`tools/build-demo.mjs`](./tools/build-demo.mjs) reads the document, resolves
   every marker with the library — so the page cannot highlight a range the tool
-  would not inject — and writes the page.
+  would not inject — renders every sample with the same comment/string spans the
+  resolver's lexer produces, and writes the page. A rule that *renders* its
+  selection (JSON, YAML, TOML, INI) has no byte slice to find, so the page matches
+  the rendered lines back to the source by key and highlights where the selected
+  keys are written — one range per group of adjacent lines, so two keys far apart
+  are two highlights rather than one covering everything between them.
 
 ```bash
 bun tools/build-demo.mjs           # write docs/index.html
 bun tools/build-demo.mjs --check   # exit 1 when it is stale
 ```
 
-To add an example: write a `##` section with its prose and a marker in
-`docs/demo.md`, run `inject-examples docs/demo.md` to fill the block, then run
-the generator — the page grows a numbered paragraph and a clickable target.
-`npm test` fails when the committed page is not exactly what the generator
-writes, or when the document has drifted from the sample.
+To add an example: put the sample in `docs/samples/`, write a `##` section with
+its prose and a marker in `docs/demo.md`, run `inject-examples docs/demo.md` to
+fill the block, then run the generator — the page grows a numbered paragraph, a
+clickable target and, when the file is new, a tab in the middle column. `npm test`
+fails when the committed page is not exactly what the generator writes, when the
+document has drifted from a sample, or when a sample's language stops being
+highlighted.
 
 ## Library
 
@@ -550,10 +596,13 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 | `resolveMarker(marker, read, rule?)` | The text a marker stands for, resolved by the file's type |
 | `extractRegion(text, name)` / `regionDirective(line)` | Region directive parsing |
 | `ruleFor(path, rules?)` | The region rule that resolves a reference in `path` |
-| `REGION_RULES` / `CODE_RULE` / `JSON_RULE` | The built-in rules; `code` is the fallback for every unclaimed type |
+| `REGION_RULES` / `CODE_RULE` / `JSON_RULE` / `YAML_RULE` / `TOML_RULE` / `INI_RULE` | The built-in rules; `code` is the fallback for every unclaimed type |
 | `extractCodeRegion(text, region)` | The default rule: a region directive, or a named declaration |
 | `extractDeclaration(text, name, scope?)` | The text of one declaration, or `null`; `scope` is the `-`/`+`/`++` |
 | `extractJsonRegion(text, region)` | The `.json` rule: dotted key paths, rendered as valid JSON |
+| `extractYamlRegion(text, region)` | The `.yaml` rule: a dotted key path, rendered with its ancestors |
+| `extractTomlRegion(text, region)` | The `.toml` rule: a key with its `[table]`, or a whole table |
+| `extractIniRegion(text, region)` | The `.ini` rule: `section.key`, a whole section, or a leading key |
 | `codeReference(reference)` | Split a `-`/`+`/`++` modifier from the name it applies to |
 | `normalize(text)` | LF endings, one trailing newline removed |
 | `fileLanguage(path)` | The fence language a file's extension implies, or `null` |
@@ -564,19 +613,40 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 | `IncludeError` | The error type for a broken include — the one `--lenient` tolerates |
 | `FENCE` | The fence prefix (` ``` `) |
 
+## The tokenizer corpus and the oracle
+
+The languages in `src/js/scanner/syntaxes.js` are checked two ways.
+
+- **The corpus** — `PROBES` in [`tools/mask-oracle.mjs`](./tools/mask-oracle.mjs)
+  is one entry per language per construct, naming the words the mask must hide
+  and the words it must keep. `test.mjs` runs the whole corpus, so a new corpus
+  entry is a new test and needs no dependency.
+- **The oracle** — `npm run oracle` additionally highlights each probe with
+  [highlight.js](https://highlightjs.org) and checks the direction that matters:
+  every region the highlighter calls a comment or a string must be blank in our
+  mask. Blanking *more* is the conservative direction and is allowed; a region
+  our mask knows nothing about is reported. `--emit` prints what the highlighter
+  saw, `--self-test` proves the check can fail, and `--no-oracle` runs the
+  corpus alone.
+
+highlight.js is a **devDependency for this check only** — the published package
+still has no runtime dependencies, and `files` does not ship `tools/`.
+
 ## Behaviour notes
 
 - **Normalisation.** Content is injected with LF endings and no trailing
-  newline — exactly the text between the fences, except in the JSON rule, which
-  renders its selection. A file ending in `\n` and one that does not therefore
-  inject identically, so `--check` will not flicker between operating systems.
-  The document's own endings (LF or CRLF) are preserved everywhere outside the
-  block body.
+  newline — exactly the text between the fences, except in the data-format rules
+  (JSON, YAML, TOML, INI), which render their selection. A file ending in `\n`
+  and one that does not therefore inject identically, so `--check` will not
+  flicker between operating systems. The document's own endings (LF or CRLF) are
+  preserved everywhere outside the block body.
 - **Regions are read by file type.** A `.json` reference is a list of dotted
   key paths and the block is *rendered* (`JSON.stringify(…, 2)`), because a
-  selection of keys has to be re-printed to stay valid JSON. Every other type
-  uses the code rule, which injects verbatim — a region's lines, or a matched
-  declaration from its first line through its closing brace.
+  selection of keys has to be re-printed to stay valid JSON; `.yaml`, `.toml`
+  and `.ini` references are dotted paths too, rendered with the ancestors that
+  hold the key so the block stands on its own. Every other type uses the code
+  rule, which injects verbatim — a region's lines, or a matched declaration from
+  its first line through its closing brace.
 - **Duplicated markers** in one document are an error, not a silent double
   injection.
 - **No markers at all** is an error, because it usually means the file argument
@@ -710,6 +780,12 @@ The library side is importable as well: the whole of `index.mjs` lives in
 `utf8Decode` / `utf8Encode` pair. Only `fileReader` has no twin: a Zig library
 has no working directory of its own, so the CLI hands `updateDocument` a
 `Reader` that resolves against the root and reads what is there.
+
+The JavaScript side has since grown past that list — the per-type lexers, the
+declaration shapes they add, and the `extractYamlRegion` / `extractTomlRegion` /
+`extractIniRegion` rules. They are **not** in the Zig port yet (it is frozen at
+the state the port was verified against), so `tools/compare-zig.mjs` is the
+place that would report the difference if those types ever meet in one corpus.
 
 `tools/compare-zig.mjs` is the proof. It runs both tools over a corpus made of
 edge cases — markers in fences, broken includes, CRLF documents, JSON regions

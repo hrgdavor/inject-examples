@@ -21,13 +21,19 @@ import { fileURLToPath } from 'node:url';
 
 import {
     CODE_RULE,
+    INI_RULE,
     JSON_RULE,
     REGION_RULES,
+    TOML_RULE,
+    YAML_RULE,
     codeReference,
     extractCodeRegion,
     extractDeclaration,
+    extractIniRegion,
     extractJsonRegion,
     extractRegion,
+    extractTomlRegion,
+    extractYamlRegion,
     fenceRanges,
     fileLanguage,
     fileReader,
@@ -51,6 +57,8 @@ import { lexerJS, scanJS, visitJS } from './src/js/scanner/scanJS.js';
 import { lexerJava, scanJava, visitJava } from './src/js/scanner/scanJava.js';
 import { lexerZig, scanZig, visitZig } from './src/js/scanner/scanZig.js';
 import { tokenize, JS_SYNTAX, JAVA_SYNTAX, ZIG_SYNTAX } from './src/js/scanner/tokenizer.js';
+import { SYNTAXES } from './src/js/scanner/syntaxes.js';
+import { PROBES, runProbes } from './tools/mask-oracle.mjs';
 
 /** A `readFile` stub over a plain object of path -> text. */
 const reader = (files) => (path) => {
@@ -978,15 +986,24 @@ test('lexer hook: lib/section.mjs is dependency-free (vendorable boundary)', () 
 
 test('lexer hook: lexerFor maps known types and omits unknown ones', () => {
     assert.equal(lexerFor('a/b/C.java').name, 'java');
-    assert.equal(lexerFor('x.y/Z.kt') === undefined, true, 'no Kotlin lexer -> default engine');
+    assert.equal(lexerFor('x.y/Z.kt').name, 'kotlin');
     for (const ext of ['js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts']) {
         assert.equal(lexerFor(`src/mod.${ext}`).name, 'javascript', ext);
     }
     assert.equal(lexerFor('pkg/main.zig').name, 'zig');
+    for (const [path, name] of [
+        ['cmd/main.go', 'go'], ['src/lib.rs', 'rust'], ['app/models/user.py', 'python'],
+        ['Api/Program.cs', 'csharp'], ['ui/View.kt', 'kotlin'], ['web/index.php', 'php'],
+        ['app/models/user.rb', 'ruby'], ['db/schema.sql', 'sql'], ['deploy/run.sh', 'shell'],
+        ['src/Form.vb', 'vb'], ['src/Main.hs', 'haskell'],
+        ['conf/app.yaml', 'yaml'], ['conf/app.toml', 'toml'], ['conf/app.ini', 'ini'],
+    ]) {
+        assert.equal(lexerFor(path)?.name, name, path);
+    }
     assert.equal(lexerFor('notes.md') === undefined, true, 'markdown is not code');
     assert.equal(lexerFor('Makefile') === undefined, true, 'no extension');
     assert.equal(lexerFor('.gitignore') === undefined, true, 'dotfile, not a suffix');
-    assert.equal(new Set(Object.values(LEXERS)).size, 3, 'three distinct lexers');
+    assert.ok(new Set(Object.values(LEXERS)).size >= 15, 'every language in the table has a lexer');
 });
 
 test('lexer hook: a known-type lexer resolves byte-identical to the default engine', () => {
@@ -1079,6 +1096,168 @@ test('lexer hook: index.mjs resolves a marker through the extension lexer end to
     // extractCodeRegion threads the lexer for a known path and defaults otherwise.
     assert.equal(extractCodeRegion(NESTING_ZIG, 'target', 'x/main.zig'), resolveSection(NESTING_ZIG, 'target', lexerZig));
     assert.equal(extractCodeRegion(ANCHORS, 'getUsers', 'notes.txt'), resolveSection(ANCHORS, 'getUsers'), 'unknown type -> default engine');
+});
+
+// ---------------------------------------------------------------------------
+// The language table — one lexical pass per language, no AST
+// ---------------------------------------------------------------------------
+//
+// A new language is an object in `syntaxes.js`, so the tests below are a table
+// too: for each case, the mask must keep its invariant and must hide the words
+// the construct swallowed. The `kept` list is the other half — a lifetime that
+// eats a line, or a `<<` shift read as a heredoc, would hide real code, which is
+// exactly as wrong as leaking a commented-out declaration.
+
+test('language table: every probe in the tokenizer corpus holds', () => {
+    // The corpus lives in tools/mask-oracle.mjs so the oracle and the suite
+    // share one set of cases: adding a construct there adds a test here.
+    for (const { probe, failures } of runProbes()) {
+        assert.deepEqual(failures, [], `${probe.language}: ${probe.name}`);
+    }
+});
+
+test('language table: the corpus covers every language in the table', () => {
+    const covered = new Set(PROBES.map((probe) => probe.language));
+    for (const name of Object.keys(SYNTAXES)) {
+        assert.ok(covered.has(name), `${name} has no probe in tools/mask-oracle.mjs`);
+    }
+    assert.ok(PROBES.length >= 30, 'the corpus stays substantial');
+});
+
+test('language table: a new language resolves a member through its lexer', () => {
+    const go = ['package main', '', 'func Add(a int) int {', '    return a + 1', '}', ''].join('\n');
+    assert.equal(resolveSection(go, 'Add', lexerFor('main.go')),
+        'func Add(a int) int {\n    return a + 1\n}');
+
+    const python = ['class Cart:', '    def add(self, x):', '        return x', ''].join('\n');
+    assert.equal(resolveSection(python, 'Cart/add', lexerFor('cart.py')),
+        '    def add(self, x):\n        return x');
+
+    const csharp = 'class Api {\n    public void Add(int x) {\n        // } decoy\n        x++;\n    }\n}';
+    assert.equal(resolveSection(csharp, 'Api/Add', lexerFor('Api.cs')),
+        '    public void Add(int x) {\n        // } decoy\n        x++;\n    }');
+
+    const rust = [
+        'struct Cart {',
+        '    items: Vec<String>,',
+        '}',
+        '',
+        'impl Cart {',
+        '    fn add(&mut self, x: String) {',
+        '        // } decoy',
+        '    }',
+        '}',
+    ].join('\n');
+    // `impl Cart` is a scope named after its type, a sibling of the `struct`;
+    // the path retries it when the struct cannot hold the rest of the path, and
+    // a Rust field is a member of the struct.
+    assert.equal(resolveSection(rust, 'Cart/add', lexerFor('cart.rs')),
+        '    fn add(&mut self, x: String) {\n        // } decoy\n    }');
+    assert.equal(resolveSection(rust, 'Cart/items', lexerFor('cart.rs')), '    items: Vec<String>,');
+    assert.equal(resolveSection(rust, 'add', lexerFor('cart.rs')),
+        '    fn add(&mut self, x: String) {\n        // } decoy\n    }');
+
+    // The lexer is what hides the decoy: the default engine reads the Rust raw
+    // string as code and would find a method named `decoy`.
+    const decoy = 'const S: &str = r#"fn decoy() { }"#;';
+    assert.throws(() => resolveSection(decoy, 'decoy', lexerFor('a.rs')), /no .*decoy/);
+});
+
+test('paths retry a duplicated scope name, and the selection keeps walk order', () => {
+    const rust = [
+        'struct Cart {',
+        '    items: Vec<String>,',
+        '}',
+        '',
+        'impl Cart {',
+        '    fn add(&mut self) {}',
+        '}',
+        '',
+        'impl Cart {',
+        '    fn remove(&mut self) {}',
+        '}',
+    ].join('\n');
+
+    // The struct cannot hold `add`, so the first impl is tried; and `remove`
+    // lives in the second impl, past the first one.
+    assert.equal(resolveSection(rust, 'Cart/add', lexerFor('cart.rs')), '    fn add(&mut self) {}');
+    assert.equal(resolveSection(rust, 'Cart/remove', lexerFor('cart.rs')), '    fn remove(&mut self) {}');
+    // The last segment is not retried: the first match in walk order is the
+    // selection, exactly as the contract says.
+    assert.equal(resolveSection(rust, 'Cart', lexerFor('cart.rs')),
+        'struct Cart {\n    items: Vec<String>,\n}');
+    // No candidate holds the rest: the error is the one the first candidate gave.
+    assert.throws(() => resolveSection(rust, 'Cart/nope', lexerFor('cart.rs')),
+        /no section named "nope" in "Cart"/);
+    // A region is never a scope, and a single candidate says so.
+    assert.throws(() => resolveSection('#region Cart\nx\n#endregion\n', 'Cart/add'),
+        /"Cart" is not a container/);
+});
+
+test('language table: the shapes a language adds are members, not text', () => {
+    const ruby = [
+        'class Cart',
+        '  def add(item)',
+        '    @items << item',
+        '  end',
+        '',
+        '  def self.build',
+        '    new',
+        '  end',
+        '',
+        '  # def decoy',
+        'end',
+    ].join('\n');
+
+    // `def add` needs no parentheses, and `end` closes the declaration.
+    assert.equal(resolveSection(ruby, 'Cart/add', lexerFor('cart.rb')),
+        '  def add(item)\n    @items << item\n  end');
+    assert.equal(resolveSection(ruby, 'Cart/add-', lexerFor('cart.rb')), '    @items << item');
+    assert.equal(resolveSection(ruby, 'build', lexerFor('cart.rb')), '  def self.build\n    new\n  end',
+        '`self.` is not part of the name');
+    assert.throws(() => resolveSection(ruby, 'decoy', lexerFor('cart.rb')), /no /, 'a commented def is not one');
+    // The language-neutral reader does not see a paren-less def.
+    assert.throws(() => resolveSection(ruby, 'build'), /no /);
+
+    const haskell = [
+        '-- | Add two numbers.',
+        'add :: Int -> Int -> Int',
+        'add x y = x + y',
+        '',
+        'class Store s where',
+        '  get :: s -> Int',
+        '',
+        'data Cart = Cart { items :: [Int] }',
+        '',
+        'main = do',
+        '  print (add 1 2)',
+    ].join('\n');
+
+    assert.equal(resolveSection(haskell, 'add', lexerFor('Main.hs')), 'add x y = x + y');
+    assert.equal(resolveSection(haskell, '+add', lexerFor('Main.hs')),
+        'add :: Int -> Int -> Int\nadd x y = x + y', 'the type signature is what labels a binding');
+    assert.equal(resolveSection(haskell, 'Store', lexerFor('Main.hs')), 'class Store s where\n  get :: s -> Int');
+    assert.equal(resolveSection(haskell, 'Cart', lexerFor('Main.hs')), 'data Cart = Cart { items :: [Int] }');
+    assert.equal(resolveSection(haskell, 'main', lexerFor('Main.hs')), 'main = do\n  print (add 1 2)');
+    assert.throws(() => resolveSection(haskell, 'data', lexerFor('Main.hs')), /no /,
+        'the keyword that opens a declaration is not a member');
+
+    // VB declares with capitalised keywords and closes with `End Function`.
+    const vb = [
+        'Public Class Form',
+        '    Public Function Add(item As String) As String',
+        '        Dim note As String = "a ""}"" decoy"',
+        '        Return note',
+        '    End Function',
+        'End Class',
+    ].join('\n');
+    assert.equal(resolveSection(vb, 'Form/Add', lexerFor('Form.vb')),
+        '    Public Function Add(item As String) As String\n'
+        + '        Dim note As String = "a ""}"" decoy"\n        Return note\n    End Function');
+    assert.equal(resolveSection(vb, 'Form/Add-', lexerFor('Form.vb')),
+        '        Dim note As String = "a ""}"" decoy"\n        Return note',
+        'the body stops before the terminator');
+    assert.throws(() => resolveSection(vb, 'form/add'), /no /, 'VB names are case-sensitive here, as everywhere');
 });
 
 // ---------------------------------------------------------------------------
@@ -1223,16 +1402,138 @@ test('extractJsonRegion fails loudly on missing keys and bad documents', () => {
     assert.throws(() => extractJsonRegion('null', 'a'), /top-level JSON value is not an object/);
 });
 
-test('ruleFor sends .json to the JSON rule and everything else to code', () => {
+// ---------------------------------------------------------------------------
+// The data formats — YAML, TOML and INI get their own rules, and each renders
+// a selection that is valid source of its format on its own: a bare `port` is
+// not YAML, `server:\n  port: 8080` is.
+// ---------------------------------------------------------------------------
+
+const YAML_DOC = [
+    '# the service',
+    'server:',
+    '  host: localhost',
+    '  port: 8080',
+    '  tls:',
+    '    enabled: true',
+    'logging:',
+    '  level: info',
+    'tags: ["a", "b"]',
+].join('\n');
+
+const TOML_DOC = [
+    'title = "demo"',
+    '',
+    '[server]',
+    'port = 8080',
+    'hosts = [',
+    '  "a",',
+    '  "b",',
+    ']',
+    '',
+    '[server.tls]',
+    'enabled = true',
+].join('\n');
+
+const INI_DOC = [
+    'global = 1',
+    '',
+    '[server]',
+    'port = 8080',
+    'host: localhost',
+    '',
+    '[logging]',
+    'level = info',
+].join('\n');
+
+test('extractYamlRegion renders a key with the mapping that holds it', () => {
+    assert.equal(extractYamlRegion(YAML_DOC, 'server.port'), 'server:\n  port: 8080');
+    assert.equal(extractYamlRegion(YAML_DOC, 'server.tls.enabled'), 'server:\n  tls:\n    enabled: true',
+        'every ancestor is kept, so the block is a document');
+    assert.equal(extractYamlRegion(YAML_DOC, 'logging'), 'logging:\n  level: info');
+    assert.equal(extractYamlRegion(YAML_DOC, 'tags'), 'tags: ["a", "b"]');
+    assert.equal(extractYamlRegion(YAML_DOC, 'server.port,logging.level'),
+        'server:\n  port: 8080\nlogging:\n  level: info', 'comma-separated paths, in order');
+    assert.throws(() => extractYamlRegion(YAML_DOC, 'server.nope'), /"server.nope": no key "nope"/);
+    assert.throws(() => extractYamlRegion(YAML_DOC, 'logging.level.deep'), /"level" has no nested keys/);
+    assert.throws(() => extractYamlRegion(YAML_DOC, 'a..b'), /has an empty key/);
+    assert.throws(() => extractYamlRegion(YAML_DOC, ' , '), /names no keys/);
+});
+
+test('extractTomlRegion renders a key with its table, continuation lines included', () => {
+    assert.equal(extractTomlRegion(TOML_DOC, 'server.port'), '[server]\nport = 8080');
+    assert.equal(extractTomlRegion(TOML_DOC, 'server.hosts'),
+        '[server]\nhosts = [\n  "a",\n  "b",\n]', 'a multi-line array comes whole');
+    assert.equal(extractTomlRegion(TOML_DOC, 'server.tls.enabled'), '[server.tls]\nenabled = true');
+    assert.equal(extractTomlRegion(TOML_DOC, 'server'),
+        '[server]\nport = 8080\nhosts = [\n  "a",\n  "b",\n]', 'a bare name selects the whole table');
+    assert.equal(extractTomlRegion(TOML_DOC, 'title'), 'title = "demo"', 'a top-level key needs no header');
+    assert.throws(() => extractTomlRegion(TOML_DOC, 'server.nope'), /no key "nope" in \[server\]/);
+    assert.throws(() => extractTomlRegion(TOML_DOC, 'nope'), /no key or table "nope"/);
+    assert.throws(() => extractTomlRegion(TOML_DOC, 'server.tls.nope'), /no table "\[server.tls.nope\]"|no key "nope"/);
+});
+
+test('extractIniRegion renders a key with its section', () => {
+    assert.equal(extractIniRegion(INI_DOC, 'server.port'), '[server]\nport = 8080');
+    assert.equal(extractIniRegion(INI_DOC, 'server.host'), '[server]\nhost: localhost', '`:` separates too');
+    assert.equal(extractIniRegion(INI_DOC, 'server'), '[server]\nport = 8080\nhost: localhost',
+        'a bare name selects the whole section');
+    assert.equal(extractIniRegion(INI_DOC, 'logging.level'), '[logging]\nlevel = info');
+    assert.equal(extractIniRegion(INI_DOC, 'global'), 'global = 1', 'a key before any section');
+    assert.throws(() => extractIniRegion(INI_DOC, 'server.nope'), /no key "nope" in \[server\]/);
+    assert.throws(() => extractIniRegion(INI_DOC, 'nope'), /no section "\[nope\]" and no key "nope"/);
+    assert.throws(() => extractIniRegion(INI_DOC, 'a.b.c'), /not deeper paths/);
+});
+
+test('updateDocument leaves an already-matching CRLF block byte-for-byte alone', () => {
+    // A block whose body matches apart from `\r` is not stale: the document is
+    // CRLF, the file's text is normalised to LF for the comparison, and neither
+    // the text nor the change flag may be rewritten for a difference the reader
+    // cannot see.
+    const doc = ['[a.md](./a.md)', '```markdown', 'hello', '```', ''].join('\r\n');
+    const result = updateDocument(doc, { readFile: () => 'hello\n', gitignore: false });
+    assert.equal(result.changed, false, 'no visible change means no change');
+    assert.equal(result.text, doc, 'the document is returned untouched');
+    assert.equal(result.results[0].changed, false);
+});
+
+test('updateDocument injects a YAML, TOML and INI selection and is idempotent', () => {
+    const files = { 'conf/app.yaml': `${YAML_DOC}\n`, 'conf/app.toml': `${TOML_DOC}\n`, 'conf/app.ini': `${INI_DOC}\n` };
+    const read = (path) => {
+        if (!(path in files)) throw new Error(`ENOENT ${path}`);
+        return files[path];
+    };
+    const cases = [
+        ['conf/app.yaml', 'server.port', 'server:\n  port: 8080'],
+        ['conf/app.toml', 'server.port', '[server]\nport = 8080'],
+        ['conf/app.ini', 'server.port', '[server]\nport = 8080'],
+    ];
+    for (const [path, reference, expected] of cases) {
+        const doc = [`[${path}](./${path}#${reference})`, '```', 'stale', '```'].join('\n');
+        const first = updateDocument(doc, { readFile: read, gitignore: false });
+        assert.equal(first.changed, true, `${path}: the stale block is rewritten`);
+        assert.ok(first.text.includes(expected), `${path}: the selection is injected`);
+        assert.match(first.text, /^```yaml\n|^```toml\n|^```ini\n/m, `${path}: the fence gets the language`);
+
+        const second = updateDocument(first.text, { readFile: read, gitignore: false });
+        assert.equal(second.changed, false, `${path}: a second pass is a no-op`);
+    }
+});
+
+test('ruleFor sends each data format to its own rule, and code elsewhere', () => {
     assert.equal(ruleFor('package.json').name, 'json');
     assert.equal(ruleFor('./a/b.JSON').name, 'json', 'extensions are case-insensitive');
+    for (const [path, name] of [['conf/app.yaml', 'yaml'], ['conf/app.yml', 'yaml'],
+        ['conf/app.toml', 'toml'], ['conf/app.ini', 'ini'], ['conf/app.cfg', 'ini'],
+        ['conf/app.properties', 'ini']]) {
+        assert.equal(ruleFor(path).name, name, path);
+    }
     assert.equal(ruleFor('index.mjs').name, 'code');
     assert.equal(ruleFor('README.md').name, 'code');
     assert.equal(ruleFor('.gitignore').name, 'code');
     assert.equal(ruleFor('noext').name, 'code');
     assert.equal(ruleFor('a.json', [JSON_RULE, CODE_RULE]).name, 'json');
     assert.equal(ruleFor('a.json', []).name, 'code', 'a rule set with no match falls back');
-    assert.deepEqual(REGION_RULES, [JSON_RULE, CODE_RULE]);
+    assert.deepEqual(REGION_RULES, [JSON_RULE, YAML_RULE, TOML_RULE, INI_RULE, CODE_RULE]);
 });
 
 test('resolveMarker resolves a region by the file type', () => {
@@ -2325,23 +2626,17 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
     }
 
     const { html, model } = buildDemo({ root });
-    assert.ok(model.exampleCount >= 9, 'the page shows a substantial set of targets');
-    assert.equal(model.files.length, 1, 'one sample file backs the page');
+    assert.ok(model.exampleCount >= 30, 'the page shows a substantial set of targets');
+    assert.ok(model.files.length >= 16, 'every sample file the document shows is on the page');
+    for (const file of model.files) {
+        assert.ok(html.includes(`data-file="${file.path}"`), `${file.path}: has a tab and a pane`);
+    }
 
     for (const section of model.sections) {
         for (const example of section.examples) {
             const file = model.files.find((candidate) => candidate.path === example.path);
             assert.ok(file, `${example.raw}: the target file is on the page`);
-            assert.ok(example.from >= 1 && example.to <= file.lines.length,
-                `${example.raw}: the range is inside ${file.path}`);
-            const highlighted = file.lines.slice(example.from - 1, example.to).join('\n');
-            assert.equal(example.to - example.from + 1, example.text.split('\n').length,
-                `${example.raw}: the range spans the injected lines`);
-            assert.ok(highlighted.startsWith(example.text),
-                `${example.raw}: the highlighted lines are exactly the injected text`);
             assert.ok(html.includes(`id="${example.id}"`), `${example.raw}: the target is clickable`);
-            assert.ok(html.includes(`data-from="${example.from}" data-to="${example.to}"`),
-                `${example.raw}: the range travels to the page`);
             assert.ok(!html.includes('chip-lines'),
                 `${example.raw}: the chip shows the target syntax, not line numbers`);
             assert.ok(html.includes(`data-section="${example.section}"`),
@@ -2350,11 +2645,73 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
                 `${example.raw}: the marker line is addressable in the rendered Markdown`);
             assert.ok(html.includes(`data-inject="${example.id}"`),
                 `${example.raw}: the injected block is addressable in the rendered Markdown`);
+
+            if (example.rendered) {
+                // A rendered rule (JSON, YAML, TOML, INI) re-prints or re-frames
+                // its selection, so its range is where the selected keys were
+                // written in the file — the middle column highlights that.
+                assert.ok(example.ranges?.length >= 1,
+                    `${example.raw}: a rendered selection still points at its keys`);
+                assert.equal(example.ranges[0][0], example.from, `${example.raw}: from is the first range`);
+                assert.equal(example.ranges[example.ranges.length - 1][1], example.to,
+                    `${example.raw}: to is the last range`);
+                for (const [from, to] of example.ranges) {
+                    assert.ok(from >= 1 && to <= file.lines.length && from <= to,
+                        `${example.raw}: range ${from}-${to} is inside ${file.path}`);
+                }
+                const key = example.reference.split(',').pop().split('.').pop();
+                const covered = example.ranges.flatMap(([from, to]) => file.lines.slice(from - 1, to));
+                assert.ok(covered.join('\n').includes(key),
+                    `${example.raw}: the ranges cover the "${key}" key`);
+                assert.ok(html.includes(`data-ranges="${example.ranges.map((r) => r.join('-')).join(',')}"`),
+                    `${example.raw}: the ranges travel to the page`);
+                continue;
+            }
+
+            if (example.from === null) {
+                // Nothing to point at (a rule that renders text the source does
+                // not contain): the snippet is the whole story.
+                assert.equal(example.to, null, `${example.raw}: no range, and no half a range`);
+                assert.ok(html.includes('data-from="0" data-to="0"'),
+                    `${example.raw}: the chip carries no range`);
+                continue;
+            }
+
+            assert.ok(example.from >= 1 && example.to <= file.lines.length,
+                `${example.raw}: the range is inside ${file.path}`);
+            const highlighted = file.lines.slice(example.from - 1, example.to).join('\n');
+            assert.equal(example.to - example.from + 1, example.text.split('\n').length,
+                `${example.raw}: the range spans the injected lines`);
+            assert.ok(highlighted.startsWith(example.text),
+                `${example.raw}: the highlighted lines are exactly the injected text`);
+            assert.ok(html.includes(`data-from="${example.from}" data-to="${example.to}"`),
+                `${example.raw}: the range travels to the page`);
         }
     }
 
     assert.ok(html.includes('data-file="samples/Inventory.java"'), 'the file pane is wired to the target');
     assert.ok(html.includes('<span class="tok-k">public</span>'), 'the sample is highlighted by the tokenizer');
+    // Every language in the table is highlighted in the middle column, from the
+    // same comment/string spans the resolver's lexer uses.
+    for (const [path, marker] of [
+        ['samples/Cart.go', '<span class="tok-k">func</span>'],
+        ['samples/Cart.rs', '<span class="tok-k">impl</span>'],
+        ['samples/Cart.py', '<span class="tok-k">def</span>'],
+        ['samples/Cart.cs', '<span class="tok-k">public</span>'],
+        ['samples/Cart.kt', '<span class="tok-k">fun</span>'],
+        ['samples/Cart.php', '<span class="tok-k">function</span>'],
+        ['samples/Cart.rb', '<span class="tok-k">def</span>'],
+        ['samples/report.sql', '<span class="tok-k">select</span>'],
+        ['samples/run.sh', '<span class="tok-c"># The heredoc body is data'],
+        ['samples/Form.vb', '<span class="tok-k">Public</span>'],
+        ['samples/Main.hs', '<span class="tok-k">data</span>'],
+        ['samples/Nesting.zig', '<span class="tok-k">pub</span>'],
+        ['samples/app.toml', '<span class="tok-s">&quot;cart&quot;</span>'],
+        ['samples/api.json', '<span class="tok-k">true</span>'],
+    ]) {
+        const pane = html.slice(html.indexOf(`data-file="${path}" aria-label`));
+        assert.ok(pane.includes(marker), `${path} is highlighted (${marker})`);
+    }
 });
 
 test('demo: the rendered Markdown keeps its shape and marks each injection', () => {
@@ -2471,8 +2828,11 @@ test('demo: --check reports a stale page and --out writes a fresh one', (t) => {
 test('every link in the docs is functional', () => {
     const root = dirname(fileURLToPath(import.meta.url));
 
+    // This repository's own documents: `node_modules` and dot-directories are
+    // vendor and tooling, exactly as the CLI's directory expansion treats them.
     const mdFiles = readdirSync(root, { recursive: true })
         .filter((name) => name.endsWith('.md'))
+        .filter((name) => !name.split(/[/\\]/).some((part) => part === 'node_modules' || part.startsWith('.')))
         .map((name) => join(root, name));
     assert.ok(mdFiles.length >= 3, 'README and doc/usage.md must be present');
 

@@ -135,6 +135,24 @@ property or a `#region` cannot, so naming one mid-path is the `"…" is not a
 container` error ([Errors](#errors)); a scope segment that matches nothing is
 `no section named "…" in "…"`. A path may have at most 8 segments.
 
+### When a name is declared more than once
+
+One name may be declared several times at the same level, and the path **retries
+them**: each candidate is tried in walk order, and the first one that can hold the
+rest of the path wins. The retry is what makes members that live *outside* their
+type addressable — a Rust `struct Cart` and its `impl Cart` blocks all answer to
+`Cart`, so `Cart/add` passes over the struct (which holds `items`) and reaches
+the method, and `Cart/remove` passes over the first impl to reach the second one.
+Likewise two `impl` blocks for one type split a type's methods across siblings
+without either becoming unaddressable.
+
+The **last** segment is not retried: its first match in walk order is the
+selection, exactly as [Sibling-first descent](#sibling-first-descent) says, so a
+path is ambiguous only when the *scopes* disagree. When no candidate can hold the
+rest of the path, the error is the one the first candidate produced, and a single
+candidate — a `#region` named mid-path, say — still reports `"…" is not a
+container`.
+
 ### Narrowing the scope
 
 Because a parent segment scopes the search to the block it found, a child name
@@ -320,7 +338,10 @@ Modifier semantics per match kind:
 - **Declaration (class / method / property)** — four scopes: no modifier takes
   the whole declaration, `-` takes the body alone (reaching a property's
   initialiser), `+` takes the declaration with the annotations above it, `++`
-  takes those with the doc comment above them.
+  takes those with the doc comment above them. What counts as an *annotation*
+  is the language's to say through its lexer (see
+  [Tokenizers](#tokenizers)): an `@Decorator` or `#[attribute]` by default, a
+  Haskell `name ::` type signature when that lexer supplies the test.
 - **Region directive** — a region is already exactly its body, so the modifier is
   **ignored**: `add+` and `add` inject the same lines.
 - **Condition literal, comment anchor** — the block is the unit. No modifier (or
@@ -489,14 +510,25 @@ language-neutral and lives in `lib/section.mjs`, so every engine agrees on it.
 That split is the **lexer seam**: `lib/section.mjs` accepts an optional *lexer*
 that supplies the lexical facts and otherwise uses its own built-in mask.
 
-A lexer is `{ name, mask(text), comments(text) }`, with an optional
-`conditionLiterals(line, from)` (matcher 5's double-quoted-literal reader, which
-is the same across these languages and so usually inherited). The one hard
-contract is the **mask invariant**: `mask` returns a string of the *same length*
-as the input with *every `\n` at the same offset* — comments and strings become
-spaces, never disappear. `lib/section.mjs` asserts this once per scan and names
-the offending lexer, so a bad engine fails loudly instead of silently
-mislocating a brace.
+A lexer is `{ name, mask(text), comments(text) }`, with three optional extras, all
+of which default to the language-neutral reading when absent:
+
+- `conditionLiterals(line, from)` — matcher 5's double-quoted-literal reader,
+  the same across these languages and so usually inherited;
+- `declarations(maskedLine)` — the declaration **shapes** this language adds to
+  the generic ones, as `{ kind, name, headerFrom, line?, body? }` entries read
+  from an already-masked line. This is where Ruby's paren-less `def add` and
+  Haskell's `add x y = …` binding live: a shape, not a parse, and the same
+  matcher precedence, walk and rendering apply to what it names;
+- `annotationLine(line)` — what counts as the annotation directly above a
+  declaration for the `+` scope, which for Haskell is the `name ::` type
+  signature rather than a decorator.
+
+The one hard contract is the **mask invariant**: `mask` returns a string of the
+*same length* as the input with *every `\n` at the same offset* — comments and
+strings become spaces, never disappear. `lib/section.mjs` asserts this once per
+scan and names the offending lexer, so a bad engine fails loudly instead of
+silently mislocating a brace.
 
 **The default engine.** When no lexer is supplied — the file's type is unknown —
 `lib/section.mjs` masks the file with its built-in `masked`/`commentsIn`, the
@@ -509,15 +541,50 @@ never how the blanked text is walked.
 `src/js/scanner/lexers.js` (`lexerFor(path)` → a lexer, or `undefined` for an
 unknown type, which then takes the default engine). The lexers are built on a
 shared one-pass tokenizer, `src/js/scanner/tokenizer.js`, parameterised by
-syntax; the three language scanners expose it:
+syntax; three files carry the work:
 
-| File | Exports | Covers |
+| File | What it is |
+| --- | --- |
+| `syntaxes.js` | the language table: one object per language, all data |
+| `tokenizer.js` | the one-pass engine: mask, comment spans, `if` clauses |
+| `lexers.js` | extension → lexer, built from the table (`lexerFor`) |
+
+A language that is not in the table takes the default engine — the same answer
+an unknown type gets — so an entry earns its keep only where the union is wrong
+for that language:
+
+| Language | Extensions | The construct the entry exists for |
 | --- | --- | --- |
-| `scanJS.js` | `lexerJS`, `scanJS(source, target)`, `visitJS(source, visitor)` | JS/TS — `'` `"` and backtick templates |
-| `scanJava.js` | `lexerJava`, `scanJava`, `visitJava` | Java — `"` `'` and text blocks `"""` |
-| `scanZig.js` | `lexerZig`, `scanZig`, `visitZig` | Zig — `"` and `\\` multiline strings, **nested** `/* /* */ */` comments |
+| JavaScript / TypeScript | `js` `mjs` `cjs` `jsx` `ts` `tsx` `mts` `cts` | backtick templates |
+| Java | `java` | text blocks `"""` |
+| Zig | `zig` | **nested** block comments, `\\` multiline strings |
+| Go | `go` | backtick raw strings (no escapes at all) |
+| Rust | `rs` | nested block comments, `r#"…"#`, and `'a` (lifetime) versus `'a'` (char) |
+| Python | `py` `pyi` | `"""` / `'''`, raw `r"…"` |
+| C# | `cs` | verbatim `@"…""…"`, raw `"""` |
+| Kotlin | `kt` `kts` | nested block comments, `"""` |
+| PHP | `php` `phtml` | `<<<EOT` heredocs; `#[Attribute]` is not a `#` comment |
+| Ruby | `rb` `rake` `gemspec` | `=begin` / `=end`, `<<~TAG` heredocs (`<<` stays a shift) |
+| SQL | `sql` | `''` doubling, `$$ … $$` |
+| Shell | `sh` `bash` `zsh` | `<<EOF` heredocs, `'…'` takes no escapes |
+| VB | `vb` `bas` `vbs` | `""` doubling |
+| Haskell | `hs` `lhs` | nested `{- -}` |
+| YAML | `yaml` `yml` | `'…'` doubling, both quoted forms folding across lines |
+| TOML | `toml` | `"""` / `'''` |
+| INI | `ini` `cfg` `properties` | `;` and `#` comments |
 
-`scanX(source, target)` returns the `if` clauses whose header carries `target` —
+The knobs an entry may use — several line-comment spellings, several block pairs
+(`nested`, `lineStart`), string forms (`escape: 'doubling'`, `multiline`,
+`lineScoped`, `boundary`, `hashes`, and `maxSpan`/`content` for a char literal
+that must not be read as a lifetime) and `heredoc` — are declared in
+`syntaxes.js` and described at the top of `tokenizer.js`. None of it reaches
+`lib/section.mjs`: an entry changes **what is blanked**, never how the blanked
+text is walked, which is why a new language cannot change an existing answer.
+
+The three original languages keep their sample scanners — `scanJS.js`,
+`scanJava.js`, `scanZig.js` — which export `lexerX` (the seam) plus the original
+`scanX`/`visitX` pair. `scanX(source, target)` returns the `if` clauses whose
+header carries `target` —
 matcher 5's candidate list, as `{ type: 'if_clause', line, col, snippet }`.
 `visitX(source, visitor)`
 runs the same single pass and calls `visitor.comment`, `visitor.string` and
@@ -536,6 +603,14 @@ it blanks only up to the first `*/`, leaking `fn decoy` out as a real
 declaration — `decoy` then resolves to a commented-out method. `lexerZig` blanks
 the whole nested comment, so `decoy` is not a section at all. The golden vectors
 pin both readings (`z-decoy-hidden-by-nested-comment`).
+
+Two more readings are pinned the same way, and they show the second half of a
+lexer's job: `Cart.rb` resolves `Cart/add` only because the Ruby entry declares
+the paren-less `def add` **and** the `end` that closes it, and `Store.hs`
+resolves `+add` only because the Haskell entry declares the `add x y = …`
+binding and says its `name ::` signature is the annotation the `+` scope takes.
+A substitute engine has to supply those shapes too — the mask alone will not
+reproduce those vectors.
 
 **Substituting an engine.** An implementation is free to produce the mask and
 comment spans from whatever it already has — a TreeSitter parse, an IDE index, a

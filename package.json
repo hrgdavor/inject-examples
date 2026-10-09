@@ -51,8 +51,12 @@
   "scripts": {
     "test": "node --test test.mjs && node tools/section-vectors.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
+    "oracle": "node tools/mask-oracle.mjs",
     "compare:zig": "node tools/compare-zig.mjs",
     "demo": "bun tools/build-demo.mjs",
     "demo:check": "bun tools/build-demo.mjs --check"
+  },
+  "devDependencies": {
+    "highlight.js": "^11.12.0"
   }
 }

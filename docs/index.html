@@ -177,7 +177,7 @@ body {
 <h2><span class="num">1</span>A named region</h2>
 <p>Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
 <ul class="targets">
-<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="10" data-to="11" aria-pressed="false" aria-controls="t-1-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span></button><pre class="snippet" id="t-1-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#catalog)</span><code>    /** The catalog, kept as an explicit region directive. */
+<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="10" data-to="11" data-ranges="10-11" aria-pressed="false" aria-controls="t-1-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span></button><pre class="snippet" id="t-1-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#catalog)</span><code>    /** The catalog, kept as an explicit region directive. */
     static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre></li>
 </ul>
 </li>
@@ -192,15 +192,15 @@ body {
 </ul>
 <p>The same method, four ways:</p>
 <ul class="targets">
-<li class="target-item" id="t-2-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="34" data-to="36" aria-pressed="false" aria-controls="t-2-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString</span></button><pre class="snippet" id="t-2-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#toString)</span><code>    public String toString() {
+<li class="target-item" id="t-2-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="34" data-to="36" data-ranges="34-36" aria-pressed="false" aria-controls="t-2-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString</span></button><pre class="snippet" id="t-2-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#toString)</span><code>    public String toString() {
         return items.size() + &quot; item(s)&quot;;
     }</code></pre></li>
-<li class="target-item" id="t-2-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="35" data-to="35" aria-pressed="false" aria-controls="t-2-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#-toString</span></button><pre class="snippet" id="t-2-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#-toString)</span><code>        return items.size() + &quot; item(s)&quot;;</code></pre></li>
-<li class="target-item" id="t-2-3"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="33" data-to="36" aria-pressed="false" aria-controls="t-2-3-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#+toString</span></button><pre class="snippet" id="t-2-3-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#+toString)</span><code>    @Override
+<li class="target-item" id="t-2-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="35" data-to="35" data-ranges="35-35" aria-pressed="false" aria-controls="t-2-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#-toString</span></button><pre class="snippet" id="t-2-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#-toString)</span><code>        return items.size() + &quot; item(s)&quot;;</code></pre></li>
+<li class="target-item" id="t-2-3"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="33" data-to="36" data-ranges="33-36" aria-pressed="false" aria-controls="t-2-3-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#+toString</span></button><pre class="snippet" id="t-2-3-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#+toString)</span><code>    @Override
     public String toString() {
         return items.size() + &quot; item(s)&quot;;
     }</code></pre></li>
-<li class="target-item" id="t-2-4"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="32" data-to="36" aria-pressed="false" aria-controls="t-2-4-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#++toString</span></button><pre class="snippet" id="t-2-4-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#++toString)</span><code>    /** Summarise the inventory. */
+<li class="target-item" id="t-2-4"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="32" data-to="36" data-ranges="32-36" aria-pressed="false" aria-controls="t-2-4-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#++toString</span></button><pre class="snippet" id="t-2-4-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#++toString)</span><code>    /** Summarise the inventory. */
     @Override
     public String toString() {
         return items.size() + &quot; item(s)&quot;;
@@ -211,7 +211,7 @@ body {
 <h2><span class="num">3</span>A nested declaration</h2>
 <p>A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
 <ul class="targets">
-<li class="target-item" id="t-3-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="27" data-to="29" aria-pressed="false" aria-controls="t-3-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#Inventory/Item/render</span></button><pre class="snippet" id="t-3-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#Inventory/Item/render)</span><code>        String render() {
+<li class="target-item" id="t-3-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="27" data-to="29" data-ranges="27-29" aria-pressed="false" aria-controls="t-3-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#Inventory/Item/render</span></button><pre class="snippet" id="t-3-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#Inventory/Item/render)</span><code>        String render() {
             return name + &quot; x&quot; + quantity;
         }</code></pre></li>
 </ul>
@@ -220,7 +220,7 @@ body {
 <h2><span class="num">4</span>A condition literal</h2>
 <p>Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
 <ul class="targets">
-<li class="target-item" id="t-4-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="4" data-from="40" data-to="42" aria-pressed="false" aria-controls="t-4-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#dispatch/count</span></button><pre class="snippet" id="t-4-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#dispatch/count)</span><code>        if (&quot;count&quot;.equals(methodName)) {
+<li class="target-item" id="t-4-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="4" data-from="40" data-to="42" data-ranges="40-42" aria-pressed="false" aria-controls="t-4-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#dispatch/count</span></button><pre class="snippet" id="t-4-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#dispatch/count)</span><code>        if (&quot;count&quot;.equals(methodName)) {
             System.out.println(&quot;items: &quot; + items.size());
         }</code></pre></li>
 </ul>
@@ -229,7 +229,7 @@ body {
 <h2><span class="num">5</span>A comment anchor</h2>
 <p>A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
 <ul class="targets">
-<li class="target-item" id="t-5-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="5" data-from="47" data-to="49" aria-pressed="false" aria-controls="t-5-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#legacy/count</span></button><pre class="snippet" id="t-5-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#legacy/count)</span><code>    public void legacy() { //count
+<li class="target-item" id="t-5-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="5" data-from="47" data-to="49" data-ranges="47-49" aria-pressed="false" aria-controls="t-5-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#legacy/count</span></button><pre class="snippet" id="t-5-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#legacy/count)</span><code>    public void legacy() { //count
         System.out.println(&quot;items: &quot; + items.size());
     }</code></pre></li>
 </ul>
@@ -238,7 +238,7 @@ body {
 <h2><span class="num">6</span>The whole file</h2>
 <p>A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
 <ul class="targets">
-<li class="target-item" id="t-6-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="6" data-from="1" data-to="50" aria-pressed="false" aria-controls="t-6-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">whole file</span></button><pre class="snippet" id="t-6-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java)</span><code>package demo;
+<li class="target-item" id="t-6-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="6" data-from="1" data-to="50" data-ranges="1-50" aria-pressed="false" aria-controls="t-6-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">whole file</span></button><pre class="snippet" id="t-6-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java)</span><code>package demo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -290,15 +290,217 @@ public class Inventory {
 }</code></pre></li>
 </ul>
 </li>
+<li class="example" id="ex-7">
+<h2><span class="num">7</span>Go — a raw string is not code</h2>
+<p><code>Add</code> is found through the braces, while the backtick raw string below it — which contains a whole <code>Decoy</code> function — is blanked before anything is counted, so it can never be mistaken for a member.</p>
+<ul class="targets">
+<li class="target-item" id="t-7-1"><button class="target" type="button" data-file="samples/Cart.go" data-section="7" data-from="5" data-to="7" data-ranges="5-7" aria-pressed="false" aria-controls="t-7-1-snippet"><span class="chip-file">Cart.go</span><span class="chip-ref">#Add</span></button><pre class="snippet" id="t-7-1-snippet"><span class="marker">[samples/Cart.go](./samples/Cart.go#Add)</span><code>func Add(items []string, item string) []string {
+	return append(items, item)
+}</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-8">
+<h2><span class="num">8</span>Rust — the members live in the impl</h2>
+<p>Rust keeps a type's methods in <code>impl</code> blocks, which are siblings of the <code>struct</code> with the same name. The path retries them, so <code>Cart/add</code> reaches past the struct to the method and <code>Cart/remove</code> reaches past the first impl to the second. The nested comment at the bottom of the file hides a <code>decoy</code> the matcher never sees.</p>
+<ul class="targets">
+<li class="target-item" id="t-8-1"><button class="target" type="button" data-file="samples/Cart.rs" data-section="8" data-from="8" data-to="10" data-ranges="8-10" aria-pressed="false" aria-controls="t-8-1-snippet"><span class="chip-file">Cart.rs</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-8-1-snippet"><span class="marker">[samples/Cart.rs](./samples/Cart.rs#Cart/add)</span><code>    fn add(&amp;mut self, x: String) {
+        self.items.push(x);
+    }</code></pre></li>
+<li class="target-item" id="t-8-2"><button class="target" type="button" data-file="samples/Cart.rs" data-section="8" data-from="14" data-to="16" data-ranges="14-16" aria-pressed="false" aria-controls="t-8-2-snippet"><span class="chip-file">Cart.rs</span><span class="chip-ref">#Cart/remove</span></button><pre class="snippet" id="t-8-2-snippet"><span class="marker">[samples/Cart.rs](./samples/Cart.rs#Cart/remove)</span><code>    fn remove(&amp;mut self) -&gt; Option&lt;String&gt; {
+        self.items.pop()
+    }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-9">
+<h2><span class="num">9</span>Python — triple quotes and indentation</h2>
+<p>The docstring hides a whole <code>def decoy</code> from the matcher, and the body of <code>add</code> is its indented block, so the selection ends where the indentation ends.</p>
+<ul class="targets">
+<li class="target-item" id="t-9-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="9" data-from="9" data-to="10" data-ranges="9-10" aria-pressed="false" aria-controls="t-9-1-snippet"><span class="chip-file">Cart.py</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-9-1-snippet"><span class="marker">[samples/Cart.py](./samples/Cart.py#Cart/add)</span><code>    def add(self, item):
+        self.items.append(item)</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-10">
+<h2><span class="num">10</span>C# — a verbatim string keeps its quotes</h2>
+<p>A verbatim string escapes its quote by doubling it (<code>&quot;&quot;</code>), so the brace inside <code>@&quot;cart &quot;&quot;}&quot;&quot; decoy&quot;</code> is text, not structure.</p>
+<ul class="targets">
+<li class="target-item" id="t-10-1"><button class="target" type="button" data-file="samples/Cart.cs" data-section="10" data-from="10" data-to="13" data-ranges="10-13" aria-pressed="false" aria-controls="t-10-1-snippet"><span class="chip-file">Cart.cs</span><span class="chip-ref">#Cart/Add</span></button><pre class="snippet" id="t-10-1-snippet"><span class="marker">[samples/Cart.cs](./samples/Cart.cs#Cart/Add)</span><code>    public void Add(string item)
+    {
+        items.Add(item);
+    }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-11">
+<h2><span class="num">11</span>Kotlin — nested comments, raw strings</h2>
+<p><code>/* /* */ */</code> nests in Kotlin, so the comment above <code>add</code> can swallow anything — including a <code>decoy</code> — and a <code>&quot;&quot;&quot;</code> raw string is text with no escapes at all.</p>
+<ul class="targets">
+<li class="target-item" id="t-11-1"><button class="target" type="button" data-file="samples/Cart.kt" data-section="11" data-from="5" data-to="7" data-ranges="5-7" aria-pressed="false" aria-controls="t-11-1-snippet"><span class="chip-file">Cart.kt</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-11-1-snippet"><span class="marker">[samples/Cart.kt](./samples/Cart.kt#Cart/add)</span><code>    fun add(item: String) {
+        items.add(item)
+    }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-12">
+<h2><span class="num">12</span>PHP — a heredoc is not code</h2>
+<p>The <code>&lt;&lt;&lt;SQL</code> body below is data, the <code>}</code> in it is not PHP syntax, and <code>#[Attribute]</code> — not used here — is an attribute rather than a <code>#</code> comment.</p>
+<ul class="targets">
+<li class="target-item" id="t-12-1"><button class="target" type="button" data-file="samples/Cart.php" data-section="12" data-from="5" data-to="13" data-ranges="5-13" aria-pressed="false" aria-controls="t-12-1-snippet"><span class="chip-file">Cart.php</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-12-1-snippet"><span class="marker">[samples/Cart.php](./samples/Cart.php#Cart/add)</span><code>    public function add(string $item): string
+    {
+        // The heredoc body is data: the brace in it is not PHP syntax.
+        $sql = &lt;&lt;&lt;SQL
+        insert into cart (item) values ('}') -- a decoy
+        SQL;
+
+        return $sql;
+    }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-13">
+<h2><span class="num">13</span>Ruby — def, end, and the shift operator</h2>
+<p><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append, not a heredoc: only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one.</p>
+<ul class="targets">
+<li class="target-item" id="t-13-1"><button class="target" type="button" data-file="samples/Cart.rb" data-section="13" data-from="2" data-to="4" data-ranges="2-4" aria-pressed="false" aria-controls="t-13-1-snippet"><span class="chip-file">Cart.rb</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-13-1-snippet"><span class="marker">[samples/Cart.rb](./samples/Cart.rb#Cart/add)</span><code>  def add(item)
+    @items &lt;&lt; item
+  end</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-14">
+<h2><span class="num">14</span>SQL — a region, and doubled quotes</h2>
+<p>SQL has no members to search, so this example uses a region directive the way any comment-bearing language can — and the string <code>'it''s a } decoy'</code> stays one string, because SQL escapes a quote by doubling it.</p>
+<ul class="targets">
+<li class="target-item" id="t-14-1"><button class="target" type="button" data-file="samples/report.sql" data-section="14" data-from="4" data-to="9" data-ranges="4-9" aria-pressed="false" aria-controls="t-14-1-snippet"><span class="chip-file">report.sql</span><span class="chip-ref">#monthly</span></button><pre class="snippet" id="t-14-1-snippet"><span class="marker">[samples/report.sql](./samples/report.sql#monthly)</span><code>select
+    date_trunc('month', placed_at) as month,
+    count(*) as orders
+from orders
+where note &lt;&gt; 'it''s a } decoy'
+group by 1;</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-15">
+<h2><span class="num">15</span>Shell — a heredoc is not code</h2>
+<p>The heredoc body is data: the <code>}</code> inside it is not shell syntax, and the selection stops at the function's closing brace.</p>
+<ul class="targets">
+<li class="target-item" id="t-15-1"><button class="target" type="button" data-file="samples/run.sh" data-section="15" data-from="3" data-to="8" data-ranges="3-8" aria-pressed="false" aria-controls="t-15-1-snippet"><span class="chip-file">run.sh</span><span class="chip-ref">#deploy</span></button><pre class="snippet" id="t-15-1-snippet"><span class="marker">[samples/run.sh](./samples/run.sh#deploy)</span><code>deploy() {
+	cat &lt;&lt;EOF
+  } decoy
+EOF
+	echo &quot;deployed&quot;
+}</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-16">
+<h2><span class="num">16</span>VB — a function and its End</h2>
+<p>VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure.</p>
+<ul class="targets">
+<li class="target-item" id="t-16-1"><button class="target" type="button" data-file="samples/Form.vb" data-section="16" data-from="2" data-to="5" data-ranges="2-5" aria-pressed="false" aria-controls="t-16-1-snippet"><span class="chip-file">Form.vb</span><span class="chip-ref">#Form/Add</span></button><pre class="snippet" id="t-16-1-snippet"><span class="marker">[samples/Form.vb](./samples/Form.vb#Form/Add)</span><code>    Public Function Add(item As String) As String
+        Dim note As String = &quot;a &quot;&quot;}&quot;&quot; decoy&quot;
+        Return note
+    End Function</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-17">
+<h2><span class="num">17</span>Haskell — a binding and its signature</h2>
+<p>A binding is <code>add x y = x + y</code>, and the <code>add ::</code> line above it is its annotation: <code>+add</code> brings the signature along, and <code>Cart</code> is the record declared with <code>data</code>.</p>
+<ul class="targets">
+<li class="target-item" id="t-17-1"><button class="target" type="button" data-file="samples/Main.hs" data-section="17" data-from="4" data-to="5" data-ranges="4-5" aria-pressed="false" aria-controls="t-17-1-snippet"><span class="chip-file">Main.hs</span><span class="chip-ref">#+add</span></button><pre class="snippet" id="t-17-1-snippet"><span class="marker">[samples/Main.hs](./samples/Main.hs#+add)</span><code>add :: Int -&gt; Int -&gt; Int
+add x y = x + y</code></pre></li>
+<li class="target-item" id="t-17-2"><button class="target" type="button" data-file="samples/Main.hs" data-section="17" data-from="7" data-to="7" data-ranges="7-7" aria-pressed="false" aria-controls="t-17-2-snippet"><span class="chip-file">Main.hs</span><span class="chip-ref">#Cart</span></button><pre class="snippet" id="t-17-2-snippet"><span class="marker">[samples/Main.hs](./samples/Main.hs#Cart)</span><code>data Cart = Cart { items :: [Int] }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-18">
+<h2><span class="num">18</span>Zig — a nested comment hides a decoy</h2>
+<p><code>/* outer /* inner */ still outer */</code> nests in Zig, so the commented-out <code>fn decoy</code> is blanked whole; the non-nesting default mask would have leaked it.</p>
+<ul class="targets">
+<li class="target-item" id="t-18-1"><button class="target" type="button" data-file="samples/Nesting.zig" data-section="18" data-from="6" data-to="8" data-ranges="6-8" aria-pressed="false" aria-controls="t-18-1-snippet"><span class="chip-file">Nesting.zig</span><span class="chip-ref">#target</span></button><pre class="snippet" id="t-18-1-snippet"><span class="marker">[samples/Nesting.zig](./samples/Nesting.zig#target)</span><code>pub fn target() void {
+    std.debug.print(&quot;}\n&quot;, .{});
+}</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-19">
+<h2><span class="num">19</span>YAML — a key path</h2>
+<p>A <code>.yaml</code> reference is a dotted key path, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
+<ul class="targets">
+<li class="target-item" id="t-19-1"><button class="target" type="button" data-file="samples/app.yaml" data-section="19" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-19-1-snippet"><span class="chip-file">app.yaml</span><span class="chip-ref">#server.port</span></button><pre class="snippet" id="t-19-1-snippet"><span class="marker">[samples/app.yaml](./samples/app.yaml#server.port)</span><code>server:
+  port: 8080</code></pre></li>
+<li class="target-item" id="t-19-2"><button class="target" type="button" data-file="samples/app.yaml" data-section="19" data-from="3" data-to="7" data-ranges="3-3,6-7" aria-pressed="false" aria-controls="t-19-2-snippet"><span class="chip-file">app.yaml</span><span class="chip-ref">#server.tls.enabled</span></button><pre class="snippet" id="t-19-2-snippet"><span class="marker">[samples/app.yaml](./samples/app.yaml#server.tls.enabled)</span><code>server:
+  tls:
+    enabled: true</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-20">
+<h2><span class="num">20</span>TOML — a table and its key</h2>
+<p><code>server.port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
+<ul class="targets">
+<li class="target-item" id="t-20-1"><button class="target" type="button" data-file="samples/app.toml" data-section="20" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-20-1-snippet"><span class="chip-file">app.toml</span><span class="chip-ref">#server.port</span></button><pre class="snippet" id="t-20-1-snippet"><span class="marker">[samples/app.toml](./samples/app.toml#server.port)</span><code>[server]
+port = 8080</code></pre></li>
+<li class="target-item" id="t-20-2"><button class="target" type="button" data-file="samples/app.toml" data-section="20" data-from="3" data-to="8" data-ranges="3-3,6-8" aria-pressed="false" aria-controls="t-20-2-snippet"><span class="chip-file">app.toml</span><span class="chip-ref">#server.hosts</span></button><pre class="snippet" id="t-20-2-snippet"><span class="marker">[samples/app.toml](./samples/app.toml#server.hosts)</span><code>[server]
+hosts = [
+  &quot;a.example&quot;,
+  &quot;b.example&quot;,
+]</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-21">
+<h2><span class="num">21</span>INI — a section and its key</h2>
+<p><code>section.key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
+<ul class="targets">
+<li class="target-item" id="t-21-1"><button class="target" type="button" data-file="samples/app.ini" data-section="21" data-from="4" data-to="6" data-ranges="4-4,6-6" aria-pressed="false" aria-controls="t-21-1-snippet"><span class="chip-file">app.ini</span><span class="chip-ref">#server.port</span></button><pre class="snippet" id="t-21-1-snippet"><span class="marker">[samples/app.ini](./samples/app.ini#server.port)</span><code>[server]
+port = 8080</code></pre></li>
+<li class="target-item" id="t-21-2"><button class="target" type="button" data-file="samples/app.ini" data-section="21" data-from="8" data-to="9" data-ranges="8-9" aria-pressed="false" aria-controls="t-21-2-snippet"><span class="chip-file">app.ini</span><span class="chip-ref">#logging</span></button><pre class="snippet" id="t-21-2-snippet"><span class="marker">[samples/app.ini](./samples/app.ini#logging)</span><code>[logging]
+level = info</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-22">
+<h2><span class="num">22</span>JSON — keys</h2>
+<p>JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by dotted paths.</p>
+<ul class="targets">
+<li class="target-item" id="t-22-1"><button class="target" type="button" data-file="samples/api.json" data-section="22" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-22-1-snippet"><span class="chip-file">api.json</span><span class="chip-ref">#name,server.port</span></button><pre class="snippet" id="t-22-1-snippet"><span class="marker">[samples/api.json](./samples/api.json#name,server.port)</span><code>{
+  &quot;name&quot;: &quot;cart-api&quot;,
+  &quot;server&quot;: {
+    &quot;port&quot;: 8080
+  }
+}</code></pre></li>
+</ul>
+</li>
 </ol>
 </section>
 <section class="pane pane-mid" aria-label="Source file">
 <div class="col-head">Source file<span class="col-note">lines the target selects</span></div>
 <div class="file-tabs" role="tablist">
 <button class="file-tab active" type="button" data-file="samples/Inventory.java">docs/samples/Inventory.java</button>
+<button class="file-tab" type="button" data-file="samples/Cart.go">docs/samples/Cart.go</button>
+<button class="file-tab" type="button" data-file="samples/Cart.rs">docs/samples/Cart.rs</button>
+<button class="file-tab" type="button" data-file="samples/Cart.py">docs/samples/Cart.py</button>
+<button class="file-tab" type="button" data-file="samples/Cart.cs">docs/samples/Cart.cs</button>
+<button class="file-tab" type="button" data-file="samples/Cart.kt">docs/samples/Cart.kt</button>
+<button class="file-tab" type="button" data-file="samples/Cart.php">docs/samples/Cart.php</button>
+<button class="file-tab" type="button" data-file="samples/Cart.rb">docs/samples/Cart.rb</button>
+<button class="file-tab" type="button" data-file="samples/report.sql">docs/samples/report.sql</button>
+<button class="file-tab" type="button" data-file="samples/run.sh">docs/samples/run.sh</button>
+<button class="file-tab" type="button" data-file="samples/Form.vb">docs/samples/Form.vb</button>
+<button class="file-tab" type="button" data-file="samples/Main.hs">docs/samples/Main.hs</button>
+<button class="file-tab" type="button" data-file="samples/Nesting.zig">docs/samples/Nesting.zig</button>
+<button class="file-tab" type="button" data-file="samples/app.yaml">docs/samples/app.yaml</button>
+<button class="file-tab" type="button" data-file="samples/app.toml">docs/samples/app.toml</button>
+<button class="file-tab" type="button" data-file="samples/app.ini">docs/samples/app.ini</button>
+<button class="file-tab" type="button" data-file="samples/api.json">docs/samples/api.json</button>
 </div>
 <div class="file-view">
 <div class="file active" data-file="samples/Inventory.java" aria-label="docs/samples/Inventory.java"><pre class="code"><span class="line" id="samples-Inventory-java-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">package</span> demo;</span></span><span class="line" id="samples-Inventory-java-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L3" data-line="3"><span class="ln">3</span><span class="lc"><span class="tok-k">import</span> java.util.<span class="tok-t">ArrayList</span>;</span></span><span class="line" id="samples-Inventory-java-L4" data-line="4"><span class="ln">4</span><span class="lc"><span class="tok-k">import</span> java.util.<span class="tok-t">List</span>;</span></span><span class="line" id="samples-Inventory-java-L5" data-line="5"><span class="ln">5</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L6" data-line="6"><span class="ln">6</span><span class="lc"><span class="tok-c">/** A small stock inventory: the sample every target on this page reads. */</span></span></span><span class="line" id="samples-Inventory-java-L7" data-line="7"><span class="ln">7</span><span class="lc"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {</span></span><span class="line" id="samples-Inventory-java-L8" data-line="8"><span class="ln">8</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L9" data-line="9"><span class="ln">9</span><span class="lc">    <span class="tok-c">// #region catalog</span></span></span><span class="line" id="samples-Inventory-java-L10" data-line="10"><span class="ln">10</span><span class="lc">    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span></span></span><span class="line" id="samples-Inventory-java-L11" data-line="11"><span class="ln">11</span><span class="lc">    <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };</span></span><span class="line" id="samples-Inventory-java-L12" data-line="12"><span class="ln">12</span><span class="lc">    <span class="tok-c">// #endregion</span></span></span><span class="line" id="samples-Inventory-java-L13" data-line="13"><span class="ln">13</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L14" data-line="14"><span class="ln">14</span><span class="lc">    <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">List</span>&lt;<span class="tok-t">Item</span>&gt; items = <span class="tok-k">new</span> <span class="tok-t">ArrayList</span>&lt;&gt;();</span></span><span class="line" id="samples-Inventory-java-L15" data-line="15"><span class="ln">15</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L16" data-line="16"><span class="ln">16</span><span class="lc">    <span class="tok-c">/** One stock line of this inventory. */</span></span></span><span class="line" id="samples-Inventory-java-L17" data-line="17"><span class="ln">17</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-k">static</span> <span class="tok-k">class</span> <span class="tok-t">Item</span> {</span></span><span class="line" id="samples-Inventory-java-L18" data-line="18"><span class="ln">18</span><span class="lc">        <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">String</span> name;</span></span><span class="line" id="samples-Inventory-java-L19" data-line="19"><span class="ln">19</span><span class="lc">        <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-k">int</span> quantity;</span></span><span class="line" id="samples-Inventory-java-L20" data-line="20"><span class="ln">20</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L21" data-line="21"><span class="ln">21</span><span class="lc">        <span class="tok-t">Item</span>(<span class="tok-t">String</span> name, <span class="tok-k">int</span> quantity) {</span></span><span class="line" id="samples-Inventory-java-L22" data-line="22"><span class="ln">22</span><span class="lc">            <span class="tok-k">this</span>.name = name;</span></span><span class="line" id="samples-Inventory-java-L23" data-line="23"><span class="ln">23</span><span class="lc">            <span class="tok-k">this</span>.quantity = quantity;</span></span><span class="line" id="samples-Inventory-java-L24" data-line="24"><span class="ln">24</span><span class="lc">        }</span></span><span class="line" id="samples-Inventory-java-L25" data-line="25"><span class="ln">25</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L26" data-line="26"><span class="ln">26</span><span class="lc">        <span class="tok-c">/** Render one line the way the receipt shows it. */</span></span></span><span class="line" id="samples-Inventory-java-L27" data-line="27"><span class="ln">27</span><span class="lc">        <span class="tok-t">String</span> render() {</span></span><span class="line" id="samples-Inventory-java-L28" data-line="28"><span class="ln">28</span><span class="lc">            <span class="tok-k">return</span> name + <span class="tok-s">&quot; x&quot;</span> + quantity;</span></span><span class="line" id="samples-Inventory-java-L29" data-line="29"><span class="ln">29</span><span class="lc">        }</span></span><span class="line" id="samples-Inventory-java-L30" data-line="30"><span class="ln">30</span><span class="lc">    }</span></span><span class="line" id="samples-Inventory-java-L31" data-line="31"><span class="ln">31</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L32" data-line="32"><span class="ln">32</span><span class="lc">    <span class="tok-c">/** Summarise the inventory. */</span></span></span><span class="line" id="samples-Inventory-java-L33" data-line="33"><span class="ln">33</span><span class="lc">    <span class="tok-a">@Override</span></span></span><span class="line" id="samples-Inventory-java-L34" data-line="34"><span class="ln">34</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {</span></span><span class="line" id="samples-Inventory-java-L35" data-line="35"><span class="ln">35</span><span class="lc">        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;</span></span><span class="line" id="samples-Inventory-java-L36" data-line="36"><span class="ln">36</span><span class="lc">    }</span></span><span class="line" id="samples-Inventory-java-L37" data-line="37"><span class="ln">37</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L38" data-line="38"><span class="ln">38</span><span class="lc">    <span class="tok-c">/** Run one named method. */</span></span></span><span class="line" id="samples-Inventory-java-L39" data-line="39"><span class="ln">39</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-k">void</span> dispatch(<span class="tok-t">String</span> methodName) {</span></span><span class="line" id="samples-Inventory-java-L40" data-line="40"><span class="ln">40</span><span class="lc">        <span class="tok-k">if</span> (<span class="tok-s">&quot;count&quot;</span>.equals(methodName)) {</span></span><span class="line" id="samples-Inventory-java-L41" data-line="41"><span class="ln">41</span><span class="lc">            <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());</span></span><span class="line" id="samples-Inventory-java-L42" data-line="42"><span class="ln">42</span><span class="lc">        } <span class="tok-k">else</span> <span class="tok-k">if</span> (<span class="tok-s">&quot;clear&quot;</span>.equals(methodName)) {</span></span><span class="line" id="samples-Inventory-java-L43" data-line="43"><span class="ln">43</span><span class="lc">            items.clear();</span></span><span class="line" id="samples-Inventory-java-L44" data-line="44"><span class="ln">44</span><span class="lc">        }</span></span><span class="line" id="samples-Inventory-java-L45" data-line="45"><span class="ln">45</span><span class="lc">    }</span></span><span class="line" id="samples-Inventory-java-L46" data-line="46"><span class="ln">46</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L47" data-line="47"><span class="ln">47</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-k">void</span> legacy() { <span class="tok-c">//count</span></span></span><span class="line" id="samples-Inventory-java-L48" data-line="48"><span class="ln">48</span><span class="lc">        <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());</span></span><span class="line" id="samples-Inventory-java-L49" data-line="49"><span class="ln">49</span><span class="lc">    }</span></span><span class="line" id="samples-Inventory-java-L50" data-line="50"><span class="ln">50</span><span class="lc">}</span></span></pre></div>
+<div class="file" data-file="samples/Cart.go" aria-label="docs/samples/Cart.go"><pre class="code"><span class="line" id="samples-Cart-go-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">package</span> cart</span></span><span class="line" id="samples-Cart-go-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-Cart-go-L3" data-line="3"><span class="ln">3</span><span class="lc"><span class="tok-c">// Add appends one item. The raw string below is not code: a name inside it is</span></span></span><span class="line" id="samples-Cart-go-L4" data-line="4"><span class="ln">4</span><span class="lc"><span class="tok-c">// invisible to the matcher, which is what the Go lexer buys.</span></span></span><span class="line" id="samples-Cart-go-L5" data-line="5"><span class="ln">5</span><span class="lc"><span class="tok-k">func</span> <span class="tok-t">Add</span>(items []string, item string) []string {</span></span><span class="line" id="samples-Cart-go-L6" data-line="6"><span class="ln">6</span><span class="lc">	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)</span></span><span class="line" id="samples-Cart-go-L7" data-line="7"><span class="ln">7</span><span class="lc">}</span></span><span class="line" id="samples-Cart-go-L8" data-line="8"><span class="ln">8</span><span class="lc"></span></span><span class="line" id="samples-Cart-go-L9" data-line="9"><span class="ln">9</span><span class="lc"><span class="tok-k">var</span> banner = <span class="tok-s">`package cart</span></span></span><span class="line" id="samples-Cart-go-L10" data-line="10"><span class="ln">10</span><span class="lc"></span></span><span class="line" id="samples-Cart-go-L11" data-line="11"><span class="ln">11</span><span class="lc"><span class="tok-s">func Decoy() {}</span></span></span><span class="line" id="samples-Cart-go-L12" data-line="12"><span class="ln">12</span><span class="lc"><span class="tok-s">`</span></span></span></pre></div>
+<div class="file" data-file="samples/Cart.rs" aria-label="docs/samples/Cart.rs"><pre class="code"><span class="line" id="samples-Cart-rs-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c">//! A cart, with its members where Rust keeps them: in the impls.</span></span></span><span class="line" id="samples-Cart-rs-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-Cart-rs-L3" data-line="3"><span class="ln">3</span><span class="lc"><span class="tok-k">struct</span> <span class="tok-t">Cart</span> {</span></span><span class="line" id="samples-Cart-rs-L4" data-line="4"><span class="ln">4</span><span class="lc">    items: <span class="tok-t">Vec</span>&lt;<span class="tok-t">String</span>&gt;,</span></span><span class="line" id="samples-Cart-rs-L5" data-line="5"><span class="ln">5</span><span class="lc">}</span></span><span class="line" id="samples-Cart-rs-L6" data-line="6"><span class="ln">6</span><span class="lc"></span></span><span class="line" id="samples-Cart-rs-L7" data-line="7"><span class="ln">7</span><span class="lc"><span class="tok-k">impl</span> <span class="tok-t">Cart</span> {</span></span><span class="line" id="samples-Cart-rs-L8" data-line="8"><span class="ln">8</span><span class="lc">    <span class="tok-k">fn</span> add(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>, x: <span class="tok-t">String</span>) {</span></span><span class="line" id="samples-Cart-rs-L9" data-line="9"><span class="ln">9</span><span class="lc">        <span class="tok-k">self</span>.items.push(x);</span></span><span class="line" id="samples-Cart-rs-L10" data-line="10"><span class="ln">10</span><span class="lc">    }</span></span><span class="line" id="samples-Cart-rs-L11" data-line="11"><span class="ln">11</span><span class="lc">}</span></span><span class="line" id="samples-Cart-rs-L12" data-line="12"><span class="ln">12</span><span class="lc"></span></span><span class="line" id="samples-Cart-rs-L13" data-line="13"><span class="ln">13</span><span class="lc"><span class="tok-k">impl</span> <span class="tok-t">Cart</span> {</span></span><span class="line" id="samples-Cart-rs-L14" data-line="14"><span class="ln">14</span><span class="lc">    <span class="tok-k">fn</span> remove(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; <span class="tok-t">Option</span>&lt;<span class="tok-t">String</span>&gt; {</span></span><span class="line" id="samples-Cart-rs-L15" data-line="15"><span class="ln">15</span><span class="lc">        <span class="tok-k">self</span>.items.pop()</span></span><span class="line" id="samples-Cart-rs-L16" data-line="16"><span class="ln">16</span><span class="lc">    }</span></span><span class="line" id="samples-Cart-rs-L17" data-line="17"><span class="ln">17</span><span class="lc">}</span></span><span class="line" id="samples-Cart-rs-L18" data-line="18"><span class="ln">18</span><span class="lc"></span></span><span class="line" id="samples-Cart-rs-L19" data-line="19"><span class="ln">19</span><span class="lc"><span class="tok-c">/* A nested /* comment */ hides `fn decoy() {}` from the matcher. */</span></span></span></pre></div>
+<div class="file" data-file="samples/Cart.py" aria-label="docs/samples/Cart.py"><pre class="code"><span class="line" id="samples-Cart-py-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">class</span> <span class="tok-t">Cart</span>:</span></span><span class="line" id="samples-Cart-py-L2" data-line="2"><span class="ln">2</span><span class="lc">    <span class="tok-s">&quot;&quot;&quot;A cart of items.</span></span></span><span class="line" id="samples-Cart-py-L3" data-line="3"><span class="ln">3</span><span class="lc"></span></span><span class="line" id="samples-Cart-py-L4" data-line="4"><span class="ln">4</span><span class="lc"><span class="tok-s">    The triple-quoted text hides a decoy from the matcher:</span></span></span><span class="line" id="samples-Cart-py-L5" data-line="5"><span class="ln">5</span><span class="lc"><span class="tok-s">    def decoy(self):</span></span></span><span class="line" id="samples-Cart-py-L6" data-line="6"><span class="ln">6</span><span class="lc"><span class="tok-s">        pass</span></span></span><span class="line" id="samples-Cart-py-L7" data-line="7"><span class="ln">7</span><span class="lc"><span class="tok-s">    &quot;&quot;&quot;</span></span></span><span class="line" id="samples-Cart-py-L8" data-line="8"><span class="ln">8</span><span class="lc"></span></span><span class="line" id="samples-Cart-py-L9" data-line="9"><span class="ln">9</span><span class="lc">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):</span></span><span class="line" id="samples-Cart-py-L10" data-line="10"><span class="ln">10</span><span class="lc">        <span class="tok-k">self</span>.items.append(item)</span></span><span class="line" id="samples-Cart-py-L11" data-line="11"><span class="ln">11</span><span class="lc"></span></span><span class="line" id="samples-Cart-py-L12" data-line="12"><span class="ln">12</span><span class="lc">    <span class="tok-k">def</span> total(<span class="tok-k">self</span>):</span></span><span class="line" id="samples-Cart-py-L13" data-line="13"><span class="ln">13</span><span class="lc">        <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</span></span></pre></div>
+<div class="file" data-file="samples/Cart.cs" aria-label="docs/samples/Cart.cs"><pre class="code"><span class="line" id="samples-Cart-cs-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">using</span> <span class="tok-t">System</span>.<span class="tok-t">Collections</span>.<span class="tok-t">Generic</span>;</span></span><span class="line" id="samples-Cart-cs-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-Cart-cs-L3" data-line="3"><span class="ln">3</span><span class="lc"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span></span></span><span class="line" id="samples-Cart-cs-L4" data-line="4"><span class="ln">4</span><span class="lc">{</span></span><span class="line" id="samples-Cart-cs-L5" data-line="5"><span class="ln">5</span><span class="lc">    <span class="tok-k">private</span> <span class="tok-k">readonly</span> <span class="tok-t">List</span>&lt;<span class="tok-k">string</span>&gt; items = <span class="tok-k">new</span> <span class="tok-t">List</span>&lt;<span class="tok-k">string</span>&gt;();</span></span><span class="line" id="samples-Cart-cs-L6" data-line="6"><span class="ln">6</span><span class="lc"></span></span><span class="line" id="samples-Cart-cs-L7" data-line="7"><span class="ln">7</span><span class="lc">    <span class="tok-c">// A verbatim string keeps its quotes, so the brace in here is text.</span></span></span><span class="line" id="samples-Cart-cs-L8" data-line="8"><span class="ln">8</span><span class="lc">    <span class="tok-k">private</span> <span class="tok-k">string</span> label = <span class="tok-s">@&quot;cart &quot;&quot;}&quot;&quot; decoy&quot;</span>;</span></span><span class="line" id="samples-Cart-cs-L9" data-line="9"><span class="ln">9</span><span class="lc"></span></span><span class="line" id="samples-Cart-cs-L10" data-line="10"><span class="ln">10</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)</span></span><span class="line" id="samples-Cart-cs-L11" data-line="11"><span class="ln">11</span><span class="lc">    {</span></span><span class="line" id="samples-Cart-cs-L12" data-line="12"><span class="ln">12</span><span class="lc">        items.<span class="tok-t">Add</span>(item);</span></span><span class="line" id="samples-Cart-cs-L13" data-line="13"><span class="ln">13</span><span class="lc">    }</span></span><span class="line" id="samples-Cart-cs-L14" data-line="14"><span class="ln">14</span><span class="lc">}</span></span></pre></div>
+<div class="file" data-file="samples/Cart.kt" aria-label="docs/samples/Cart.kt"><pre class="code"><span class="line" id="samples-Cart-kt-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">class</span> <span class="tok-t">Cart</span> {</span></span><span class="line" id="samples-Cart-kt-L2" data-line="2"><span class="ln">2</span><span class="lc">    <span class="tok-c">/* Kotlin nests /* comments */, and a raw string hides a decoy: */</span></span></span><span class="line" id="samples-Cart-kt-L3" data-line="3"><span class="ln">3</span><span class="lc">    <span class="tok-k">val</span> note = <span class="tok-s">&quot;&quot;&quot;fun decoy() {}&quot;&quot;&quot;</span></span></span><span class="line" id="samples-Cart-kt-L4" data-line="4"><span class="ln">4</span><span class="lc"></span></span><span class="line" id="samples-Cart-kt-L5" data-line="5"><span class="ln">5</span><span class="lc">    <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {</span></span><span class="line" id="samples-Cart-kt-L6" data-line="6"><span class="ln">6</span><span class="lc">        items.add(item)</span></span><span class="line" id="samples-Cart-kt-L7" data-line="7"><span class="ln">7</span><span class="lc">    }</span></span><span class="line" id="samples-Cart-kt-L8" data-line="8"><span class="ln">8</span><span class="lc">}</span></span></pre></div>
+<div class="file" data-file="samples/Cart.php" aria-label="docs/samples/Cart.php"><pre class="code"><span class="line" id="samples-Cart-php-L1" data-line="1"><span class="ln">1</span><span class="lc">&lt;?php</span></span><span class="line" id="samples-Cart-php-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-Cart-php-L3" data-line="3"><span class="ln">3</span><span class="lc"><span class="tok-k">class</span> <span class="tok-t">Cart</span></span></span><span class="line" id="samples-Cart-php-L4" data-line="4"><span class="ln">4</span><span class="lc">{</span></span><span class="line" id="samples-Cart-php-L5" data-line="5"><span class="ln">5</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-k">function</span> add(string $item): string</span></span><span class="line" id="samples-Cart-php-L6" data-line="6"><span class="ln">6</span><span class="lc">    {</span></span><span class="line" id="samples-Cart-php-L7" data-line="7"><span class="ln">7</span><span class="lc">        <span class="tok-c">// The heredoc body is data: the brace in it is not PHP syntax.</span></span></span><span class="line" id="samples-Cart-php-L8" data-line="8"><span class="ln">8</span><span class="lc">        $sql = &lt;&lt;&lt;<span class="tok-t">SQL</span></span></span><span class="line" id="samples-Cart-php-L9" data-line="9"><span class="ln">9</span><span class="lc">        insert into cart (item) values ('}') -- a decoy</span></span><span class="line" id="samples-Cart-php-L10" data-line="10"><span class="ln">10</span><span class="lc">        <span class="tok-t">SQL</span>;</span></span><span class="line" id="samples-Cart-php-L11" data-line="11"><span class="ln">11</span><span class="lc"></span></span><span class="line" id="samples-Cart-php-L12" data-line="12"><span class="ln">12</span><span class="lc">        <span class="tok-k">return</span> $sql;</span></span><span class="line" id="samples-Cart-php-L13" data-line="13"><span class="ln">13</span><span class="lc">    }</span></span><span class="line" id="samples-Cart-php-L14" data-line="14"><span class="ln">14</span><span class="lc">}</span></span></pre></div>
+<div class="file" data-file="samples/Cart.rb" aria-label="docs/samples/Cart.rb"><pre class="code"><span class="line" id="samples-Cart-rb-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">class</span> <span class="tok-t">Cart</span></span></span><span class="line" id="samples-Cart-rb-L2" data-line="2"><span class="ln">2</span><span class="lc">  <span class="tok-k">def</span> add(item)</span></span><span class="line" id="samples-Cart-rb-L3" data-line="3"><span class="ln">3</span><span class="lc">    <span class="tok-a">@items</span> &lt;&lt; item</span></span><span class="line" id="samples-Cart-rb-L4" data-line="4"><span class="ln">4</span><span class="lc">  <span class="tok-k">end</span></span></span><span class="line" id="samples-Cart-rb-L5" data-line="5"><span class="ln">5</span><span class="lc"></span></span><span class="line" id="samples-Cart-rb-L6" data-line="6"><span class="ln">6</span><span class="lc">  <span class="tok-k">def</span> <span class="tok-k">self</span>.build</span></span><span class="line" id="samples-Cart-rb-L7" data-line="7"><span class="ln">7</span><span class="lc">    <span class="tok-k">new</span></span></span><span class="line" id="samples-Cart-rb-L8" data-line="8"><span class="ln">8</span><span class="lc">  <span class="tok-k">end</span></span></span><span class="line" id="samples-Cart-rb-L9" data-line="9"><span class="ln">9</span><span class="lc"><span class="tok-k">end</span></span></span></pre></div>
+<div class="file" data-file="samples/report.sql" aria-label="docs/samples/report.sql"><pre class="code"><span class="line" id="samples-report-sql-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c">-- A region directive is how a language without members is still addressable,</span></span></span><span class="line" id="samples-report-sql-L2" data-line="2"><span class="ln">2</span><span class="lc"><span class="tok-c">-- and the doubled quote keeps the brace inside the string: 'it''s a } decoy'.</span></span></span><span class="line" id="samples-report-sql-L3" data-line="3"><span class="ln">3</span><span class="lc"><span class="tok-c">-- #region monthly</span></span></span><span class="line" id="samples-report-sql-L4" data-line="4"><span class="ln">4</span><span class="lc"><span class="tok-k">select</span></span></span><span class="line" id="samples-report-sql-L5" data-line="5"><span class="ln">5</span><span class="lc">    date_trunc(<span class="tok-s">'month'</span>, placed_at) <span class="tok-k">as</span> month,</span></span><span class="line" id="samples-report-sql-L6" data-line="6"><span class="ln">6</span><span class="lc">    count(*) <span class="tok-k">as</span> orders</span></span><span class="line" id="samples-report-sql-L7" data-line="7"><span class="ln">7</span><span class="lc"><span class="tok-k">from</span> orders</span></span><span class="line" id="samples-report-sql-L8" data-line="8"><span class="ln">8</span><span class="lc"><span class="tok-k">where</span> note &lt;&gt; <span class="tok-s">'it''s a } decoy'</span></span></span><span class="line" id="samples-report-sql-L9" data-line="9"><span class="ln">9</span><span class="lc"><span class="tok-k">group</span> <span class="tok-k">by</span> <span class="tok-n">1</span>;</span></span><span class="line" id="samples-report-sql-L10" data-line="10"><span class="ln">10</span><span class="lc"><span class="tok-c">-- #endregion</span></span></span></pre></div>
+<div class="file" data-file="samples/run.sh" aria-label="docs/samples/run.sh"><pre class="code"><span class="line" id="samples-run-sh-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c">#!/bin/sh</span></span></span><span class="line" id="samples-run-sh-L2" data-line="2"><span class="ln">2</span><span class="lc"><span class="tok-c"># The heredoc body is data: the brace in it is not shell syntax.</span></span></span><span class="line" id="samples-run-sh-L3" data-line="3"><span class="ln">3</span><span class="lc">deploy() {</span></span><span class="line" id="samples-run-sh-L4" data-line="4"><span class="ln">4</span><span class="lc">	cat &lt;&lt;<span class="tok-t">EOF</span></span></span><span class="line" id="samples-run-sh-L5" data-line="5"><span class="ln">5</span><span class="lc">  } decoy</span></span><span class="line" id="samples-run-sh-L6" data-line="6"><span class="ln">6</span><span class="lc"><span class="tok-t">EOF</span></span></span><span class="line" id="samples-run-sh-L7" data-line="7"><span class="ln">7</span><span class="lc">	<span class="tok-k">echo</span> <span class="tok-s">&quot;deployed&quot;</span></span></span><span class="line" id="samples-run-sh-L8" data-line="8"><span class="ln">8</span><span class="lc">}</span></span></pre></div>
+<div class="file" data-file="samples/Form.vb" aria-label="docs/samples/Form.vb"><pre class="code"><span class="line" id="samples-Form-vb-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">Public</span> <span class="tok-k">Class</span> <span class="tok-t">Form</span></span></span><span class="line" id="samples-Form-vb-L2" data-line="2"><span class="ln">2</span><span class="lc">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span></span></span><span class="line" id="samples-Form-vb-L3" data-line="3"><span class="ln">3</span><span class="lc">        <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span></span></span><span class="line" id="samples-Form-vb-L4" data-line="4"><span class="ln">4</span><span class="lc">        <span class="tok-k">Return</span> note</span></span><span class="line" id="samples-Form-vb-L5" data-line="5"><span class="ln">5</span><span class="lc">    <span class="tok-k">End</span> <span class="tok-k">Function</span></span></span><span class="line" id="samples-Form-vb-L6" data-line="6"><span class="ln">6</span><span class="lc"><span class="tok-k">End</span> <span class="tok-k">Class</span></span></span></pre></div>
+<div class="file" data-file="samples/Main.hs" aria-label="docs/samples/Main.hs"><pre class="code"><span class="line" id="samples-Main-hs-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c">-- | A tiny store: a binding, the signature that labels it, and a record.</span></span></span><span class="line" id="samples-Main-hs-L2" data-line="2"><span class="ln">2</span><span class="lc"><span class="tok-k">module</span> <span class="tok-t">Main</span> <span class="tok-k">where</span></span></span><span class="line" id="samples-Main-hs-L3" data-line="3"><span class="ln">3</span><span class="lc"></span></span><span class="line" id="samples-Main-hs-L4" data-line="4"><span class="ln">4</span><span class="lc">add :: <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span></span></span><span class="line" id="samples-Main-hs-L5" data-line="5"><span class="ln">5</span><span class="lc">add x y = x + y</span></span><span class="line" id="samples-Main-hs-L6" data-line="6"><span class="ln">6</span><span class="lc"></span></span><span class="line" id="samples-Main-hs-L7" data-line="7"><span class="ln">7</span><span class="lc"><span class="tok-k">data</span> <span class="tok-t">Cart</span> = <span class="tok-t">Cart</span> { items :: [<span class="tok-t">Int</span>] }</span></span></pre></div>
+<div class="file" data-file="samples/Nesting.zig" aria-label="docs/samples/Nesting.zig"><pre class="code"><span class="line" id="samples-Nesting-zig-L1" data-line="1"><span class="ln">1</span><span class="lc">const std = <span class="tok-a">@import</span>(&quot;std&quot;);</span></span><span class="line" id="samples-Nesting-zig-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-Nesting-zig-L3" data-line="3"><span class="ln">3</span><span class="lc">// <span class="tok-t">Zig</span> nests block comments, so the decoy below is invisible: /* fn decoy() */</span></span><span class="line" id="samples-Nesting-zig-L4" data-line="4"><span class="ln">4</span><span class="lc">/* fn decoy() void {} */</span></span><span class="line" id="samples-Nesting-zig-L5" data-line="5"><span class="ln">5</span><span class="lc"></span></span><span class="line" id="samples-Nesting-zig-L6" data-line="6"><span class="ln">6</span><span class="lc">pub fn target() void {</span></span><span class="line" id="samples-Nesting-zig-L7" data-line="7"><span class="ln">7</span><span class="lc">    std.debug.print(&quot;}\n&quot;, .{});</span></span><span class="line" id="samples-Nesting-zig-L8" data-line="8"><span class="ln">8</span><span class="lc">}</span></span></pre></div>
+<div class="file" data-file="samples/app.yaml" aria-label="docs/samples/app.yaml"><pre class="code"><span class="line" id="samples-app-yaml-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c"># The demo config. A `#` inside a quoted value is not a comment.</span></span></span><span class="line" id="samples-app-yaml-L2" data-line="2"><span class="ln">2</span><span class="lc">service: cart</span></span><span class="line" id="samples-app-yaml-L3" data-line="3"><span class="ln">3</span><span class="lc">server:</span></span><span class="line" id="samples-app-yaml-L4" data-line="4"><span class="ln">4</span><span class="lc">  host: localhost</span></span><span class="line" id="samples-app-yaml-L5" data-line="5"><span class="ln">5</span><span class="lc">  port: <span class="tok-n">8080</span></span></span><span class="line" id="samples-app-yaml-L6" data-line="6"><span class="ln">6</span><span class="lc">  tls:</span></span><span class="line" id="samples-app-yaml-L7" data-line="7"><span class="ln">7</span><span class="lc">    enabled: true</span></span><span class="line" id="samples-app-yaml-L8" data-line="8"><span class="ln">8</span><span class="lc">logging:</span></span><span class="line" id="samples-app-yaml-L9" data-line="9"><span class="ln">9</span><span class="lc">  level: info</span></span></pre></div>
+<div class="file" data-file="samples/app.toml" aria-label="docs/samples/app.toml"><pre class="code"><span class="line" id="samples-app-toml-L1" data-line="1"><span class="ln">1</span><span class="lc">title = <span class="tok-s">&quot;cart&quot;</span></span></span><span class="line" id="samples-app-toml-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-app-toml-L3" data-line="3"><span class="ln">3</span><span class="lc">[server]</span></span><span class="line" id="samples-app-toml-L4" data-line="4"><span class="ln">4</span><span class="lc">host = <span class="tok-s">&quot;localhost&quot;</span></span></span><span class="line" id="samples-app-toml-L5" data-line="5"><span class="ln">5</span><span class="lc">port = <span class="tok-n">8080</span></span></span><span class="line" id="samples-app-toml-L6" data-line="6"><span class="ln">6</span><span class="lc">hosts = [</span></span><span class="line" id="samples-app-toml-L7" data-line="7"><span class="ln">7</span><span class="lc">  <span class="tok-s">&quot;a.example&quot;</span>,</span></span><span class="line" id="samples-app-toml-L8" data-line="8"><span class="ln">8</span><span class="lc">  <span class="tok-s">&quot;b.example&quot;</span>,</span></span><span class="line" id="samples-app-toml-L9" data-line="9"><span class="ln">9</span><span class="lc">]</span></span><span class="line" id="samples-app-toml-L10" data-line="10"><span class="ln">10</span><span class="lc"></span></span><span class="line" id="samples-app-toml-L11" data-line="11"><span class="ln">11</span><span class="lc">[server.tls]</span></span><span class="line" id="samples-app-toml-L12" data-line="12"><span class="ln">12</span><span class="lc">enabled = true</span></span></pre></div>
+<div class="file" data-file="samples/app.ini" aria-label="docs/samples/app.ini"><pre class="code"><span class="line" id="samples-app-ini-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c">; The demo config; a `#` comment works too.</span></span></span><span class="line" id="samples-app-ini-L2" data-line="2"><span class="ln">2</span><span class="lc">global = <span class="tok-n">1</span></span></span><span class="line" id="samples-app-ini-L3" data-line="3"><span class="ln">3</span><span class="lc"></span></span><span class="line" id="samples-app-ini-L4" data-line="4"><span class="ln">4</span><span class="lc">[server]</span></span><span class="line" id="samples-app-ini-L5" data-line="5"><span class="ln">5</span><span class="lc">host = localhost</span></span><span class="line" id="samples-app-ini-L6" data-line="6"><span class="ln">6</span><span class="lc">port = <span class="tok-n">8080</span></span></span><span class="line" id="samples-app-ini-L7" data-line="7"><span class="ln">7</span><span class="lc"></span></span><span class="line" id="samples-app-ini-L8" data-line="8"><span class="ln">8</span><span class="lc">[logging]</span></span><span class="line" id="samples-app-ini-L9" data-line="9"><span class="ln">9</span><span class="lc">level = info</span></span></pre></div>
+<div class="file" data-file="samples/api.json" aria-label="docs/samples/api.json"><pre class="code"><span class="line" id="samples-api-json-L1" data-line="1"><span class="ln">1</span><span class="lc">{</span></span><span class="line" id="samples-api-json-L2" data-line="2"><span class="ln">2</span><span class="lc">  <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,</span></span><span class="line" id="samples-api-json-L3" data-line="3"><span class="ln">3</span><span class="lc">  <span class="tok-s">&quot;version&quot;</span>: <span class="tok-s">&quot;1.0.0&quot;</span>,</span></span><span class="line" id="samples-api-json-L4" data-line="4"><span class="ln">4</span><span class="lc">  <span class="tok-s">&quot;server&quot;</span>: {</span></span><span class="line" id="samples-api-json-L5" data-line="5"><span class="ln">5</span><span class="lc">    <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>,</span></span><span class="line" id="samples-api-json-L6" data-line="6"><span class="ln">6</span><span class="lc">    <span class="tok-s">&quot;enabled&quot;</span>: <span class="tok-k">true</span>,</span></span><span class="line" id="samples-api-json-L7" data-line="7"><span class="ln">7</span><span class="lc">    <span class="tok-s">&quot;cors&quot;</span>: [<span class="tok-s">&quot;https://a.example&quot;</span>]</span></span><span class="line" id="samples-api-json-L8" data-line="8"><span class="ln">8</span><span class="lc">  },</span></span><span class="line" id="samples-api-json-L9" data-line="9"><span class="ln">9</span><span class="lc">  <span class="tok-s">&quot;keywords&quot;</span>: [<span class="tok-s">&quot;cart&quot;</span>, <span class="tok-s">&quot;orders&quot;</span>, <span class="tok-s">&quot;demo&quot;</span>]</span></span><span class="line" id="samples-api-json-L10" data-line="10"><span class="ln">10</span><span class="lc">}</span></span></pre></div>
 </div>
 </section>
 <section class="pane pane-right" aria-label="Rendered Markdown">
@@ -419,6 +621,165 @@ public class Inventory {
     }
 }</code></pre>
 </section>
+<section class="md-section" data-md-section="7">
+<h2 data-md-from="171" data-md-to="171">Go — a raw string is not code</h2>
+<p data-md-from="173" data-md-to="175"><code>Add</code> is found through the braces, while the backtick raw string below it — which contains a whole <code>Decoy</code> function — is blanked before anything is counted, so it can never be mistaken for a member.</p>
+<p class="md-marker" data-marker="t-7-1"><a href="./samples/Cart.go#Add">samples/Cart.go</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-7-1" data-md-from="179" data-md-to="183"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Add</span>(items []string, item string) []string {
+	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)
+}</code></pre>
+</section>
+<section class="md-section" data-md-section="8">
+<h2 data-md-from="185" data-md-to="185">Rust — the members live in the impl</h2>
+<p data-md-from="187" data-md-to="190">Rust keeps a type's methods in <code>impl</code> blocks, which are siblings of the <code>struct</code> with the same name. The path retries them, so <code>Cart/add</code> reaches past the struct to the method and <code>Cart/remove</code> reaches past the first impl to the second. The nested comment at the bottom of the file hides a <code>decoy</code> the matcher never sees.</p>
+<p class="md-marker" data-marker="t-8-1"><a href="./samples/Cart.rs#Cart/add">samples/Cart.rs</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-8-1" data-md-from="194" data-md-to="198"><code class="language-rust">    <span class="tok-k">fn</span> add(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>, x: <span class="tok-t">String</span>) {
+        <span class="tok-k">self</span>.items.push(x);
+    }</code></pre>
+<p class="md-marker" data-marker="t-8-2"><a href="./samples/Cart.rs#Cart/remove">samples/Cart.rs</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-8-2" data-md-from="202" data-md-to="206"><code class="language-rust">    <span class="tok-k">fn</span> remove(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; <span class="tok-t">Option</span>&lt;<span class="tok-t">String</span>&gt; {
+        <span class="tok-k">self</span>.items.pop()
+    }</code></pre>
+</section>
+<section class="md-section" data-md-section="9">
+<h2 data-md-from="208" data-md-to="208">Python — triple quotes and indentation</h2>
+<p data-md-from="210" data-md-to="211">The docstring hides a whole <code>def decoy</code> from the matcher, and the body of <code>add</code> is its indented block, so the selection ends where the indentation ends.</p>
+<p class="md-marker" data-marker="t-9-1"><a href="./samples/Cart.py#Cart/add">samples/Cart.py</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-9-1" data-md-from="215" data-md-to="218"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
+        <span class="tok-k">self</span>.items.append(item)</code></pre>
+</section>
+<section class="md-section" data-md-section="10">
+<h2 data-md-from="220" data-md-to="220">C# — a verbatim string keeps its quotes</h2>
+<p data-md-from="222" data-md-to="223">A verbatim string escapes its quote by doubling it (<code>&quot;&quot;</code>), so the brace inside <code>@&quot;cart &quot;&quot;}&quot;&quot; decoy&quot;</code> is text, not structure.</p>
+<p class="md-marker" data-marker="t-10-1"><a href="./samples/Cart.cs#Cart/Add">samples/Cart.cs</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-10-1" data-md-from="227" data-md-to="232"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
+    {
+        items.<span class="tok-t">Add</span>(item);
+    }</code></pre>
+</section>
+<section class="md-section" data-md-section="11">
+<h2 data-md-from="234" data-md-to="234">Kotlin — nested comments, raw strings</h2>
+<p data-md-from="236" data-md-to="237"><code>/* /* */ */</code> nests in Kotlin, so the comment above <code>add</code> can swallow anything — including a <code>decoy</code> — and a <code>&quot;&quot;&quot;</code> raw string is text with no escapes at all.</p>
+<p class="md-marker" data-marker="t-11-1"><a href="./samples/Cart.kt#Cart/add">samples/Cart.kt</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-11-1" data-md-from="241" data-md-to="245"><code class="language-kotlin">    <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {
+        items.add(item)
+    }</code></pre>
+</section>
+<section class="md-section" data-md-section="12">
+<h2 data-md-from="247" data-md-to="247">PHP — a heredoc is not code</h2>
+<p data-md-from="249" data-md-to="250">The <code>&lt;&lt;&lt;SQL</code> body below is data, the <code>}</code> in it is not PHP syntax, and <code>#[Attribute]</code> — not used here — is an attribute rather than a <code>#</code> comment.</p>
+<p class="md-marker" data-marker="t-12-1"><a href="./samples/Cart.php#Cart/add">samples/Cart.php</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-12-1" data-md-from="254" data-md-to="264"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">function</span> add(string $item): string
+    {
+        <span class="tok-c">// The heredoc body is data: the brace in it is not PHP syntax.</span>
+        $sql = &lt;&lt;&lt;<span class="tok-t">SQL</span>
+        insert into cart (item) values ('}') -- a decoy
+        <span class="tok-t">SQL</span>;
+
+        <span class="tok-k">return</span> $sql;
+    }</code></pre>
+</section>
+<section class="md-section" data-md-section="13">
+<h2 data-md-from="266" data-md-to="266">Ruby — def, end, and the shift operator</h2>
+<p data-md-from="268" data-md-to="270"><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append, not a heredoc: only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one.</p>
+<p class="md-marker" data-marker="t-13-1"><a href="./samples/Cart.rb#Cart/add">samples/Cart.rb</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-13-1" data-md-from="274" data-md-to="278"><code class="language-ruby">  <span class="tok-k">def</span> add(item)
+    <span class="tok-a">@items</span> &lt;&lt; item
+  <span class="tok-k">end</span></code></pre>
+</section>
+<section class="md-section" data-md-section="14">
+<h2 data-md-from="280" data-md-to="280">SQL — a region, and doubled quotes</h2>
+<p data-md-from="282" data-md-to="284">SQL has no members to search, so this example uses a region directive the way any comment-bearing language can — and the string <code>'it''s a } decoy'</code> stays one string, because SQL escapes a quote by doubling it.</p>
+<p class="md-marker" data-marker="t-14-1"><a href="./samples/report.sql#monthly">samples/report.sql</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-14-1" data-md-from="288" data-md-to="295"><code class="language-sql"><span class="tok-k">select</span>
+    date_trunc(<span class="tok-s">'month'</span>, placed_at) <span class="tok-k">as</span> month,
+    count(*) <span class="tok-k">as</span> orders
+<span class="tok-k">from</span> orders
+<span class="tok-k">where</span> note &lt;&gt; <span class="tok-s">'it''s a } decoy'</span>
+<span class="tok-k">group</span> <span class="tok-k">by</span> <span class="tok-n">1</span>;</code></pre>
+</section>
+<section class="md-section" data-md-section="15">
+<h2 data-md-from="297" data-md-to="297">Shell — a heredoc is not code</h2>
+<p data-md-from="299" data-md-to="300">The heredoc body is data: the <code>}</code> inside it is not shell syntax, and the selection stops at the function's closing brace.</p>
+<p class="md-marker" data-marker="t-15-1"><a href="./samples/run.sh#deploy">samples/run.sh</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-15-1" data-md-from="304" data-md-to="311"><code class="language-bash">deploy() {
+	cat &lt;&lt;<span class="tok-t">EOF</span>
+  } decoy
+<span class="tok-t">EOF</span>
+	<span class="tok-k">echo</span> <span class="tok-s">&quot;deployed&quot;</span>
+}</code></pre>
+</section>
+<section class="md-section" data-md-section="16">
+<h2 data-md-from="313" data-md-to="313">VB — a function and its End</h2>
+<p data-md-from="315" data-md-to="317">VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure.</p>
+<p class="md-marker" data-marker="t-16-1"><a href="./samples/Form.vb#Form/Add">samples/Form.vb</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-16-1" data-md-from="321" data-md-to="326"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
+        <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
+        <span class="tok-k">Return</span> note
+    <span class="tok-k">End</span> <span class="tok-k">Function</span></code></pre>
+</section>
+<section class="md-section" data-md-section="17">
+<h2 data-md-from="328" data-md-to="328">Haskell — a binding and its signature</h2>
+<p data-md-from="330" data-md-to="331">A binding is <code>add x y = x + y</code>, and the <code>add ::</code> line above it is its annotation: <code>+add</code> brings the signature along, and <code>Cart</code> is the record declared with <code>data</code>.</p>
+<p class="md-marker" data-marker="t-17-1"><a href="./samples/Main.hs#+add">samples/Main.hs</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-17-1" data-md-from="335" data-md-to="338"><code class="language-haskell">add :: <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span>
+add x y = x + y</code></pre>
+<p class="md-marker" data-marker="t-17-2"><a href="./samples/Main.hs#Cart">samples/Main.hs</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-17-2" data-md-from="342" data-md-to="344"><code class="language-haskell"><span class="tok-k">data</span> <span class="tok-t">Cart</span> = <span class="tok-t">Cart</span> { items :: [<span class="tok-t">Int</span>] }</code></pre>
+</section>
+<section class="md-section" data-md-section="18">
+<h2 data-md-from="346" data-md-to="346">Zig — a nested comment hides a decoy</h2>
+<p data-md-from="348" data-md-to="349"><code>/* outer /* inner */ still outer */</code> nests in Zig, so the commented-out <code>fn decoy</code> is blanked whole; the non-nesting default mask would have leaked it.</p>
+<p class="md-marker" data-marker="t-18-1"><a href="./samples/Nesting.zig#target">samples/Nesting.zig</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-18-1" data-md-from="353" data-md-to="357"><code class="language-zig"><span class="tok-k">pub</span> <span class="tok-k">fn</span> target() void {
+    std.debug.print(<span class="tok-s">&quot;}\n&quot;</span>, .{});
+}</code></pre>
+</section>
+<section class="md-section" data-md-section="19">
+<h2 data-md-from="359" data-md-to="359">YAML — a key path</h2>
+<p data-md-from="361" data-md-to="363">A <code>.yaml</code> reference is a dotted key path, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
+<p class="md-marker" data-marker="t-19-1"><a href="./samples/app.yaml#server.port">samples/app.yaml</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-19-1" data-md-from="367" data-md-to="370"><code class="language-yaml">server:
+  port: <span class="tok-n">8080</span></code></pre>
+<p class="md-marker" data-marker="t-19-2"><a href="./samples/app.yaml#server.tls.enabled">samples/app.yaml</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-19-2" data-md-from="374" data-md-to="378"><code class="language-yaml">server:
+  tls:
+    enabled: true</code></pre>
+</section>
+<section class="md-section" data-md-section="20">
+<h2 data-md-from="380" data-md-to="380">TOML — a table and its key</h2>
+<p data-md-from="382" data-md-to="383"><code>server.port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
+<p class="md-marker" data-marker="t-20-1"><a href="./samples/app.toml#server.port">samples/app.toml</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-20-1" data-md-from="387" data-md-to="390"><code class="language-toml">[server]
+port = <span class="tok-n">8080</span></code></pre>
+<p class="md-marker" data-marker="t-20-2"><a href="./samples/app.toml#server.hosts">samples/app.toml</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-20-2" data-md-from="394" data-md-to="400"><code class="language-toml">[server]
+hosts = [
+  <span class="tok-s">&quot;a.example&quot;</span>,
+  <span class="tok-s">&quot;b.example&quot;</span>,
+]</code></pre>
+</section>
+<section class="md-section" data-md-section="21">
+<h2 data-md-from="402" data-md-to="402">INI — a section and its key</h2>
+<p data-md-from="404" data-md-to="405"><code>section.key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
+<p class="md-marker" data-marker="t-21-1"><a href="./samples/app.ini#server.port">samples/app.ini</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-21-1" data-md-from="409" data-md-to="412"><code class="language-ini">[server]
+port = <span class="tok-n">8080</span></code></pre>
+<p class="md-marker" data-marker="t-21-2"><a href="./samples/app.ini#logging">samples/app.ini</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-21-2" data-md-from="416" data-md-to="419"><code class="language-ini">[logging]
+level = info</code></pre>
+</section>
+<section class="md-section" data-md-section="22">
+<h2 data-md-from="421" data-md-to="421">JSON — keys</h2>
+<p data-md-from="423" data-md-to="424">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by dotted paths.</p>
+<p class="md-marker" data-marker="t-22-1"><a href="./samples/api.json#name,server.port">samples/api.json</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-22-1" data-md-from="428" data-md-to="435"><code class="language-json">{
+  <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,
+  <span class="tok-s">&quot;server&quot;</span>: {
+    <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>
+  }
+}</code></pre>
+</section>
 </article>
 </div>
 </section>
@@ -436,7 +797,12 @@ public class Inventory {
 
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
-    tabs.forEach(function (tab) { tab.classList.toggle('active', tab.dataset.file === name); });
+    tabs.forEach(function (tab) {
+      var active = tab.dataset.file === name;
+      tab.classList.toggle('active', active);
+      // With many files the tab strip scrolls; keep the active one in sight.
+      if (active) tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
   }
 
   function select(target, keepScroll, keepHash) {
@@ -449,12 +815,18 @@ public class Inventory {
 
     var from = Number(target.dataset.from);
     var to = Number(target.dataset.to);
+    var ranges = (target.dataset.ranges || '').split(',').filter(Boolean).map(function (range) {
+      var ends = range.split('-');
+      return [Number(ends[0]), Number(ends[1])];
+    });
+    if (ranges.length === 0) ranges = [[from, to]];
     var shown = document.querySelector('.file.active');
     var first = null;
     if (shown) {
       Array.prototype.forEach.call(shown.querySelectorAll('.line'), function (line) {
         var n = Number(line.dataset.line);
-        if (n >= from && n <= to) {
+        var hit = ranges.some(function (range) { return n >= range[0] && n <= range[1]; });
+        if (hit) {
           line.classList.add('hl');
           if (first === null) first = line;
         }

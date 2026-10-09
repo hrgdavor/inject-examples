@@ -39,7 +39,8 @@ import { fileURLToPath } from 'node:url';
 import { fenceRanges, fileLanguage, fileReader, normalize, parseMarker, ruleFor, CODE_RULE } from '../index.mjs';
 import { planSection } from '../lib/section.mjs';
 import { lexerFor } from '../src/js/scanner/lexers.js';
-import { JAVA_SYNTAX, JS_SYNTAX, ZIG_SYNTAX, tokenize } from '../src/js/scanner/tokenizer.js';
+import { tokenize } from '../src/js/scanner/tokenizer.js';
+import { SYNTAXES } from '../src/js/scanner/syntaxes.js';
 
 /** The repository root — this file lives in `tools/`. */
 export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -214,29 +215,93 @@ function loadFile(files, path, read) {
 }
 
 /**
+ * Where a *rendered* selection sits in its file.
+ *
+ * The JSON/YAML/TOML/INI rules re-print or re-frame what they select, so the
+ * result is not a byte slice `locateRange` could find. But it is built from the
+ * file's own lines, so each rendered line can be matched back to the source line
+ * it came from: a line that carries a key (`a:` in YAML, `key =` in TOML/INI,
+ * `"key":` in JSON, `[table]` in either) matches the first source line at or after
+ * the previous match with the **same key**, and anything else (an array element)
+ * matches by exact text. The range runs from the first match to the last; when
+ * nothing matches there is no highlight — the snippet is still the whole story.
+ *
+ * This is a display concern, so it lives here rather than on the rule: a rule
+ * answers "what do these keys say", the page answers "where do they sit".
+ *
+ * @param {string} source the target file
+ * @param {string} injected the rendered selection
+ * @returns {{ ranges: Array<[number, number]> } | null} 1-based, contiguous,
+ *          in file order — one per group of adjacent lines, so two keys far
+ *          apart are two ranges rather than one that highlights everything
+ *          between them
+ */
+export function locateRendered(source, injected) {
+    const lines = source.replace(/\r\n/g, '\n').split('\n');
+    const textOf = (line) => line.trim().replace(/,$/, '');
+    const keyOf = (line) => {
+        const text = line.trim();
+        const header = /^\[([^\]]+)\]$/.exec(text);
+        if (header) return header[1].trim();
+        const quoted = /^"((?:[^"\\]|\\.)*)"\s*:/.exec(text);
+        if (quoted) return quoted[1];
+        const pair = /^([A-Za-z0-9_.-]+)\s*[:=]/.exec(text);
+        return pair ? pair[1] : null;
+    };
+
+    let index = 0;
+    const hits = [];
+    for (const rendered of injected.split('\n')) {
+        const text = textOf(rendered);
+        if (text === '' || /^[{}[\]]$/.test(text)) continue;
+        const key = keyOf(rendered);
+        const at = lines.findIndex((line, i) => {
+            if (i < index) return false;
+            return key === null ? textOf(line) === text : keyOf(line) === key;
+        });
+        if (at === -1) continue;
+        hits.push(at);
+        index = at + 1;
+    }
+    if (hits.length === 0) return null;
+
+    const ranges = [];
+    for (const at of hits) {
+        const last = ranges[ranges.length - 1];
+        if (last && at === last[1]) last[1] = at + 1;
+        else ranges.push([at + 1, at + 1]);
+    }
+    return { ranges };
+}
+
+/**
  * Resolve one marker into the model entry the page needs: the text it injects
  * and the lines of the file it injects them from.
  */
 function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
     const rule = ruleFor(marker.path);
     let text;
-    let range = null;
+    let ranges = null;
+    const rendered = rule !== CODE_RULE && marker.reference !== null;
 
     if (marker.reference === null) {
         text = file.text;
-        range = locateRange(file.text, text, null);
+        const range = locateRange(file.text, text, null);
+        ranges = range ? [[range.from, range.to]] : null;
     } else if (rule === CODE_RULE) {
         const plan = planSection(file.text, marker.reference, lexerFor(marker.path));
         text = plan.text;
         if (plan.reference.warning) {
             warn(`${marker.path}#${marker.reference}: ${plan.reference.warning.kind} modifier; using "${plan.reference.kept}"`);
         }
-        range = locateRange(file.text, text, marker.reference);
+        const range = locateRange(file.text, text, marker.reference);
         if (range === null) {
             throw new Error(`${marker.raw}: the lines of "#${marker.reference}" cannot be located in ${marker.path}`);
         }
+        ranges = [[range.from, range.to]];
     } else {
         text = rule.resolve(file.text, marker.reference, marker.path);
+        ranges = locateRendered(file.text, text)?.ranges ?? null;
     }
 
     return {
@@ -245,11 +310,13 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
         raw: marker.raw,
         path: marker.path,
         reference: marker.reference,
+        rendered,
         fileLabel: file.label,
         fileDisplay: file.display,
         label: marker.reference === null ? 'whole file' : `#${marker.reference}`,
-        from: range ? range.from : null,
-        to: range ? range.to : null,
+        from: ranges ? ranges[0][0] : null,
+        to: ranges ? ranges[ranges.length - 1][1] : null,
+        ranges,
         text,
     };
 }
@@ -547,12 +614,127 @@ const ZIG_KEYWORDS = new Set([
     'union', 'unreachable', 'usingnamespace', 'var', 'volatile', 'while',
 ]);
 
-/** The languages a fenced block can be highlighted in, by fence info string. */
+const GO_KEYWORDS = new Set([
+    'break', 'case', 'chan', 'const', 'continue', 'default', 'defer', 'else', 'fallthrough', 'for',
+    'func', 'go', 'goto', 'if', 'import', 'interface', 'map', 'package', 'range', 'return', 'select',
+    'struct', 'switch', 'type', 'var', 'nil', 'true', 'false', 'iota', 'make', 'new', 'append', 'len',
+]);
+
+const RUST_KEYWORDS = new Set([
+    'as', 'async', 'await', 'break', 'const', 'continue', 'crate', 'dyn', 'else', 'enum', 'extern',
+    'false', 'fn', 'for', 'if', 'impl', 'in', 'let', 'loop', 'match', 'mod', 'move', 'mut', 'pub',
+    'ref', 'return', 'self', 'static', 'struct', 'super', 'trait', 'true', 'type', 'unsafe', 'use',
+    'where', 'while',
+]);
+
+const PYTHON_KEYWORDS = new Set([
+    'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def', 'del', 'elif',
+    'else', 'except', 'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda',
+    'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield',
+    'True', 'False', 'None', 'self',
+]);
+
+const CSHARP_KEYWORDS = new Set([
+    'abstract', 'as', 'async', 'await', 'base', 'bool', 'break', 'byte', 'case', 'catch', 'char',
+    'class', 'const', 'continue', 'decimal', 'default', 'delegate', 'do', 'double', 'else', 'enum',
+    'event', 'explicit', 'extern', 'false', 'finally', 'fixed', 'float', 'for', 'foreach', 'get',
+    'goto', 'if', 'implicit', 'in', 'int', 'interface', 'internal', 'is', 'lock', 'long', 'namespace',
+    'new', 'null', 'object', 'operator', 'out', 'override', 'params', 'private', 'protected', 'public',
+    'readonly', 'record', 'ref', 'return', 'sealed', 'set', 'short', 'sizeof', 'static', 'string',
+    'struct', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'uint', 'ulong', 'unsafe', 'ushort',
+    'using', 'var', 'virtual', 'void', 'volatile', 'while',
+]);
+
+const KOTLIN_KEYWORDS = new Set([
+    'abstract', 'actual', 'as', 'break', 'by', 'catch', 'class', 'companion', 'const', 'constructor',
+    'continue', 'data', 'do', 'else', 'enum', 'expect', 'external', 'false', 'final', 'finally', 'for',
+    'fun', 'get', 'if', 'import', 'in', 'infix', 'init', 'inline', 'inner', 'interface', 'internal',
+    'is', 'lateinit', 'null', 'object', 'open', 'operator', 'out', 'override', 'package', 'private',
+    'protected', 'public', 'reified', 'return', 'sealed', 'set', 'super', 'suspend', 'tailrec', 'this',
+    'throw', 'true', 'try', 'typealias', 'val', 'var', 'vararg', 'when', 'where', 'while',
+]);
+
+const PHP_KEYWORDS = new Set([
+    'abstract', 'and', 'array', 'as', 'break', 'callable', 'case', 'catch', 'class', 'clone', 'const',
+    'continue', 'declare', 'default', 'do', 'echo', 'else', 'elseif', 'empty', 'enum', 'extends',
+    'final', 'finally', 'fn', 'for', 'foreach', 'function', 'global', 'goto', 'if', 'implements',
+    'include', 'instanceof', 'interface', 'isset', 'list', 'match', 'namespace', 'new', 'or', 'print',
+    'private', 'protected', 'public', 'readonly', 'require', 'return', 'static', 'switch', 'throw',
+    'trait', 'try', 'unset', 'use', 'var', 'while', 'yield', 'true', 'false', 'null',
+]);
+
+const RUBY_KEYWORDS = new Set([
+    'alias', 'and', 'begin', 'break', 'case', 'class', 'def', 'defined', 'do', 'else', 'elsif', 'end',
+    'ensure', 'false', 'for', 'if', 'in', 'module', 'next', 'nil', 'not', 'or', 'redo', 'rescue',
+    'retry', 'return', 'self', 'super', 'then', 'true', 'undef', 'unless', 'until', 'when', 'while',
+    'yield', 'attr_accessor', 'require', 'require_relative', 'new',
+]);
+
+const SQL_KEYWORDS = new Set([
+    'select', 'from', 'where', 'insert', 'into', 'values', 'update', 'set', 'delete', 'create',
+    'table', 'alter', 'drop', 'join', 'left', 'right', 'inner', 'outer', 'on', 'group', 'by', 'order',
+    'having', 'limit', 'offset', 'union', 'all', 'distinct', 'as', 'and', 'or', 'not', 'null', 'is',
+    'in', 'like', 'between', 'exists', 'case', 'when', 'then', 'else', 'end', 'primary', 'key',
+    'foreign', 'references', 'index', 'view', 'begin', 'commit', 'rollback', 'with',
+]);
+
+const SHELL_KEYWORDS = new Set([
+    'if', 'then', 'else', 'elif', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'in',
+    'function', 'select', 'time', 'return', 'exit', 'export', 'local', 'readonly', 'declare',
+    'typeset', 'unset', 'shift', 'eval', 'exec', 'trap', 'set', 'source', 'alias', 'echo', 'cd',
+]);
+
+const VB_KEYWORDS = new Set([
+    'dim', 'as', 'new', 'nothing', 'true', 'false', 'if', 'then', 'else', 'elseif', 'end', 'select',
+    'case', 'for', 'each', 'next', 'while', 'do', 'loop', 'sub', 'function', 'class', 'module',
+    'structure', 'interface', 'public', 'private', 'protected', 'friend', 'shared', 'overrides',
+    'mustoverride', 'inherits', 'implements', 'imports', 'namespace', 'return', 'byval', 'byref',
+    'optional', 'paramarray', 'string', 'integer', 'boolean', 'double', 'object', 'me', 'mybase',
+]);
+
+const HASKELL_KEYWORDS = new Set([
+    'case', 'class', 'data', 'default', 'deriving', 'do', 'else', 'foreign', 'if', 'import', 'in',
+    'infix', 'infixl', 'infixr', 'instance', 'let', 'module', 'newtype', 'of', 'then', 'type',
+    'where', 'forall', 'mdo', 'proc', 'rec',
+]);
+
+const JSON_KEYWORDS = new Set(['true', 'false', 'null']);
+
+/** JSON is display-only here: the resolver reads it by rule (see `JSON_RULE`). */
+const JSON_SYNTAX = {
+    name: 'json',
+    lineComments: [],
+    blockComments: [],
+    strings: [{ open: '"', close: '"', escape: 'backslash' }],
+};
+
+/**
+ * The languages a file or a fenced block can be highlighted in, by the fence
+ * language `fileLanguage` names. Comment and string spans come from the same
+ * syntax table the resolver's lexers use (`syntaxes.js`), so the page shows
+ * exactly what the tool considers a comment or a string; the keyword sets are a
+ * display concern and live here.
+ */
 const HIGHLIGHTERS = {
-    java: { syntax: JAVA_SYNTAX, keywords: JAVA_KEYWORDS },
-    javascript: { syntax: JS_SYNTAX, keywords: JS_KEYWORDS },
-    typescript: { syntax: JS_SYNTAX, keywords: TS_KEYWORDS },
-    zig: { syntax: ZIG_SYNTAX, keywords: ZIG_KEYWORDS },
+    java: { syntax: SYNTAXES.java, keywords: JAVA_KEYWORDS },
+    javascript: { syntax: SYNTAXES.javascript, keywords: JS_KEYWORDS },
+    typescript: { syntax: SYNTAXES.typescript, keywords: TS_KEYWORDS },
+    zig: { syntax: SYNTAXES.zig, keywords: ZIG_KEYWORDS },
+    go: { syntax: SYNTAXES.go, keywords: GO_KEYWORDS },
+    rust: { syntax: SYNTAXES.rust, keywords: RUST_KEYWORDS },
+    python: { syntax: SYNTAXES.python, keywords: PYTHON_KEYWORDS },
+    csharp: { syntax: SYNTAXES.csharp, keywords: CSHARP_KEYWORDS },
+    kotlin: { syntax: SYNTAXES.kotlin, keywords: KOTLIN_KEYWORDS },
+    php: { syntax: SYNTAXES.php, keywords: PHP_KEYWORDS },
+    ruby: { syntax: SYNTAXES.ruby, keywords: RUBY_KEYWORDS },
+    sql: { syntax: SYNTAXES.sql, keywords: SQL_KEYWORDS, fold: true },
+    bash: { syntax: SYNTAXES.shell, keywords: SHELL_KEYWORDS },
+    vb: { syntax: SYNTAXES.vb, keywords: VB_KEYWORDS, fold: true },
+    haskell: { syntax: SYNTAXES.haskell, keywords: HASKELL_KEYWORDS },
+    yaml: { syntax: SYNTAXES.yaml, keywords: null },
+    toml: { syntax: SYNTAXES.toml, keywords: null },
+    ini: { syntax: SYNTAXES.ini, keywords: null },
+    json: { syntax: JSON_SYNTAX, keywords: JSON_KEYWORDS },
 };
 
 /** Fence info-string aliases, as the extensions of `lexers.js` spell them. */
@@ -571,7 +753,7 @@ export function highlighterFor(language) {
 const CODE_TOKEN = /@[A-Za-z_$][\w$]*|\d[\w.]*|[A-Za-z_$][\w$]*/g;
 
 /** Highlight the identifiers of one run of plain (non-comment, non-string) text. */
-function renderPlain(text, keywords) {
+function renderPlain(text, keywords, fold) {
     let html = '';
     let last = 0;
     for (const match of text.matchAll(CODE_TOKEN)) {
@@ -579,7 +761,7 @@ function renderPlain(text, keywords) {
         html += escapeHtml(text.slice(last, match.index));
         let cls = null;
         if (token.startsWith('@')) cls = 'tok-a';
-        else if (keywords && keywords.has(token)) cls = 'tok-k';
+        else if (keywords && keywords.has(fold ? token.toLowerCase() : token)) cls = 'tok-k';
         else if (/^\d/.test(token)) cls = 'tok-n';
         else if (/^[A-Z]/.test(token)) cls = 'tok-t';
         html += cls === null ? escapeHtml(token) : `<span class="${cls}">${escapeHtml(token)}</span>`;
@@ -608,7 +790,7 @@ export function codeKinds(text, language) {
 }
 
 /** One source line, split by its character kinds and highlighted. */
-function renderLine(line, kinds, offset, keywords) {
+function renderLine(line, kinds, offset, keywords, fold) {
     let html = '';
     let i = 0;
     while (i < line.length) {
@@ -618,7 +800,7 @@ function renderLine(line, kinds, offset, keywords) {
         const chunk = line.slice(i, j);
         if (kind === 1) html += `<span class="tok-c">${escapeHtml(chunk)}</span>`;
         else if (kind === 2) html += `<span class="tok-s">${escapeHtml(chunk)}</span>`;
-        else html += renderPlain(chunk, keywords);
+        else html += renderPlain(chunk, keywords, fold);
         i = j;
     }
     return html;
@@ -629,13 +811,13 @@ function renderLine(line, kinds, offset, keywords) {
  * An unknown language is escaped and left plain.
  */
 export function highlightCode(text, language) {
-    const keywords = highlighterFor(language)?.keywords ?? null;
+    const highlighter = highlighterFor(language);
     const kinds = codeKinds(text, language);
     let offset = 0;
     return text
         .split('\n')
         .map((line) => {
-            const html = renderLine(line, kinds, offset, keywords);
+            const html = renderLine(line, kinds, offset, highlighter?.keywords ?? null, highlighter?.fold === true);
             offset += line.length + 1;
             return html;
         })
@@ -644,12 +826,12 @@ export function highlightCode(text, language) {
 
 /** The whole file as `<span class="line">` rows, numbered from 1. */
 export function renderSourceLines(file) {
-    const keywords = highlighterFor(file.language)?.keywords ?? null;
+    const highlighter = highlighterFor(file.language);
     const kinds = codeKinds(file.text, file.language);
     let offset = 0;
     return file.lines
         .map((line, index) => {
-            const html = renderLine(line, kinds, offset, keywords);
+            const html = renderLine(line, kinds, offset, highlighter?.keywords ?? null, highlighter?.fold === true);
             offset += line.length + 1;
             return `<span class="line" id="${escapeHtml(file.slug)}-L${index + 1}" data-line="${index + 1}">`
                 + `<span class="ln">${index + 1}</span><span class="lc">${html}</span></span>`;
@@ -827,7 +1009,12 @@ const SCRIPT = `
 
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
-    tabs.forEach(function (tab) { tab.classList.toggle('active', tab.dataset.file === name); });
+    tabs.forEach(function (tab) {
+      var active = tab.dataset.file === name;
+      tab.classList.toggle('active', active);
+      // With many files the tab strip scrolls; keep the active one in sight.
+      if (active) tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
   }
 
   function select(target, keepScroll, keepHash) {
@@ -840,12 +1027,18 @@ const SCRIPT = `
 
     var from = Number(target.dataset.from);
     var to = Number(target.dataset.to);
+    var ranges = (target.dataset.ranges || '').split(',').filter(Boolean).map(function (range) {
+      var ends = range.split('-');
+      return [Number(ends[0]), Number(ends[1])];
+    });
+    if (ranges.length === 0) ranges = [[from, to]];
     var shown = document.querySelector('.file.active');
     var first = null;
     if (shown) {
       Array.prototype.forEach.call(shown.querySelectorAll('.line'), function (line) {
         var n = Number(line.dataset.line);
-        if (n >= from && n <= to) {
+        var hit = ranges.some(function (range) { return n >= range[0] && n <= range[1]; });
+        if (hit) {
           line.classList.add('hl');
           if (first === null) first = line;
         }
@@ -890,6 +1083,7 @@ function renderSection(section, index) {
             `<button class="target" type="button" data-file="${escapeHtml(example.path)}"`,
             ` data-section="${example.section}"`,
             ` data-from="${example.from ?? 0}" data-to="${example.to ?? 0}"`,
+            ` data-ranges="${(example.ranges ?? []).map(([from, to]) => `${from}-${to}`).join(',')}"`,
             ` aria-pressed="false" aria-controls="${example.id}-snippet">`,
             `<span class="chip-file">${escapeHtml(example.fileLabel)}</span>`,
             `<span class="chip-ref">${escapeHtml(example.label)}</span>`,

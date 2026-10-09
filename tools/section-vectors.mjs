@@ -34,6 +34,9 @@ const EXAMPLE = 'test/fixtures/Example.java';
 const ANCHORS = 'test/fixtures/Anchors.java';
 const TS = 'test/fixtures/example.ts';
 const ZIG = 'test/fixtures/Nesting.zig';
+const RUBY = 'test/fixtures/Cart.rb';
+const HASKELL = 'test/fixtures/Store.hs';
+const RUST = 'test/fixtures/Cart.rs';
 
 const cases = [
     // Grammar — parse only: canonical form and (lack of) errors.
@@ -96,6 +99,30 @@ const cases = [
     // Walk order — the shallower sibling beats a deeper block that comes sooner:
     // handler's anchor (a member of the class scope) beats dispatch's condition.
     { name: 'walkorder-siblings-before-deeper', input: ANCHORS, reference: 'getUsers' },
+
+    // Resolution — Cart.rb (a language that declares members with `def`, no
+    // parentheses, and closes them with `end`).
+    { name: 'rb-add', input: RUBY, reference: 'add' },
+    { name: 'rb-cart-add', input: RUBY, reference: 'Cart/add' },
+    { name: 'rb-cart-add-body', input: RUBY, reference: 'Cart/add-' },
+    { name: 'rb-build', input: RUBY, reference: 'build' },
+    { name: 'rb-missing', input: RUBY, reference: 'missing' },
+
+    // Resolution — Store.hs (a binding and its `name ::` signature, a record).
+    { name: 'hs-add', input: HASKELL, reference: 'add' },
+    { name: 'hs-add-annotated', input: HASKELL, reference: 'add+' },
+    { name: 'hs-add-body', input: HASKELL, reference: 'add-' },
+    { name: 'hs-cart', input: HASKELL, reference: 'Cart' },
+    { name: 'hs-keyword-is-not-a-member', input: HASKELL, reference: 'data' },
+
+    // Resolution — Cart.rs (the path retries same-named scopes: the `struct` and
+    // its `impl` blocks share the name `Cart`, so `Cart/add` has to pass over the
+    // struct and the first impl to reach the second one's `remove`).
+    { name: 'rs-struct-is-the-first-cart', input: RUST, reference: 'Cart' },
+    { name: 'rs-impl-method', input: RUST, reference: 'Cart/add' },
+    { name: 'rs-field-of-the-struct', input: RUST, reference: 'Cart/items' },
+    { name: 'rs-retry-past-the-first-impl', input: RUST, reference: 'Cart/remove' },
+    { name: 'rs-missing-in-every-cart', input: RUST, reference: 'Cart/nope' },
 ];
 
 function warningOf(ref) {

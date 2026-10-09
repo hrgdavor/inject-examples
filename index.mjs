@@ -239,6 +239,284 @@ function mergeSelections(left, right) {
 }
 
 // ---------------------------------------------------------------------------
+// The YAML, TOML and INI rules
+// ---------------------------------------------------------------------------
+//
+// Each of these formats has a key it can be addressed by, and none of them has
+// comments to hang a `#region` directive on — so each gets a rule of its own,
+// like `.json`. The reference is a dot-separated path (`server.port`); the
+// selection is *rendered* as valid source of the format, with the ancestors
+// that hold the key included, because a bare `port: 8080` is not a YAML
+// document but `server:\n  port: 8080` is.
+
+/** Split `a.b, c.d` into paths; each is its segments. Throws on an empty one. */
+function keyPaths(reference) {
+    const paths = reference.split(',').map((path) => path.trim()).filter((path) => path !== '');
+    if (paths.length === 0) throw new Error(`"#${reference}" names no keys`);
+    return paths.map((path) => {
+        const segments = path.split('.').map((segment) => unquote(segment.trim()));
+        if (segments.some((segment) => segment === '')) throw new Error(`"${path}" has an empty key`);
+        return { path, segments };
+    });
+}
+
+/** `"a"` / `'a'` / a bare key — the quotes are not part of the name. */
+function unquote(segment) {
+    const match = /^(["'])(.*)\1$/.exec(segment);
+    return match ? match[2] : segment;
+}
+
+/** How far a line is indented. */
+function indentOf(line) {
+    return line.length - line.trimStart().length;
+}
+
+/** The line as code: quoted strings blanked, so a `[` in a value is not one. */
+function withoutStrings(line) {
+    return line.replace(/(["'])(?:\\.|(?!\1)[^\\])*\1/g, '');
+}
+
+/** A blank line, or one that is nothing but a comment. */
+function blankOrComment(line, markers) {
+    const text = line.trim();
+    return text === '' || markers.some((marker) => text.startsWith(marker));
+}
+
+// --- YAML ------------------------------------------------------------------
+
+/** The line of `key` at exactly `indent` in `from..to`, or -1. */
+function yamlKeyAt(lines, key, from, to, indent) {
+    for (let i = from; i <= to && i < lines.length; i++) {
+        const line = lines[i];
+        if (blankOrComment(line, ['#']) || indentOf(line) !== indent) continue;
+        const match = /^\s*("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^\s#][^:]*?)\s*:(?:\s|$)/.exec(line);
+        if (match && unquote(match[1].trim()) === key) return i;
+    }
+    return -1;
+}
+
+/** The last line of the block `key` opens: blank lines and deeper indentation. */
+function yamlBlockEnd(lines, start, indent) {
+    let end = start;
+    for (let i = start + 1; i < lines.length; i++) {
+        if (lines[i].trim() === '') { end = i; continue; }
+        if (indentOf(lines[i]) <= indent) break;
+        end = i;
+    }
+    while (end > start && lines[end].trim() === '') end--;
+    return end;
+}
+
+/** The indentation of the first real line: where a document's top level starts. */
+function yamlRootIndent(lines) {
+    for (const line of lines) {
+        if (blankOrComment(line, ['#'])) continue;
+        return indentOf(line);
+    }
+    return 0;
+}
+
+function yamlSelection(lines, segments, path, from, to, indent, level, out) {
+    const key = segments[0];
+    const at = yamlKeyAt(lines, key, from, to, indent);
+    if (at === -1) throw new Error(`"${path}": no key "${key}"`);
+    const pad = '  '.repeat(level);
+    const end = yamlBlockEnd(lines, at, indent);
+
+    if (segments.length === 1) {
+        for (let i = at; i <= end; i++) out.push(pad + lines[i].slice(indent));
+        return;
+    }
+
+    let childIndent = -1;
+    for (let i = at + 1; i <= end; i++) {
+        if (lines[i].trim() === '') continue;
+        childIndent = indentOf(lines[i]);
+        break;
+    }
+    if (childIndent <= indent) throw new Error(`"${path}": "${key}" has no nested keys`);
+    out.push(`${pad}${key}:`);
+    yamlSelection(lines, segments.slice(1), path, at + 1, end, childIndent, level + 1, out);
+}
+
+/**
+ * The rule for `.yaml`/`.yml`: `#a.b` selects the `b` key of the `a` mapping,
+ * rendered with `a:` above it and nested lines re-indented to two spaces per
+ * level, so the block is a YAML document on its own. Comma-separated paths are
+ * rendered in the order they were named.
+ */
+export function extractYamlRegion(text, reference) {
+    const lines = normalize(text).split('\n');
+    const out = [];
+    const root = yamlRootIndent(lines);
+    for (const { path, segments } of keyPaths(reference)) {
+        yamlSelection(lines, segments, path, 0, lines.length - 1, root, 0, out);
+    }
+    return out.join('\n');
+}
+
+// --- TOML ------------------------------------------------------------------
+
+const TOML_HEADER = /^\s*\[([^\]]+)\]\s*$/;
+
+/** The index of the `[name]` header line, or -1. */
+function tomlHeaderAt(lines, name) {
+    for (let i = 0; i < lines.length; i++) {
+        const match = TOML_HEADER.exec(lines[i]);
+        if (match && match[1].split('.').map((s) => unquote(s.trim())).join('.') === name) return i;
+    }
+    return -1;
+}
+
+/** The index of the first `[name]` header at all, or -1. */
+function firstTomlHeader(lines) {
+    for (let i = 0; i < lines.length; i++) if (TOML_HEADER.test(lines[i])) return i;
+    return -1;
+}
+
+/** The end of the table that starts at `header`: the next header, or the end. */
+function tomlTableEnd(lines, header) {
+    let end = lines.length;
+    for (let i = header + 1; i < lines.length; i++) {
+        if (TOML_HEADER.test(lines[i])) { end = i; break; }
+    }
+    while (end > header + 1 && lines[end - 1].trim() === '') end--;
+    return end;
+}
+
+/** The line of `key = …` in `from..to`, or -1. */
+function tomlKeyAt(lines, key, from, to) {
+    for (let i = from; i <= to && i < lines.length; i++) {
+        const line = lines[i];
+        if (blankOrComment(line, ['#'])) continue;
+        const match = /^\s*("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[A-Za-z0-9_-]+)\s*=/.exec(line);
+        if (match && unquote(match[1]) === key) return i;
+    }
+    return -1;
+}
+
+/** The key's line plus the continuation lines of a multi-line array or table. */
+function tomlValueLines(lines, at) {
+    const out = [lines[at]];
+    const depth = (text, from) => {
+        let level = 0;
+        for (const char of withoutStrings(text).slice(from)) {
+            if (char === '[' || char === '{') level++;
+            else if (char === ']' || char === '}') level--;
+        }
+        return level;
+    };
+    let level = depth(lines[at], lines[at].indexOf('=') + 1);
+    for (let i = at + 1; level > 0 && i < lines.length; i++) {
+        out.push(lines[i]);
+        level += depth(lines[i], 0);
+    }
+    return out;
+}
+
+/**
+ * The rule for `.toml`: `#a.b` selects the `b` key of `[a]`, rendered with its
+ * table header above it, and `#a` selects the whole `[a]` table (or the
+ * top-level key `a` when there is no such table). A multi-line array or inline
+ * table comes with its continuation lines.
+ */
+export function extractTomlRegion(text, reference) {
+    const lines = normalize(text).split('\n');
+    const out = [];
+
+    for (const { path, segments } of keyPaths(reference)) {
+        const key = segments[segments.length - 1];
+        const table = segments.slice(0, -1);
+
+        if (table.length === 0) {
+            const first = firstTomlHeader(lines);
+            const at = tomlKeyAt(lines, key, 0, (first === -1 ? lines.length : first) - 1);
+            if (at !== -1) { out.push(...tomlValueLines(lines, at)); continue; }
+            const header = tomlHeaderAt(lines, key);
+            if (header === -1) throw new Error(`"${path}": no key or table "${key}"`);
+            out.push(...lines.slice(header, tomlTableEnd(lines, header)));
+            continue;
+        }
+
+        const header = tomlHeaderAt(lines, table.join('.'));
+        if (header === -1) throw new Error(`"${path}": no table "[${table.join('.')}]"`);
+        const at = tomlKeyAt(lines, key, header + 1, tomlTableEnd(lines, header) - 1);
+        if (at === -1) throw new Error(`"${path}": no key "${key}" in [${table.join('.')}]`);
+        out.push(`[${table.join('.')}]`);
+        out.push(...tomlValueLines(lines, at));
+    }
+    return out.join('\n');
+}
+
+// --- INI -------------------------------------------------------------------
+
+/** The index of the `[name]` line, or -1. */
+function iniSectionAt(lines, name) {
+    for (let i = 0; i < lines.length; i++) {
+        const match = /^\s*\[([^\]]+)\]\s*$/.exec(lines[i]);
+        if (match && unquote(match[1].trim()) === name) return i;
+    }
+    return -1;
+}
+
+/** The end of the section at `header`: the next section line, or the end. */
+function iniSectionEnd(lines, header) {
+    let end = lines.length;
+    for (let i = header + 1; i < lines.length; i++) {
+        if (/^\s*\[[^\]]+\]\s*$/.test(lines[i])) { end = i; break; }
+    }
+    while (end > header + 1 && lines[end - 1].trim() === '') end--;
+    return end;
+}
+
+/** The line of `key = value` (or `key: value`) in `from..to`, or -1. */
+function iniKeyAt(lines, key, from, to) {
+    for (let i = from; i <= to && i < lines.length; i++) {
+        const line = lines[i];
+        if (blankOrComment(line, [';', '#'])) continue;
+        const match = /^\s*([^=:#\s][^=:]*?)\s*[=:]/.exec(line);
+        if (match && match[1].trim() === key) return i;
+    }
+    return -1;
+}
+
+/**
+ * The rule for `.ini`: `#section.key` selects the key inside that section,
+ * rendered with its `[section]` header above it; `#section` selects the whole
+ * section, and `#key` the key that sits before any section. There is no deeper
+ * path than `section.key`.
+ */
+export function extractIniRegion(text, reference) {
+    const lines = normalize(text).split('\n');
+    const out = [];
+
+    for (const { path, segments } of keyPaths(reference)) {
+        if (segments.length > 2) throw new Error(`"${path}": INI has sections and keys, not deeper paths`);
+
+        if (segments.length === 2) {
+            const [sectionName, key] = segments;
+            const section = iniSectionAt(lines, sectionName);
+            if (section === -1) throw new Error(`"${path}": no section "[${sectionName}]"`);
+            const end = iniSectionEnd(lines, section);
+            const at = iniKeyAt(lines, key, section + 1, end - 1);
+            if (at === -1) throw new Error(`"${path}": no key "${key}" in [${sectionName}]`);
+            out.push(lines[section].trim(), lines[at].trim());
+            continue;
+        }
+
+        const section = iniSectionAt(lines, segments[0]);
+        if (section !== -1) {
+            for (let i = section; i < iniSectionEnd(lines, section); i++) out.push(lines[i]);
+            continue;
+        }
+        const at = iniKeyAt(lines, segments[0], 0, lines.length - 1);
+        if (at === -1) throw new Error(`"${path}": no section "[${segments[0]}]" and no key "${segments[0]}"`);
+        out.push(lines[at].trim());
+    }
+    return out.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // The rule registry
 // ---------------------------------------------------------------------------
 
@@ -254,8 +532,17 @@ export const CODE_RULE = { name: 'code', extensions: [], resolve: extractCodeReg
 /** The rule for `.json`: a region is a dotted list of keys. */
 export const JSON_RULE = { name: 'json', extensions: ['json'], resolve: extractJsonRegion };
 
+/** The rule for YAML: a region is a dotted path to a key. */
+export const YAML_RULE = { name: 'yaml', extensions: ['yaml', 'yml'], resolve: extractYamlRegion };
+
+/** The rule for TOML: a region is a key, or a `[table]` and its key. */
+export const TOML_RULE = { name: 'toml', extensions: ['toml'], resolve: extractTomlRegion };
+
+/** The rule for INI: a region is `section.key`, a section, or a leading key. */
+export const INI_RULE = { name: 'ini', extensions: ['ini', 'cfg', 'properties'], resolve: extractIniRegion };
+
 /** The built-in rules, most specific first; `code` is the fallback. */
-export const REGION_RULES = [JSON_RULE, CODE_RULE];
+export const REGION_RULES = [JSON_RULE, YAML_RULE, TOML_RULE, INI_RULE, CODE_RULE];
 
 /**
  * The rule that resolves a reference in `path`.
@@ -456,23 +743,26 @@ const LANGUAGES = {
     cs: 'csharp',
     css: 'css',
     go: 'go',
+    hs: 'haskell', lhs: 'haskell',
     htm: 'html', html: 'html',
-    ini: 'ini',
+    cfg: 'ini', ini: 'ini', properties: 'ini',
     java: 'java',
     cjs: 'javascript', js: 'javascript', mjs: 'javascript',
     jsx: 'jsx',
     json: 'json',
+    kt: 'kotlin', kts: 'kotlin',
     md: 'markdown', markdown: 'markdown',
     php: 'php',
     pl: 'perl',
-    py: 'python',
+    py: 'python', pyi: 'python',
     rb: 'ruby',
     rs: 'rust',
-    bash: 'bash', sh: 'bash',
+    bash: 'bash', sh: 'bash', zsh: 'bash',
     sql: 'sql',
     toml: 'toml',
-    ts: 'typescript',
+    cts: 'typescript', mts: 'typescript', ts: 'typescript',
     tsx: 'tsx',
+    bas: 'vb', vb: 'vb', vbs: 'vb',
     xml: 'xml',
     yaml: 'yaml', yml: 'yaml',
 };
@@ -847,7 +1137,11 @@ export function updateDocument(text, options = {}) {
             continue;
         }
 
-        lines = injected.lines;
+        // A block that already stands for its file is left byte for byte alone:
+        // the comparison ignores a trailing `\r`, so splicing the LF content in
+        // would rewrite a CRLF document's body without changing what it says —
+        // and would keep reporting a change the reader cannot see.
+        if (injected.changed) lines = injected.lines;
         results.push({ marker, content, changed: injected.changed, skipped: false, warning });
     }
 

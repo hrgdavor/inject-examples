@@ -337,3 +337,77 @@ Consequence for §12: two Zig vectors are added on a new
 `z-decoy-hidden-by-nested-comment` (error) — the latter showing the Zig lexer
 hide a declaration the non-nesting default mask would leak. `doc/section-matching.md`
 carries the normative wording (the "Tokenizers" section).
+
+---
+
+## Amendment (maintainer decision, 2026-10-09): the language table, and two more lexer fields
+
+§6 and §10 are extended again, in the same spirit as the lexer seam above: more
+languages must not mean a parser, and must not move any structure out of
+`lib/section.mjs`.
+
+**The language table.** A language is data in `src/js/scanner/syntaxes.js`:
+comment spellings (`lineComments`, `blockComments` with `nested`/`lineStart`),
+string forms (`open`/`close`, `escape: 'backslash' | 'doubling' | null`,
+`multiline`, `lineScoped`, `boundary`, `hashes` for Rust's `r#"…"#`, and
+`maxSpan`/`content` for the one form that is not a string at all — a Rust `'a`
+lifetime beside a `'a'` char literal), and `heredoc` (`true`, or `'strict'` so
+Ruby's `array << x` is never one). `tokenizer.js` walks the table; nothing in it
+knows a language name, and `lib/section.mjs` is untouched by any of it.
+
+**Shapes a language adds.** Two optional lexer fields, both of which default to
+the language-neutral reading when absent:
+
+- `declarations(maskedLine)` returns `{ kind, name, headerFrom, line?, body?,
+  end? }` entries — the declaration *shapes* the generic `name(`/class-keyword
+  heuristics cannot see (Ruby's paren-less `def name`, Haskell's `name … = …`
+  binding and `data`/`class` declarations). The matcher table, precedence, the
+  sibling-first walk and rendering are unchanged: a shape only adds a block to
+  index. `body: 'end'` marks a body closed by a terminator keyword line, found
+  by indentation (`keywordBody`); `line: true` marks a declaration whose line is
+  itself the selection when no body follows.
+- `annotationLine(line)` replaces the `@Decorator` / `#[attribute]` test the `+`
+  scope uses, so a Haskell binding's `name ::` signature is what `+` brings
+  along.
+
+Both are consumed through the existing seam — `makeLex` copies them from the
+injected lexer — so §10's boundary holds: `lib/section.mjs` still imports
+nothing, and an unknown type still gets the default engine and the generic
+shapes, which is pinned by the tests in `test.mjs`.
+
+**Measured effect on the vectors:** none. `node tools/section-vectors.mjs
+--check` is unchanged, because every existing case is Java, TypeScript, Zig or
+JSON — none of which gained a declaration shape.
+
+---
+
+## Amendment (maintainer decision, 2026-10-09): a path retries a duplicated scope
+
+§6's walk is extended by one rule, at the maintainer's direction: when a **scope**
+segment (any segment but the last) names several blocks at the same level, the
+path tries them in walk order and takes the first that can hold the rest of the
+path. Previously the first hit was taken and a failure was final, which made a
+Rust type's members unreachable — `struct Cart` is declared before `impl Cart`,
+they are siblings with the same name, and `Cart/add` resolved `Cart` to the
+struct and stopped.
+
+What does **not** change, and is why this is an extension rather than a
+relaxation:
+
+- the **last** segment is not retried: its first match in walk order is still the
+  selection;
+- matcher precedence is untouched — a name still belongs to the first matcher
+  that has it, and only that matcher's hits are candidates (a `class Cart` never
+  gives way to a same-named method or property);
+- the walk is still sibling-first and level-order, so candidates are only ever
+  compared within the shallowest level that matched;
+- the errors are the ones the first candidate produced (`no section named "x" in
+  "y"`, `"y" is not a container`), so a single-candidate case reads exactly as
+  before. The regenerated vectors are byte-identical for every pre-existing case;
+  `test/fixtures/Cart.rs` adds five that pin the retry and the five new vectors
+  (`rs-*`) are the conformance cases for a port.
+
+The language side of the same decision is data: `syntaxes.js` declares `impl
+Type { … }` (and `impl Trait for Type`) as a class-like scope named after the
+type, plus a field shape (`name: Type,`) the generic property rule cannot see.
+A substitute engine that wants those vectors must supply both.

@@ -55,5 +55,20 @@
   {"name":"ts-config-region","input":"test/fixtures/example.ts","reference":"config","text":"export const config = { retries: 3 };","error":null,"warning":null},
   {"name":"z-target-method","input":"test/fixtures/Nesting.zig","reference":"target","text":"fn target() void {\n    z();\n}","error":null,"warning":null},
   {"name":"z-decoy-hidden-by-nested-comment","input":"test/fixtures/Nesting.zig","reference":"decoy","text":null,"error":"no \"#region decoy\" found, and no section named \"decoy\"","warning":null},
-  {"name":"walkorder-siblings-before-deeper","input":"test/fixtures/Anchors.java","reference":"getUsers","text":"    public void handler() { //getUsers\n        System.out.println(\"anchor same line\");\n    }","error":null,"warning":null}
+  {"name":"walkorder-siblings-before-deeper","input":"test/fixtures/Anchors.java","reference":"getUsers","text":"    public void handler() { //getUsers\n        System.out.println(\"anchor same line\");\n    }","error":null,"warning":null},
+  {"name":"rb-add","input":"test/fixtures/Cart.rb","reference":"add","text":"  def add(item)\n    @items << item\n  end","error":null,"warning":null},
+  {"name":"rb-cart-add","input":"test/fixtures/Cart.rb","reference":"Cart/add","text":"  def add(item)\n    @items << item\n  end","error":null,"warning":null},
+  {"name":"rb-cart-add-body","input":"test/fixtures/Cart.rb","reference":"Cart/add-","text":"    @items << item","error":null,"warning":null},
+  {"name":"rb-build","input":"test/fixtures/Cart.rb","reference":"build","text":"  def self.build\n    new\n  end","error":null,"warning":null},
+  {"name":"rb-missing","input":"test/fixtures/Cart.rb","reference":"missing","text":null,"error":"no \"#region missing\" found, and no section named \"missing\"","warning":null},
+  {"name":"hs-add","input":"test/fixtures/Store.hs","reference":"add","text":"add x y = x + y","error":null,"warning":null},
+  {"name":"hs-add-annotated","input":"test/fixtures/Store.hs","reference":"add+","text":"add :: Int -> Int -> Int\nadd x y = x + y","error":null,"warning":null},
+  {"name":"hs-add-body","input":"test/fixtures/Store.hs","reference":"add-","text":"add x y = x + y","error":null,"warning":null},
+  {"name":"hs-cart","input":"test/fixtures/Store.hs","reference":"Cart","text":"data Cart = Cart { items :: [Int] }","error":null,"warning":null},
+  {"name":"hs-keyword-is-not-a-member","input":"test/fixtures/Store.hs","reference":"data","text":null,"error":"no \"#region data\" found, and no section named \"data\"","warning":null},
+  {"name":"rs-struct-is-the-first-cart","input":"test/fixtures/Cart.rs","reference":"Cart","text":"struct Cart {\n    items: Vec<String>,\n}","error":null,"warning":null},
+  {"name":"rs-impl-method","input":"test/fixtures/Cart.rs","reference":"Cart/add","text":"    fn add(&mut self, x: String) {\n        self.items.push(x);\n    }","error":null,"warning":null},
+  {"name":"rs-field-of-the-struct","input":"test/fixtures/Cart.rs","reference":"Cart/items","text":"    items: Vec<String>,","error":null,"warning":null},
+  {"name":"rs-retry-past-the-first-impl","input":"test/fixtures/Cart.rs","reference":"Cart/remove","text":"    fn remove(&mut self) -> Option<String> {\n        self.items.pop()\n    }","error":null,"warning":null},
+  {"name":"rs-missing-in-every-cart","input":"test/fixtures/Cart.rs","reference":"Cart/nope","text":null,"error":"no section named \"nope\" in \"Cart\"","warning":null}
 ]

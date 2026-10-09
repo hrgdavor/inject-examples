@@ -167,3 +167,270 @@ public class Inventory {
     }
 }
 ```
+
+## Go — a raw string is not code
+
+`Add` is found through the braces, while the backtick raw string below it — which
+contains a whole `Decoy` function — is blanked before anything is counted, so it
+can never be mistaken for a member.
+
+[samples/Cart.go](./samples/Cart.go#Add)
+
+```go
+func Add(items []string, item string) []string {
+	return append(items, item)
+}
+```
+
+## Rust — the members live in the impl
+
+Rust keeps a type's methods in `impl` blocks, which are siblings of the `struct`
+with the same name. The path retries them, so `Cart/add` reaches past the struct
+to the method and `Cart/remove` reaches past the first impl to the second. The
+nested comment at the bottom of the file hides a `decoy` the matcher never sees.
+
+[samples/Cart.rs](./samples/Cart.rs#Cart/add)
+
+```rust
+    fn add(&mut self, x: String) {
+        self.items.push(x);
+    }
+```
+
+[samples/Cart.rs](./samples/Cart.rs#Cart/remove)
+
+```rust
+    fn remove(&mut self) -> Option<String> {
+        self.items.pop()
+    }
+```
+
+## Python — triple quotes and indentation
+
+The docstring hides a whole `def decoy` from the matcher, and the body of `add`
+is its indented block, so the selection ends where the indentation ends.
+
+[samples/Cart.py](./samples/Cart.py#Cart/add)
+
+```python
+    def add(self, item):
+        self.items.append(item)
+```
+
+## C# — a verbatim string keeps its quotes
+
+A verbatim string escapes its quote by doubling it (`""`), so the brace inside
+`@"cart ""}"" decoy"` is text, not structure.
+
+[samples/Cart.cs](./samples/Cart.cs#Cart/Add)
+
+```csharp
+    public void Add(string item)
+    {
+        items.Add(item);
+    }
+```
+
+## Kotlin — nested comments, raw strings
+
+`/* /* */ */` nests in Kotlin, so the comment above `add` can swallow anything —
+including a `decoy` — and a `"""` raw string is text with no escapes at all.
+
+[samples/Cart.kt](./samples/Cart.kt#Cart/add)
+
+```kotlin
+    fun add(item: String) {
+        items.add(item)
+    }
+```
+
+## PHP — a heredoc is not code
+
+The `<<<SQL` body below is data, the `}` in it is not PHP syntax, and
+`#[Attribute]` — not used here — is an attribute rather than a `#` comment.
+
+[samples/Cart.php](./samples/Cart.php#Cart/add)
+
+```php
+    public function add(string $item): string
+    {
+        // The heredoc body is data: the brace in it is not PHP syntax.
+        $sql = <<<SQL
+        insert into cart (item) values ('}') -- a decoy
+        SQL;
+
+        return $sql;
+    }
+```
+
+## Ruby — def, end, and the shift operator
+
+`def add` needs no parentheses, and its body is closed by `end`, which the
+selection brings along. The `<<` in `@items << item` is an append, not a heredoc:
+only `<<~TAG`, `<<-TAG` or a quoted tag opens one.
+
+[samples/Cart.rb](./samples/Cart.rb#Cart/add)
+
+```ruby
+  def add(item)
+    @items << item
+  end
+```
+
+## SQL — a region, and doubled quotes
+
+SQL has no members to search, so this example uses a region directive the way any
+comment-bearing language can — and the string `'it''s a } decoy'` stays one
+string, because SQL escapes a quote by doubling it.
+
+[samples/report.sql](./samples/report.sql#monthly)
+
+```sql
+select
+    date_trunc('month', placed_at) as month,
+    count(*) as orders
+from orders
+where note <> 'it''s a } decoy'
+group by 1;
+```
+
+## Shell — a heredoc is not code
+
+The heredoc body is data: the `}` inside it is not shell syntax, and the
+selection stops at the function's closing brace.
+
+[samples/run.sh](./samples/run.sh#deploy)
+
+```bash
+deploy() {
+	cat <<EOF
+  } decoy
+EOF
+	echo "deployed"
+}
+```
+
+## VB — a function and its End
+
+VB declares with capitalised keywords and closes every block with a keyword line,
+so `Add` is followed through `End Function`, and `""` doubling keeps the brace in
+the string literal out of the structure.
+
+[samples/Form.vb](./samples/Form.vb#Form/Add)
+
+```vb
+    Public Function Add(item As String) As String
+        Dim note As String = "a ""}"" decoy"
+        Return note
+    End Function
+```
+
+## Haskell — a binding and its signature
+
+A binding is `add x y = x + y`, and the `add ::` line above it is its annotation:
+`+add` brings the signature along, and `Cart` is the record declared with `data`.
+
+[samples/Main.hs](./samples/Main.hs#+add)
+
+```haskell
+add :: Int -> Int -> Int
+add x y = x + y
+```
+
+[samples/Main.hs](./samples/Main.hs#Cart)
+
+```haskell
+data Cart = Cart { items :: [Int] }
+```
+
+## Zig — a nested comment hides a decoy
+
+`/* outer /* inner */ still outer */` nests in Zig, so the commented-out
+`fn decoy` is blanked whole; the non-nesting default mask would have leaked it.
+
+[samples/Nesting.zig](./samples/Nesting.zig#target)
+
+```zig
+pub fn target() void {
+    std.debug.print("}\n", .{});
+}
+```
+
+## YAML — a key path
+
+A `.yaml` reference is a dotted key path, rendered with the mappings that hold it
+so the block is a YAML document on its own; a `#` inside a quoted value is not a
+comment.
+
+[samples/app.yaml](./samples/app.yaml#server.port)
+
+```yaml
+server:
+  port: 8080
+```
+
+[samples/app.yaml](./samples/app.yaml#server.tls.enabled)
+
+```yaml
+server:
+  tls:
+    enabled: true
+```
+
+## TOML — a table and its key
+
+`server.port` renders `[server]` above the key, and a value that spans lines — an
+array here — comes with its continuation lines.
+
+[samples/app.toml](./samples/app.toml#server.port)
+
+```toml
+[server]
+port = 8080
+```
+
+[samples/app.toml](./samples/app.toml#server.hosts)
+
+```toml
+[server]
+hosts = [
+  "a.example",
+  "b.example",
+]
+```
+
+## INI — a section and its key
+
+`section.key` renders the `[section]` header above the key, a bare section name
+selects the whole section, and both `key = value` and `key: value` are read.
+
+[samples/app.ini](./samples/app.ini#server.port)
+
+```ini
+[server]
+port = 8080
+```
+
+[samples/app.ini](./samples/app.ini#logging)
+
+```ini
+[logging]
+level = info
+```
+
+## JSON — keys
+
+JSON renders a selection of keys as valid JSON, in the order they were named, with
+nested keys and array elements addressable by dotted paths.
+
+[samples/api.json](./samples/api.json#name,server.port)
+
+```json
+{
+  "name": "cart-api",
+  "server": {
+    "port": 8080
+  }
+}
+```
+

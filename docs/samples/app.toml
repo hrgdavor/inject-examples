@@ -1,0 +1,12 @@
+title = "cart"
+
+[server]
+host = "localhost"
+port = 8080
+hosts = [
+  "a.example",
+  "b.example",
+]
+
+[server.tls]
+enabled = true

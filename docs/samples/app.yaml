@@ -1,0 +1,9 @@
+# The demo config. A `#` inside a quoted value is not a comment.
+service: cart
+server:
+  host: localhost
+  port: 8080
+  tls:
+    enabled: true
+logging:
+  level: info
