@@ -350,11 +350,13 @@ What the code rule does, and does not, promise:
   comments to disambiguate. A class name beats a same-named constructor.
 - Nothing matching at all is an error naming the reference; `--lenient` reports
   it with its line number and leaves the block as written.
-- Matching is a heuristic, not a parser. It reads declaration-shaped lines and
-  counts brackets over text whose comments and string literals are blanked, so
-  a `}` inside a string cannot end a body. Braced languages — Java, C#, C/C++,
-  JavaScript/TypeScript, Go, Rust, PHP, Kotlin, Swift — are followed by their
-  braces; Python and Ruby by indentation.
+- Matching is not a parser. It reads declaration-shaped lines and counts
+  brackets over text whose comments and string literals are blanked, so a `}`
+  inside a string cannot end a body. JavaScript/TypeScript, Java and Zig get
+  that blanking from a real tokenizer, exact to the language's syntax; other
+  types fall back to a best-effort union of the comment and string spellings.
+  Braced languages — Java, C#, C/C++, JavaScript/TypeScript, Go, Rust, PHP,
+  Kotlin, Swift — are followed by their braces; Python and Ruby by indentation.
 - The declaration is injected verbatim, indentation and all, so a nested method
   keeps the indentation it has in its file.
 

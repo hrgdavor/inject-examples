@@ -201,11 +201,14 @@ exactly as two `#region add`s are; wrap one in `#region` comments to pick it.
 A class name beats a same-named constructor, and nothing matching at all is an
 error (`--lenient` reports it and leaves the block as written).
 
-The match is a heuristic, not a parser: declaration-shaped lines, with brackets
-counted over text whose comments and string literals are blanked, so a `}`
-inside a string cannot end a body. Braced languages — Java, C#, C/C++, JS/TS,
-Go, Rust, PHP, Kotlin, Swift — are followed by their braces; Python and Ruby by
-indentation.
+The match is not a parser: it reads declaration-shaped lines and counts brackets
+over text whose comments and string literals are blanked, so a `}` inside a
+string cannot end a body. For JavaScript/TypeScript, Java and Zig that blanking
+is done by a real tokenizer, exact to the language's syntax (template literals,
+text blocks, nested block comments); for every other type a best-effort union of
+the comment and string spellings stands in. Braced languages — Java, C#, C/C++,
+JS/TS, Go, Rust, PHP, Kotlin, Swift — are followed by their braces; Python and
+Ruby by indentation.
 
 #### Section paths and code anchors
 
@@ -486,10 +489,11 @@ npx @hrg/inject-examples --check || {
 
 ## The demo page
 
-[`docs/index.html`](./docs/index.html) is a two-pane page: the numbered
-explanations on the left, the sample file on the right, and every target syntax
-clickable — clicking one highlights the lines that reference selects in the
-file. It is generated, never hand-written:
+[`docs/index.html`](./docs/index.html) is a three-column page — the targets, the
+source file, and the document rendered the way GitHub renders it. Every target
+syntax is clickable: clicking one highlights the lines that reference selects in
+the source, and the matching marker and injected block in the rendered
+Markdown. It is generated, never hand-written:
 
 - [`docs/demo.md`](./docs/demo.md) is the source: an ordinary Markdown document,
   readable on its own, whose markers this tool keeps in sync exactly as it keeps

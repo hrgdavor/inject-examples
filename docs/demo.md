@@ -1,14 +1,8 @@
 # What a marker target can say
 
-This page is generated from this document. Every code block below a marker is
-written by inject-examples itself: the marker names a real file — the sample
-[samples/Inventory.java](./samples/Inventory.java) shown on the right — and the
-tool copies the bytes that marker stands for into the block. So this file is
-three things at once: prose you can read, test data the suite exercises, and
-the input the demo page is built from.
-
-Click any target syntax below. The page highlights the lines that reference
-selects in the file, and the snippet shows the text the marker injects.
+Click a target: it highlights the lines it selects in
+[samples/Inventory.java](./samples/Inventory.java), and the same injection in
+the rendered Markdown beside it.
 
 ## The whole file
 

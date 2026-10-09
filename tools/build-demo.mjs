@@ -238,6 +238,7 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
 
     return {
         id: `t-${sectionIndex + 1}-${targetIndex + 1}`,
+        section: sectionIndex + 1,
         raw: marker.raw,
         path: marker.path,
         reference: marker.reference,
@@ -264,7 +265,8 @@ export function buildModel(options = {}) {
     const read = options.read ?? fileReader(root);
     const warn = options.onWarning ?? (() => {});
 
-    const doc = parseDemoDoc(read(docPath));
+    const docText = read(docPath);
+    const doc = parseDemoDoc(docText);
     const docDir = posixDirname(docPath);
     const readTarget = (path) => read(docDir === '.' ? path : `${docDir}/${path}`);
 
@@ -285,7 +287,9 @@ export function buildModel(options = {}) {
             if (block.type !== 'marker') continue;
             const file = loadFile(files, block.marker.path, readTarget);
             file.display = docDir === '.' ? file.path : `${docDir}/${file.path}`;
-            examples.push(resolveTarget(block.marker, file, sectionIndex, examples.length, warn));
+            const target = resolveTarget(block.marker, file, sectionIndex, examples.length, warn);
+            target.line = block.line;
+            examples.push(target);
         }
         exampleCount += examples.length;
         sections.push({
@@ -295,6 +299,13 @@ export function buildModel(options = {}) {
         });
     });
 
+    // The third column renders the document itself; the marker lines carry the
+    // target's id so a click can highlight the exact spot in the Markdown.
+    const markerIds = new Map();
+    for (const section of sections) {
+        for (const example of section.examples) markerIds.set(example.line, example.id);
+    }
+
     return {
         title: doc.title,
         docPath,
@@ -302,6 +313,7 @@ export function buildModel(options = {}) {
         sections,
         files: [...files.values()],
         exampleCount,
+        markdownHtml: renderMarkdown(docText, { markerIds }),
     };
 }
 
@@ -354,6 +366,138 @@ export function renderBlocks(blocks) {
         })
         .filter((html) => html !== '')
         .join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// The document as GitHub renders it (the third column)
+// ---------------------------------------------------------------------------
+//
+// The same Markdown that drives the page is also shown rendered, because that
+// is the use case: a reader sees the prose, the marker link and the injected
+// block in place. Every block carries its source line numbers, and a marker
+// carries the id of the target it belongs to, so selecting a target can light
+// up the exact spot in the rendered document.
+
+/** The fenced blocks of `lines`: opener index -> `{ close, info }`. */
+function fenceInfo(lines) {
+    const map = new Map();
+    for (const [open, close] of fenceRanges(lines)) {
+        const info = /^\s*`{3,}(.*)$/.exec(lines[open]);
+        map.set(open, { close, info: info ? info[1].trim() : '' });
+    }
+    return map;
+}
+
+/** The marker line directly above fence `open`, as a 1-based line number. */
+function precedingMarkerLine(lines, open) {
+    let i = open - 1;
+    while (i >= 0 && lines[i].trim() === '') i--;
+    return i >= 0 && parseMarker(lines[i]) ? i + 1 : null;
+}
+
+/** One fenced block, escaped, with the target it injects for. */
+function renderFence(lines, open, fence, markerIds) {
+    const markerLine = precedingMarkerLine(lines, open);
+    const id = markerLine !== null ? markerIds.get(markerLine) : undefined;
+    const language = fence.info.split(/\s+/)[0];
+    const code = lines.slice(open + 1, fence.close).join('\n');
+    return `<pre class="md-pre"${id ? ` data-inject="${id}"` : ''}`
+        + ` data-md-from="${open + 1}" data-md-to="${fence.close + 1}">`
+        + `<code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code)}</code></pre>`;
+}
+
+/** One marker line, rendered the way Markdown would render it — as a link. */
+function renderMarker(line, id) {
+    const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(line.trim());
+    const label = link ? renderInline(link[1]) : escapeHtml(line.trim());
+    const href = link ? escapeHtml(link[2]) : '#';
+    return `<p class="md-marker" data-marker="${id}"><a href="${href}">${label}</a>`
+        + `<span class="md-badge">inject</span></p>`;
+}
+
+/**
+ * Render a document with the small GitHub-shaped subset this page needs:
+ * headings, paragraphs, bullet lists and fenced code, each wrapper carrying
+ * `data-md-from`/`data-md-to` line anchors and each `##` opening a section.
+ *
+ * @param {string} text
+ * @param {{ markerIds?: Map<number, string> }} [options] marker line -> target id
+ */
+export function renderMarkdown(text, options = {}) {
+    const markerIds = options.markerIds ?? new Map();
+    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const fences = fenceInfo(lines);
+    const html = [];
+    let opened = false;
+    let section = 0;
+
+    const openSection = (index) => {
+        if (opened) html.push('</section>');
+        html.push(`<section class="md-section" data-md-section="${index}">`);
+        opened = true;
+    };
+    const markerAt = (index) => {
+        const marker = parseMarker(lines[index]);
+        return marker && markerIds.has(index + 1) ? marker : null;
+    };
+
+    openSection(0);
+
+    let i = 0;
+    while (i < lines.length) {
+        const fence = fences.get(i);
+        if (fence) {
+            html.push(renderFence(lines, i, fence, markerIds));
+            i = fence.close + 1;
+            continue;
+        }
+
+        const line = lines[i];
+        if (line.trim() === '') {
+            i++;
+            continue;
+        }
+
+        const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+        if (heading) {
+            const level = heading[1].length;
+            if (level === 2) openSection(++section);
+            html.push(`<h${level} data-md-from="${i + 1}" data-md-to="${i + 1}">`
+                + `${renderInline(heading[2].trim())}</h${level}>`);
+            i++;
+            continue;
+        }
+
+        if (markerAt(i)) {
+            html.push(renderMarker(line, markerIds.get(i + 1)));
+            i++;
+            continue;
+        }
+
+        if (/^\s*[-*]\s+/.test(line)) {
+            const from = i;
+            const items = [];
+            while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+                items.push(`<li>${renderInline(lines[i].replace(/^\s*[-*]\s+/, ''))}</li>`);
+                i++;
+            }
+            html.push(`<ul data-md-from="${from + 1}" data-md-to="${i}">\n${items.join('\n')}\n</ul>`);
+            continue;
+        }
+
+        const from = i;
+        const rows = [];
+        while (i < lines.length && lines[i].trim() !== '' && !fences.has(i)
+            && !/^(#{1,6})\s+/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i])
+            && !(rows.length > 0 && markerAt(i))) {
+            rows.push(lines[i].trim());
+            i++;
+        }
+        html.push(`<p data-md-from="${from + 1}" data-md-to="${i}">${renderInline(rows.join(' '))}</p>`);
+    }
+
+    if (opened) html.push('</section>');
+    return html.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -465,15 +609,33 @@ body {
   font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; }
-.page-head { background: var(--head); border-bottom: 1px solid var(--line); padding: .8rem 1.1rem .7rem; }
-.page-head h1 { margin: 0 0 .35rem; font-size: 1.25rem; }
-.page-head p { margin: .3rem 0; max-width: 90ch; }
-.page-head .note { color: var(--muted); font-size: .8rem; }
-.split { display: grid; grid-template-columns: minmax(300px, 42%) minmax(0, 1fr); min-height: 0; }
-.pane { min-height: 0; overflow: auto; }
-.pane-left { border-right: 1px solid var(--line); padding: .2rem 1.1rem 5rem; }
-.pane-right { display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--panel); }
-.examples { list-style: none; margin: 0; padding: 0; }
+
+/* A short, full-width banner: title and note on one row, the intro under it. */
+.page-head { background: var(--head); border-bottom: 1px solid var(--line); padding: .45rem .9rem .5rem; }
+.head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.page-head h1 { margin: 0; font-size: 1.12rem; }
+.page-head p { margin: .15rem 0 0; max-width: none; }
+.page-head .intro p { margin: .2rem 0 0; }
+.page-head .note { margin: 0; color: var(--muted); font-size: .78rem; }
+
+/* Three columns: targets, source, and the document as it renders. */
+.split {
+  display: grid; min-height: 0;
+  grid-template-columns: minmax(270px, 23%) minmax(0, 38.5%) minmax(0, 38.5%);
+}
+.pane { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+.pane-left { grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--line); }
+.pane-mid { grid-template-rows: auto auto minmax(0, 1fr); border-right: 1px solid var(--line); background: var(--panel); }
+.pane-right { grid-template-rows: auto minmax(0, 1fr); background: #ffffff; }
+.col-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+  padding: .42rem .85rem; border-bottom: 1px solid var(--line); background: var(--head);
+  font: 600 .72rem/1.4 ui-sans-serif, system-ui, sans-serif;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+.col-note { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: .74rem; opacity: .85; }
+
+.examples { list-style: none; margin: 0; padding: .3rem 1rem 5rem; overflow: auto; min-height: 0; }
 .example { padding: .9rem 0 1.1rem; border-bottom: 1px solid var(--line); }
 .example:last-child { border-bottom: 0; }
 .example h2 { display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .4rem; font-size: 1rem; }
@@ -487,16 +649,16 @@ body {
 .example code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
 .targets { list-style: none; margin: .6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
 .target {
-  display: inline-flex; gap: .5rem; align-items: baseline; max-width: 100%;
+  display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; max-width: 100%;
   border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px;
   padding: .28rem .75rem; cursor: pointer; text-align: left;
   font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .target:hover { border-color: var(--accent); }
 .target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.chip-file { color: var(--muted); }
-.chip-ref { font-weight: 600; }
-.chip-lines { color: var(--muted); font-size: .92em; }
+.chip-file { color: var(--muted); white-space: nowrap; }
+.chip-ref { font-weight: 600; white-space: nowrap; }
+.chip-lines { color: var(--muted); font-size: .92em; white-space: nowrap; }
 .target-item.selected .target { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
 .target-item.selected .chip-file, .target-item.selected .chip-lines { color: inherit; opacity: .75; }
 .snippet {
@@ -506,12 +668,14 @@ body {
 .target-item.selected .snippet { display: block; }
 .snippet .marker { display: block; color: var(--muted); margin-bottom: .4rem; white-space: pre-wrap; word-break: break-all; }
 .snippet code { font: inherit; white-space: pre; }
-.file-tabs { display: flex; gap: .3rem; padding: .5rem .8rem; border-bottom: 1px solid var(--line); }
+
+.file-tabs { display: flex; gap: .3rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .file-tab {
-  border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px;
+  border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px; white-space: nowrap;
   padding: .25rem .6rem; cursor: pointer; font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .file-tab.active { color: var(--fg); background: var(--chip); border-color: var(--line); }
+.file-view { overflow: auto; min-height: 0; }
 .file { display: none; }
 .file.active { display: block; }
 .code {
@@ -529,9 +693,43 @@ body {
 .tok-a { color: var(--code-a); }
 .tok-n { color: var(--code-n); }
 .tok-t { color: var(--code-t); }
-@media (max-width: 820px) {
-  .split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1.3fr); }
-  .pane-left { border-right: 0; border-bottom: 1px solid var(--line); }
+
+/* The third column is deliberately GitHub's light rendering, page theme or not. */
+.md-scroll { overflow: auto; min-height: 0; background: #ffffff; }
+.md {
+  background: #ffffff; color: #1f2328; padding: .9rem 1.1rem 4rem;
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.md h1, .md h2 { border-bottom: 1px solid #d1d9e0; padding-bottom: .25em; }
+.md h1 { font-size: 1.5em; margin: .4em 0 .5em; }
+.md h2 { font-size: 1.2em; margin: 1.1em 0 .4em; }
+.md h3 { font-size: 1.05em; margin: 1em 0 .35em; }
+.md p { margin: 0 0 .8em; }
+.md ul { margin: 0 0 .8em; padding-left: 1.5em; }
+.md a { color: #0969da; text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+.md code {
+  background: rgba(175, 184, 193, .2); border-radius: 6px; padding: .15em .35em;
+  font: .86em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.md .md-pre { background: #f6f8fa; border-radius: 6px; padding: .75rem .9rem; margin: 0 0 .9em; overflow: auto; }
+.md .md-pre code { background: none; padding: 0; font-size: .84em; line-height: 1.45; }
+.md .md-marker { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
+.md .md-badge {
+  font: 600 10px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .05em;
+  color: #1a7f37; background: #dafbe1; border: 1px solid #aceebb; border-radius: 999px; padding: .25em .5em;
+}
+.md-section { border-left: 3px solid transparent; padding-left: .75rem; margin-left: -.75rem; border-radius: 4px; }
+.md-section-active { border-left-color: #0969da; background: #f6f8fa; }
+.md .md-hit { background: #fff8c5; box-shadow: inset 0 0 0 1px rgba(212, 167, 44, .45); border-radius: 6px; }
+.md .md-pre.md-hit { background: #fff8c5; }
+.md .md-marker.md-hit { padding: .2rem .45rem; margin-left: -.45rem; }
+
+@media (max-width: 1150px) {
+  .page { height: auto; min-height: 100vh; grid-template-rows: auto auto; }
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .pane { height: 70vh; }
+  .pane-left, .pane-mid { border-right: 0; border-bottom: 1px solid var(--line); }
 }
 `.trim();
 
@@ -542,6 +740,8 @@ const SCRIPT = `
   var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.file-tab'));
   var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
+  var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
+  var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
 
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
@@ -549,8 +749,10 @@ const SCRIPT = `
   }
 
   function select(target, keepScroll, keepHash) {
-    items.forEach(function (item) { item.classList.toggle('selected', item.contains(target)); });
+    var item = target.closest('.target-item');
+    items.forEach(function (other) { other.classList.toggle('selected', other === item); });
     targets.forEach(function (other) { other.setAttribute('aria-pressed', String(other === target)); });
+
     lines.forEach(function (line) { line.classList.remove('hl'); });
     showFile(target.dataset.file);
 
@@ -567,8 +769,23 @@ const SCRIPT = `
         }
       });
     }
-    if (first && !keepScroll) first.scrollIntoView({ block: 'nearest' });
-    if (!keepHash) history.replaceState(null, '', '#' + target.closest('.target-item').id);
+
+    // The same target, in the rendered Markdown: its section, its marker line
+    // and the block that injection filled.
+    mdSections.forEach(function (section) {
+      section.classList.toggle('md-section-active', section.dataset.mdSection === target.dataset.section);
+    });
+    mdHits.forEach(function (hit) { hit.classList.remove('md-hit'); });
+    var marker = document.querySelector('[data-marker="' + item.id + '"]');
+    var inject = document.querySelector('[data-inject="' + item.id + '"]');
+    if (marker) marker.classList.add('md-hit');
+    if (inject) inject.classList.add('md-hit');
+
+    if (!keepScroll) {
+      if (first) first.scrollIntoView({ block: 'nearest' });
+      if (marker) marker.scrollIntoView({ block: 'center' });
+    }
+    if (!keepHash) history.replaceState(null, '', '#' + item.id);
   }
 
   targets.forEach(function (target) {
@@ -579,7 +796,7 @@ const SCRIPT = `
   var initial = targets.filter(function (target) {
     return target.closest('.target-item').id === wanted;
   })[0];
-  if (initial) select(initial, true, true);
+  if (initial) select(initial, false, true);
 })();
 `.trim();
 
@@ -589,6 +806,7 @@ function renderSection(section, index) {
         .map((example) => [
             `<li class="target-item" id="${example.id}">`,
             `<button class="target" type="button" data-file="${escapeHtml(example.path)}"`,
+            ` data-section="${example.section}"`,
             ` data-from="${example.from ?? 0}" data-to="${example.to ?? 0}"`,
             ` aria-pressed="false" aria-controls="${example.id}-snippet">`,
             `<span class="chip-file">${escapeHtml(example.fileLabel)}</span>`,
@@ -647,21 +865,37 @@ ${STYLE}
 <body>
 <div class="page">
 <header class="page-head">
+<div class="head-row">
 <h1>${escapeHtml(model.title)}</h1>
-${model.introHtml}
 <p class="note">Generated from <code>${escapeHtml(model.docPath)}</code> by <code>tools/build-demo.mjs</code> — edit the Markdown, not this file.</p>
+</div>
+<div class="intro">
+${model.introHtml}
+</div>
 </header>
 <main class="split">
-<section class="pane pane-left" aria-label="Examples">
+<section class="pane pane-left" aria-label="Targets">
+<div class="col-head">Targets<span class="col-note">click one to highlight it</span></div>
 <ol class="examples">
 ${sections}
 </ol>
 </section>
-<section class="pane pane-right" aria-label="Source files">
+<section class="pane pane-mid" aria-label="Source file">
+<div class="col-head">Source file<span class="col-note">lines the target selects</span></div>
 <div class="file-tabs" role="tablist">
 ${tabs}
 </div>
+<div class="file-view">
 ${panes}
+</div>
+</section>
+<section class="pane pane-right" aria-label="Rendered Markdown">
+<div class="col-head">Markdown<span class="col-note">as it reads, injections in place</span></div>
+<div class="md-scroll">
+<article class="md">
+${model.markdownHtml}
+</article>
+</div>
 </section>
 </main>
 </div>

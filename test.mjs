@@ -2251,6 +2251,7 @@ import {
     buildDemo,
     locateRange,
     parseDemoDoc,
+    renderMarkdown,
     run as runBuildDemo,
 } from './tools/build-demo.mjs';
 
@@ -2340,11 +2341,62 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
             assert.ok(html.includes(`id="${example.id}"`), `${example.raw}: the target is clickable`);
             assert.ok(html.includes(`data-from="${example.from}" data-to="${example.to}"`),
                 `${example.raw}: the range travels to the page`);
+            assert.ok(html.includes(`data-section="${example.section}"`),
+                `${example.raw}: the target names the Markdown section it lives in`);
+            assert.ok(html.includes(`data-marker="${example.id}"`),
+                `${example.raw}: the marker line is addressable in the rendered Markdown`);
+            assert.ok(html.includes(`data-inject="${example.id}"`),
+                `${example.raw}: the injected block is addressable in the rendered Markdown`);
         }
     }
 
     assert.ok(html.includes('data-file="samples/Inventory.java"'), 'the file pane is wired to the target');
     assert.ok(html.includes('<span class="tok-k">public</span>'), 'the sample is highlighted by the tokenizer');
+});
+
+test('demo: the rendered Markdown keeps its shape and marks each injection', () => {
+    const text = [
+        '# A title',
+        '',
+        'Prose with **bold**, `code` and a [link](./a.md).',
+        '',
+        '## A section',
+        '',
+        '- one',
+        '- two',
+        '',
+        '[a/b.java](./a/b.java#one)',
+        '',
+        '```java',
+        'class A<T> { }',
+        '```',
+    ].join('\n');
+
+    const html = renderMarkdown(text, { markerIds: new Map([[10, 't-2-1']]) });
+    assert.match(html, /<h1 data-md-from="1" data-md-to="1">A title<\/h1>/);
+    assert.match(html, /<strong>bold<\/strong>/);
+    assert.match(html, /<code>code<\/code>/);
+    assert.match(html, /<a href="\.\/a\.md">link<\/a>/);
+    assert.match(html, /<h2 data-md-from="5" data-md-to="5">A section<\/h2>/);
+    assert.match(html, /<ul data-md-from="7" data-md-to="8">/);
+    assert.match(html, /<p class="md-marker" data-marker="t-2-1"><a href="\.\/a\/b\.java#one">a\/b\.java<\/a>/);
+    assert.match(html, /<pre class="md-pre" data-inject="t-2-1" data-md-from="12" data-md-to="14">/);
+    assert.match(html, /<code class="language-java">class A&lt;T&gt; \{ \}<\/code>/, 'code is escaped');
+    assert.equal((html.match(/data-md-section="/g) ?? []).length, 2, 'a lead section plus one per "##"');
+});
+
+test('demo: the page is three titled columns', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const { html, model } = buildDemo({ root });
+
+    for (const column of ['pane-left', 'pane-mid', 'pane-right']) {
+        assert.ok(html.includes(`class="pane ${column}"`), `the ${column} column exists`);
+    }
+    for (const title of ['Targets', 'Source file', 'Markdown']) {
+        assert.ok(html.includes(`<div class="col-head">${title}<`), `the ${title} column is titled`);
+    }
+    assert.ok(html.includes('<article class="md">'), 'the rendered document is the third column');
+    assert.equal((html.match(/data-md-section="/g) ?? []).length, model.sections.length + 1);
 });
 
 test('demo: the committed docs/index.html is exactly what the generator writes', () => {

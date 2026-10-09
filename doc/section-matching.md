@@ -61,7 +61,7 @@ each topic are the detail.
   - [Contradictory modifiers are a warning](#contradictory-modifiers-are-a-warning)
 - [Errors](#errors)
 - [Worked examples](#worked-examples)
-- [Heuristic, not a parser](#heuristic-not-a-parser)
+- [Not a parser](#not-a-parser)
 - [Tokenizers](#tokenizers)
 - [The vendorable module boundary](#the-vendorable-module-boundary)
 
@@ -440,26 +440,44 @@ class Svc {
 | `doSomeAction` | the method — matched at the class's depth, before the walk descends into `bar` |
 | `bar/doSomeAction` | the `if` block inside `bar`, reached explicitly via the method's scope |
 
-## Heuristic, not a parser
+## Not a parser
 
-The matcher blanks comments and string literals and counts brackets. It does
-**not** parse Java or TypeScript, and it makes no type-aware decisions. A
-matching step is:
+Matching has two layers, and the distinction between them is the whole
+guarantee a port has to keep.
 
-1. Walk the target's lines in order, with each line's comment and string-literal
-   text blanked to spaces of the same length. This blanking is the lexer's job —
-   the built-in default engine, or a per-type lexer when the file's type is known
-   (see [Tokenizers](#tokenizers)); either way the mask preserves length and
-   every newline offset.
-2. Track `{` / `}` over the blanked text to know where each block opens and
+**Lexically it is exact, for a type this project tokenizes.** The per-type
+lexers (see [Tokenizers](#tokenizers)) follow the language's own comment and
+string syntax — template literals, text blocks, nested block comments, multiline
+strings — so a name inside a comment or a string is never read as a declaration
+and a `}` inside one never closes a block. A lexer is a scanner: it emits no
+AST, consults no grammar, and **does not fail on valid source** — an
+unterminated block comment or text block runs to the end of the file, an
+unterminated single-line string to its newline. For a type no lexer claims, the
+built-in default mask is a best-effort union of the comment and string spellings
+in the wild, and that is where the residual risk lives: the Zig nested-comment
+case in [Tokenizers](#tokenizers) is what a default mask gets wrong.
+
+**Structurally it stays a heuristic, for every type.** No grammar and no type
+information are consulted, and none are needed: reliable tokenizing plus bracket
+counting plus declaration shapes is enough to resolve a reference, and a full
+AST would add nothing the matcher uses. A matching step is:
+
+1. Take the masked text — comments and string literals blanked to spaces of the
+   same length, every newline offset preserved. Which engine produces it
+   (a per-type lexer or the default) does not change this step or any result.
+2. Track `{` / `}` over the masked text to know where each block opens and
    closes. Indentation closes blocks in brace-less scopes (Python, Ruby).
-3. Offer the scopes of one depth, left to right, each in matcher-precedence
+3. Recognise a declaration by **shape and name** — a `class`/`interface`/…
+   keyword, a method header, a `field =` statement, a condition literal, an
+   anchor comment — never by what the language's type system would say.
+4. Offer the scopes of one depth, left to right, each in matcher-precedence
    order; the first match ends the lookup for the whole depth. Only a depth
    that yields nothing is descended (rule 5).
 
-Consumers must not expect a real parser: declarations are found by
-shape and by name, not by type information, and a name that occurs inside a
-string or a comment is never a declaration.
+So the guarantee is one-directional, and consumers must not expect more of it
+than that: valid source never breaks the lexical layer, but a construct the
+shape rules do not recognise is simply not a declaration, however legal it is.
+Names are matched exact-byte and case-sensitive throughout.
 
 ## Tokenizers
 

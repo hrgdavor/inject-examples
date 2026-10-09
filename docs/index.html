@@ -28,15 +28,33 @@ body {
   font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; }
-.page-head { background: var(--head); border-bottom: 1px solid var(--line); padding: .8rem 1.1rem .7rem; }
-.page-head h1 { margin: 0 0 .35rem; font-size: 1.25rem; }
-.page-head p { margin: .3rem 0; max-width: 90ch; }
-.page-head .note { color: var(--muted); font-size: .8rem; }
-.split { display: grid; grid-template-columns: minmax(300px, 42%) minmax(0, 1fr); min-height: 0; }
-.pane { min-height: 0; overflow: auto; }
-.pane-left { border-right: 1px solid var(--line); padding: .2rem 1.1rem 5rem; }
-.pane-right { display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--panel); }
-.examples { list-style: none; margin: 0; padding: 0; }
+
+/* A short, full-width banner: title and note on one row, the intro under it. */
+.page-head { background: var(--head); border-bottom: 1px solid var(--line); padding: .45rem .9rem .5rem; }
+.head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.page-head h1 { margin: 0; font-size: 1.12rem; }
+.page-head p { margin: .15rem 0 0; max-width: none; }
+.page-head .intro p { margin: .2rem 0 0; }
+.page-head .note { margin: 0; color: var(--muted); font-size: .78rem; }
+
+/* Three columns: targets, source, and the document as it renders. */
+.split {
+  display: grid; min-height: 0;
+  grid-template-columns: minmax(270px, 23%) minmax(0, 38.5%) minmax(0, 38.5%);
+}
+.pane { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+.pane-left { grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--line); }
+.pane-mid { grid-template-rows: auto auto minmax(0, 1fr); border-right: 1px solid var(--line); background: var(--panel); }
+.pane-right { grid-template-rows: auto minmax(0, 1fr); background: #ffffff; }
+.col-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+  padding: .42rem .85rem; border-bottom: 1px solid var(--line); background: var(--head);
+  font: 600 .72rem/1.4 ui-sans-serif, system-ui, sans-serif;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+.col-note { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: .74rem; opacity: .85; }
+
+.examples { list-style: none; margin: 0; padding: .3rem 1rem 5rem; overflow: auto; min-height: 0; }
 .example { padding: .9rem 0 1.1rem; border-bottom: 1px solid var(--line); }
 .example:last-child { border-bottom: 0; }
 .example h2 { display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .4rem; font-size: 1rem; }
@@ -50,16 +68,16 @@ body {
 .example code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
 .targets { list-style: none; margin: .6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
 .target {
-  display: inline-flex; gap: .5rem; align-items: baseline; max-width: 100%;
+  display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; max-width: 100%;
   border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px;
   padding: .28rem .75rem; cursor: pointer; text-align: left;
   font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .target:hover { border-color: var(--accent); }
 .target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.chip-file { color: var(--muted); }
-.chip-ref { font-weight: 600; }
-.chip-lines { color: var(--muted); font-size: .92em; }
+.chip-file { color: var(--muted); white-space: nowrap; }
+.chip-ref { font-weight: 600; white-space: nowrap; }
+.chip-lines { color: var(--muted); font-size: .92em; white-space: nowrap; }
 .target-item.selected .target { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
 .target-item.selected .chip-file, .target-item.selected .chip-lines { color: inherit; opacity: .75; }
 .snippet {
@@ -69,12 +87,14 @@ body {
 .target-item.selected .snippet { display: block; }
 .snippet .marker { display: block; color: var(--muted); margin-bottom: .4rem; white-space: pre-wrap; word-break: break-all; }
 .snippet code { font: inherit; white-space: pre; }
-.file-tabs { display: flex; gap: .3rem; padding: .5rem .8rem; border-bottom: 1px solid var(--line); }
+
+.file-tabs { display: flex; gap: .3rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .file-tab {
-  border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px;
+  border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px; white-space: nowrap;
   padding: .25rem .6rem; cursor: pointer; font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .file-tab.active { color: var(--fg); background: var(--chip); border-color: var(--line); }
+.file-view { overflow: auto; min-height: 0; }
 .file { display: none; }
 .file.active { display: block; }
 .code {
@@ -92,28 +112,66 @@ body {
 .tok-a { color: var(--code-a); }
 .tok-n { color: var(--code-n); }
 .tok-t { color: var(--code-t); }
-@media (max-width: 820px) {
-  .split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1.3fr); }
-  .pane-left { border-right: 0; border-bottom: 1px solid var(--line); }
+
+/* The third column is deliberately GitHub's light rendering, page theme or not. */
+.md-scroll { overflow: auto; min-height: 0; background: #ffffff; }
+.md {
+  background: #ffffff; color: #1f2328; padding: .9rem 1.1rem 4rem;
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.md h1, .md h2 { border-bottom: 1px solid #d1d9e0; padding-bottom: .25em; }
+.md h1 { font-size: 1.5em; margin: .4em 0 .5em; }
+.md h2 { font-size: 1.2em; margin: 1.1em 0 .4em; }
+.md h3 { font-size: 1.05em; margin: 1em 0 .35em; }
+.md p { margin: 0 0 .8em; }
+.md ul { margin: 0 0 .8em; padding-left: 1.5em; }
+.md a { color: #0969da; text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+.md code {
+  background: rgba(175, 184, 193, .2); border-radius: 6px; padding: .15em .35em;
+  font: .86em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.md .md-pre { background: #f6f8fa; border-radius: 6px; padding: .75rem .9rem; margin: 0 0 .9em; overflow: auto; }
+.md .md-pre code { background: none; padding: 0; font-size: .84em; line-height: 1.45; }
+.md .md-marker { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
+.md .md-badge {
+  font: 600 10px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .05em;
+  color: #1a7f37; background: #dafbe1; border: 1px solid #aceebb; border-radius: 999px; padding: .25em .5em;
+}
+.md-section { border-left: 3px solid transparent; padding-left: .75rem; margin-left: -.75rem; border-radius: 4px; }
+.md-section-active { border-left-color: #0969da; background: #f6f8fa; }
+.md .md-hit { background: #fff8c5; box-shadow: inset 0 0 0 1px rgba(212, 167, 44, .45); border-radius: 6px; }
+.md .md-pre.md-hit { background: #fff8c5; }
+.md .md-marker.md-hit { padding: .2rem .45rem; margin-left: -.45rem; }
+
+@media (max-width: 1150px) {
+  .page { height: auto; min-height: 100vh; grid-template-rows: auto auto; }
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .pane { height: 70vh; }
+  .pane-left, .pane-mid { border-right: 0; border-bottom: 1px solid var(--line); }
 }
 </style>
 </head>
 <body>
 <div class="page">
 <header class="page-head">
+<div class="head-row">
 <h1>What a marker target can say</h1>
-<p>This page is generated from this document. Every code block below a marker is written by inject-examples itself: the marker names a real file — the sample <a href="./samples/Inventory.java">samples/Inventory.java</a> shown on the right — and the tool copies the bytes that marker stands for into the block. So this file is three things at once: prose you can read, test data the suite exercises, and the input the demo page is built from.</p>
-<p>Click any target syntax below. The page highlights the lines that reference selects in the file, and the snippet shows the text the marker injects.</p>
 <p class="note">Generated from <code>docs/demo.md</code> by <code>tools/build-demo.mjs</code> — edit the Markdown, not this file.</p>
+</div>
+<div class="intro">
+<p>Click a target: it highlights the lines it selects in <a href="./samples/Inventory.java">samples/Inventory.java</a>, and the same injection in the rendered Markdown beside it.</p>
+</div>
 </header>
 <main class="split">
-<section class="pane pane-left" aria-label="Examples">
+<section class="pane pane-left" aria-label="Targets">
+<div class="col-head">Targets<span class="col-note">click one to highlight it</span></div>
 <ol class="examples">
 <li class="example" id="ex-1">
 <h2><span class="num">1</span>The whole file</h2>
 <p>A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
 <ul class="targets">
-<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-from="1" data-to="50" aria-pressed="false" aria-controls="t-1-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">whole file</span><span class="chip-lines">L1–50</span></button><pre class="snippet" id="t-1-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java)</span><code>package demo;
+<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="1" data-to="50" aria-pressed="false" aria-controls="t-1-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">whole file</span><span class="chip-lines">L1–50</span></button><pre class="snippet" id="t-1-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java)</span><code>package demo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -169,7 +227,7 @@ public class Inventory {
 <h2><span class="num">2</span>A named region</h2>
 <p>Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
 <ul class="targets">
-<li class="target-item" id="t-2-1"><button class="target" type="button" data-file="samples/Inventory.java" data-from="10" data-to="11" aria-pressed="false" aria-controls="t-2-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span><span class="chip-lines">L10–11</span></button><pre class="snippet" id="t-2-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#catalog)</span><code>    /** The catalog, kept as an explicit region directive. */
+<li class="target-item" id="t-2-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="10" data-to="11" aria-pressed="false" aria-controls="t-2-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span><span class="chip-lines">L10–11</span></button><pre class="snippet" id="t-2-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#catalog)</span><code>    /** The catalog, kept as an explicit region directive. */
     static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre></li>
 </ul>
 </li>
@@ -184,15 +242,15 @@ public class Inventory {
 </ul>
 <p>The same method, four ways:</p>
 <ul class="targets">
-<li class="target-item" id="t-3-1"><button class="target" type="button" data-file="samples/Inventory.java" data-from="34" data-to="36" aria-pressed="false" aria-controls="t-3-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString</span><span class="chip-lines">L34–36</span></button><pre class="snippet" id="t-3-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#toString)</span><code>    public String toString() {
+<li class="target-item" id="t-3-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="34" data-to="36" aria-pressed="false" aria-controls="t-3-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString</span><span class="chip-lines">L34–36</span></button><pre class="snippet" id="t-3-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#toString)</span><code>    public String toString() {
         return items.size() + &quot; item(s)&quot;;
     }</code></pre></li>
-<li class="target-item" id="t-3-2"><button class="target" type="button" data-file="samples/Inventory.java" data-from="35" data-to="35" aria-pressed="false" aria-controls="t-3-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#-toString</span><span class="chip-lines">L35</span></button><pre class="snippet" id="t-3-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#-toString)</span><code>        return items.size() + &quot; item(s)&quot;;</code></pre></li>
-<li class="target-item" id="t-3-3"><button class="target" type="button" data-file="samples/Inventory.java" data-from="33" data-to="36" aria-pressed="false" aria-controls="t-3-3-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#+toString</span><span class="chip-lines">L33–36</span></button><pre class="snippet" id="t-3-3-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#+toString)</span><code>    @Override
+<li class="target-item" id="t-3-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="35" data-to="35" aria-pressed="false" aria-controls="t-3-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#-toString</span><span class="chip-lines">L35</span></button><pre class="snippet" id="t-3-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#-toString)</span><code>        return items.size() + &quot; item(s)&quot;;</code></pre></li>
+<li class="target-item" id="t-3-3"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="33" data-to="36" aria-pressed="false" aria-controls="t-3-3-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#+toString</span><span class="chip-lines">L33–36</span></button><pre class="snippet" id="t-3-3-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#+toString)</span><code>    @Override
     public String toString() {
         return items.size() + &quot; item(s)&quot;;
     }</code></pre></li>
-<li class="target-item" id="t-3-4"><button class="target" type="button" data-file="samples/Inventory.java" data-from="32" data-to="36" aria-pressed="false" aria-controls="t-3-4-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#++toString</span><span class="chip-lines">L32–36</span></button><pre class="snippet" id="t-3-4-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#++toString)</span><code>    /** Summarise the inventory. */
+<li class="target-item" id="t-3-4"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="32" data-to="36" aria-pressed="false" aria-controls="t-3-4-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#++toString</span><span class="chip-lines">L32–36</span></button><pre class="snippet" id="t-3-4-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#++toString)</span><code>    /** Summarise the inventory. */
     @Override
     public String toString() {
         return items.size() + &quot; item(s)&quot;;
@@ -203,7 +261,7 @@ public class Inventory {
 <h2><span class="num">4</span>A nested declaration</h2>
 <p>A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
 <ul class="targets">
-<li class="target-item" id="t-4-1"><button class="target" type="button" data-file="samples/Inventory.java" data-from="27" data-to="29" aria-pressed="false" aria-controls="t-4-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#Inventory/Item/render</span><span class="chip-lines">L27–29</span></button><pre class="snippet" id="t-4-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#Inventory/Item/render)</span><code>        String render() {
+<li class="target-item" id="t-4-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="4" data-from="27" data-to="29" aria-pressed="false" aria-controls="t-4-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#Inventory/Item/render</span><span class="chip-lines">L27–29</span></button><pre class="snippet" id="t-4-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#Inventory/Item/render)</span><code>        String render() {
             return name + &quot; x&quot; + quantity;
         }</code></pre></li>
 </ul>
@@ -212,7 +270,7 @@ public class Inventory {
 <h2><span class="num">5</span>A condition literal</h2>
 <p>Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
 <ul class="targets">
-<li class="target-item" id="t-5-1"><button class="target" type="button" data-file="samples/Inventory.java" data-from="40" data-to="42" aria-pressed="false" aria-controls="t-5-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#dispatch/count</span><span class="chip-lines">L40–42</span></button><pre class="snippet" id="t-5-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#dispatch/count)</span><code>        if (&quot;count&quot;.equals(methodName)) {
+<li class="target-item" id="t-5-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="5" data-from="40" data-to="42" aria-pressed="false" aria-controls="t-5-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#dispatch/count</span><span class="chip-lines">L40–42</span></button><pre class="snippet" id="t-5-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#dispatch/count)</span><code>        if (&quot;count&quot;.equals(methodName)) {
             System.out.println(&quot;items: &quot; + items.size());
         }</code></pre></li>
 </ul>
@@ -221,18 +279,146 @@ public class Inventory {
 <h2><span class="num">6</span>A comment anchor</h2>
 <p>A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
 <ul class="targets">
-<li class="target-item" id="t-6-1"><button class="target" type="button" data-file="samples/Inventory.java" data-from="47" data-to="49" aria-pressed="false" aria-controls="t-6-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#legacy/count</span><span class="chip-lines">L47–49</span></button><pre class="snippet" id="t-6-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#legacy/count)</span><code>    public void legacy() { //count
+<li class="target-item" id="t-6-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="6" data-from="47" data-to="49" aria-pressed="false" aria-controls="t-6-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#legacy/count</span><span class="chip-lines">L47–49</span></button><pre class="snippet" id="t-6-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#legacy/count)</span><code>    public void legacy() { //count
         System.out.println(&quot;items: &quot; + items.size());
     }</code></pre></li>
 </ul>
 </li>
 </ol>
 </section>
-<section class="pane pane-right" aria-label="Source files">
+<section class="pane pane-mid" aria-label="Source file">
+<div class="col-head">Source file<span class="col-note">lines the target selects</span></div>
 <div class="file-tabs" role="tablist">
 <button class="file-tab active" type="button" data-file="samples/Inventory.java">docs/samples/Inventory.java</button>
 </div>
+<div class="file-view">
 <div class="file active" data-file="samples/Inventory.java" aria-label="docs/samples/Inventory.java"><pre class="code"><span class="line" id="samples-Inventory-java-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">package</span> demo;</span></span><span class="line" id="samples-Inventory-java-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L3" data-line="3"><span class="ln">3</span><span class="lc"><span class="tok-k">import</span> java.util.<span class="tok-t">ArrayList</span>;</span></span><span class="line" id="samples-Inventory-java-L4" data-line="4"><span class="ln">4</span><span class="lc"><span class="tok-k">import</span> java.util.<span class="tok-t">List</span>;</span></span><span class="line" id="samples-Inventory-java-L5" data-line="5"><span class="ln">5</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L6" data-line="6"><span class="ln">6</span><span class="lc"><span class="tok-c">/** A small stock inventory: the sample every target on this page reads. */</span></span></span><span class="line" id="samples-Inventory-java-L7" data-line="7"><span class="ln">7</span><span class="lc"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {</span></span><span class="line" id="samples-Inventory-java-L8" data-line="8"><span class="ln">8</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L9" data-line="9"><span class="ln">9</span><span class="lc">    <span class="tok-c">// #region catalog</span></span></span><span class="line" id="samples-Inventory-java-L10" data-line="10"><span class="ln">10</span><span class="lc">    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span></span></span><span class="line" id="samples-Inventory-java-L11" data-line="11"><span class="ln">11</span><span class="lc">    <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };</span></span><span class="line" id="samples-Inventory-java-L12" data-line="12"><span class="ln">12</span><span class="lc">    <span class="tok-c">// #endregion</span></span></span><span class="line" id="samples-Inventory-java-L13" data-line="13"><span class="ln">13</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L14" data-line="14"><span class="ln">14</span><span class="lc">    <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">List</span>&lt;<span class="tok-t">Item</span>&gt; items = <span class="tok-k">new</span> <span class="tok-t">ArrayList</span>&lt;&gt;();</span></span><span class="line" id="samples-Inventory-java-L15" data-line="15"><span class="ln">15</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L16" data-line="16"><span class="ln">16</span><span class="lc">    <span class="tok-c">/** One stock line of this inventory. */</span></span></span><span class="line" id="samples-Inventory-java-L17" data-line="17"><span class="ln">17</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-k">static</span> <span class="tok-k">class</span> <span class="tok-t">Item</span> {</span></span><span class="line" id="samples-Inventory-java-L18" data-line="18"><span class="ln">18</span><span class="lc">        <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">String</span> name;</span></span><span class="line" id="samples-Inventory-java-L19" data-line="19"><span class="ln">19</span><span class="lc">        <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-k">int</span> quantity;</span></span><span class="line" id="samples-Inventory-java-L20" data-line="20"><span class="ln">20</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L21" data-line="21"><span class="ln">21</span><span class="lc">        <span class="tok-t">Item</span>(<span class="tok-t">String</span> name, <span class="tok-k">int</span> quantity) {</span></span><span class="line" id="samples-Inventory-java-L22" data-line="22"><span class="ln">22</span><span class="lc">            <span class="tok-k">this</span>.name = name;</span></span><span class="line" id="samples-Inventory-java-L23" data-line="23"><span class="ln">23</span><span class="lc">            <span class="tok-k">this</span>.quantity = quantity;</span></span><span class="line" id="samples-Inventory-java-L24" data-line="24"><span class="ln">24</span><span class="lc">        }</span></span><span class="line" id="samples-Inventory-java-L25" data-line="25"><span class="ln">25</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L26" data-line="26"><span class="ln">26</span><span class="lc">        <span class="tok-c">/** Render one line the way the receipt shows it. */</span></span></span><span class="line" id="samples-Inventory-java-L27" data-line="27"><span class="ln">27</span><span class="lc">        <span class="tok-t">String</span> render() {</span></span><span class="line" id="samples-Inventory-java-L28" data-line="28"><span class="ln">28</span><span class="lc">            <span class="tok-k">return</span> name + <span class="tok-s">&quot; x&quot;</span> + quantity;</span></span><span class="line" id="samples-Inventory-java-L29" data-line="29"><span class="ln">29</span><span class="lc">        }</span></span><span class="line" id="samples-Inventory-java-L30" data-line="30"><span class="ln">30</span><span class="lc">    }</span></span><span class="line" id="samples-Inventory-java-L31" data-line="31"><span class="ln">31</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L32" data-line="32"><span class="ln">32</span><span class="lc">    <span class="tok-c">/** Summarise the inventory. */</span></span></span><span class="line" id="samples-Inventory-java-L33" data-line="33"><span class="ln">33</span><span class="lc">    <span class="tok-a">@Override</span></span></span><span class="line" id="samples-Inventory-java-L34" data-line="34"><span class="ln">34</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {</span></span><span class="line" id="samples-Inventory-java-L35" data-line="35"><span class="ln">35</span><span class="lc">        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;</span></span><span class="line" id="samples-Inventory-java-L36" data-line="36"><span class="ln">36</span><span class="lc">    }</span></span><span class="line" id="samples-Inventory-java-L37" data-line="37"><span class="ln">37</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L38" data-line="38"><span class="ln">38</span><span class="lc">    <span class="tok-c">/** Run one named method. */</span></span></span><span class="line" id="samples-Inventory-java-L39" data-line="39"><span class="ln">39</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-k">void</span> dispatch(<span class="tok-t">String</span> methodName) {</span></span><span class="line" id="samples-Inventory-java-L40" data-line="40"><span class="ln">40</span><span class="lc">        <span class="tok-k">if</span> (<span class="tok-s">&quot;count&quot;</span>.equals(methodName)) {</span></span><span class="line" id="samples-Inventory-java-L41" data-line="41"><span class="ln">41</span><span class="lc">            <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());</span></span><span class="line" id="samples-Inventory-java-L42" data-line="42"><span class="ln">42</span><span class="lc">        } <span class="tok-k">else</span> <span class="tok-k">if</span> (<span class="tok-s">&quot;clear&quot;</span>.equals(methodName)) {</span></span><span class="line" id="samples-Inventory-java-L43" data-line="43"><span class="ln">43</span><span class="lc">            items.clear();</span></span><span class="line" id="samples-Inventory-java-L44" data-line="44"><span class="ln">44</span><span class="lc">        }</span></span><span class="line" id="samples-Inventory-java-L45" data-line="45"><span class="ln">45</span><span class="lc">    }</span></span><span class="line" id="samples-Inventory-java-L46" data-line="46"><span class="ln">46</span><span class="lc"></span></span><span class="line" id="samples-Inventory-java-L47" data-line="47"><span class="ln">47</span><span class="lc">    <span class="tok-k">public</span> <span class="tok-k">void</span> legacy() { <span class="tok-c">//count</span></span></span><span class="line" id="samples-Inventory-java-L48" data-line="48"><span class="ln">48</span><span class="lc">        <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());</span></span><span class="line" id="samples-Inventory-java-L49" data-line="49"><span class="ln">49</span><span class="lc">    }</span></span><span class="line" id="samples-Inventory-java-L50" data-line="50"><span class="ln">50</span><span class="lc">}</span></span></pre></div>
+</div>
+</section>
+<section class="pane pane-right" aria-label="Rendered Markdown">
+<div class="col-head">Markdown<span class="col-note">as it reads, injections in place</span></div>
+<div class="md-scroll">
+<article class="md">
+<section class="md-section" data-md-section="0">
+<h1 data-md-from="1" data-md-to="1">What a marker target can say</h1>
+<p data-md-from="3" data-md-to="5">Click a target: it highlights the lines it selects in <a href="./samples/Inventory.java">samples/Inventory.java</a>, and the same injection in the rendered Markdown beside it.</p>
+</section>
+<section class="md-section" data-md-section="1">
+<h2 data-md-from="7" data-md-to="7">The whole file</h2>
+<p data-md-from="9" data-md-to="10">A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
+<p class="md-marker" data-marker="t-1-1"><a href="./samples/Inventory.java">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-1-1" data-md-from="14" data-md-to="65"><code class="language-java">package demo;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** A small stock inventory: the sample every target on this page reads. */
+public class Inventory {
+
+    // #region catalog
+    /** The catalog, kept as an explicit region directive. */
+    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };
+    // #endregion
+
+    private final List&lt;Item&gt; items = new ArrayList&lt;&gt;();
+
+    /** One stock line of this inventory. */
+    public static class Item {
+        private final String name;
+        private final int quantity;
+
+        Item(String name, int quantity) {
+            this.name = name;
+            this.quantity = quantity;
+        }
+
+        /** Render one line the way the receipt shows it. */
+        String render() {
+            return name + &quot; x&quot; + quantity;
+        }
+    }
+
+    /** Summarise the inventory. */
+    @Override
+    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }
+
+    /** Run one named method. */
+    public void dispatch(String methodName) {
+        if (&quot;count&quot;.equals(methodName)) {
+            System.out.println(&quot;items: &quot; + items.size());
+        } else if (&quot;clear&quot;.equals(methodName)) {
+            items.clear();
+        }
+    }
+
+    public void legacy() { //count
+        System.out.println(&quot;items: &quot; + items.size());
+    }
+}</code></pre>
+</section>
+<section class="md-section" data-md-section="2">
+<h2 data-md-from="67" data-md-to="67">A named region</h2>
+<p data-md-from="69" data-md-to="71">Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
+<p class="md-marker" data-marker="t-2-1"><a href="./samples/Inventory.java#catalog">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-1" data-md-from="75" data-md-to="78"><code class="language-java">    /** The catalog, kept as an explicit region directive. */
+    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre>
+</section>
+<section class="md-section" data-md-section="3">
+<h2 data-md-from="80" data-md-to="80">A declaration, and how much of it comes along</h2>
+<p data-md-from="82" data-md-to="85">When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A leading <code>-</code>, <code>+</code> or <code>++</code> selects how far up the text starts:</p>
+<ul data-md-from="87" data-md-to="90">
+<li><code>#toString</code> — the declaration: signature through closing brace.</li>
+<li><code>#-toString</code> — the body only, without the signature.</li>
+<li><code>#+toString</code> — the declaration and the annotations above it.</li>
+<li><code>#++toString</code> — those and the doc comment above them.</li>
+</ul>
+<p data-md-from="92" data-md-to="92">The same method, four ways:</p>
+<p class="md-marker" data-marker="t-3-1"><a href="./samples/Inventory.java#toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-3-1" data-md-from="96" data-md-to="100"><code class="language-java">    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre>
+<p class="md-marker" data-marker="t-3-2"><a href="./samples/Inventory.java#-toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-3-2" data-md-from="104" data-md-to="106"><code class="language-java">        return items.size() + &quot; item(s)&quot;;</code></pre>
+<p class="md-marker" data-marker="t-3-3"><a href="./samples/Inventory.java#+toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-3-3" data-md-from="110" data-md-to="115"><code class="language-java">    @Override
+    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre>
+<p class="md-marker" data-marker="t-3-4"><a href="./samples/Inventory.java#++toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-3-4" data-md-from="119" data-md-to="125"><code class="language-java">    /** Summarise the inventory. */
+    @Override
+    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre>
+</section>
+<section class="md-section" data-md-section="4">
+<h2 data-md-from="127" data-md-to="127">A nested declaration</h2>
+<p data-md-from="129" data-md-to="132">A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
+<p class="md-marker" data-marker="t-4-1"><a href="./samples/Inventory.java#Inventory/Item/render">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-4-1" data-md-from="136" data-md-to="140"><code class="language-java">        String render() {
+            return name + &quot; x&quot; + quantity;
+        }</code></pre>
+</section>
+<section class="md-section" data-md-section="5">
+<h2 data-md-from="142" data-md-to="142">A condition literal</h2>
+<p data-md-from="144" data-md-to="146">Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
+<p class="md-marker" data-marker="t-5-1"><a href="./samples/Inventory.java#dispatch/count">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-5-1" data-md-from="150" data-md-to="154"><code class="language-java">        if (&quot;count&quot;.equals(methodName)) {
+            System.out.println(&quot;items: &quot; + items.size());
+        }</code></pre>
+</section>
+<section class="md-section" data-md-section="6">
+<h2 data-md-from="156" data-md-to="156">A comment anchor</h2>
+<p data-md-from="158" data-md-to="160">A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
+<p class="md-marker" data-marker="t-6-1"><a href="./samples/Inventory.java#legacy/count">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-6-1" data-md-from="164" data-md-to="168"><code class="language-java">    public void legacy() { //count
+        System.out.println(&quot;items: &quot; + items.size());
+    }</code></pre>
+</section>
+</article>
+</div>
 </section>
 </main>
 </div>
@@ -243,6 +429,8 @@ public class Inventory {
   var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.file-tab'));
   var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
+  var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
+  var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
 
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
@@ -250,8 +438,10 @@ public class Inventory {
   }
 
   function select(target, keepScroll, keepHash) {
-    items.forEach(function (item) { item.classList.toggle('selected', item.contains(target)); });
+    var item = target.closest('.target-item');
+    items.forEach(function (other) { other.classList.toggle('selected', other === item); });
     targets.forEach(function (other) { other.setAttribute('aria-pressed', String(other === target)); });
+
     lines.forEach(function (line) { line.classList.remove('hl'); });
     showFile(target.dataset.file);
 
@@ -268,8 +458,23 @@ public class Inventory {
         }
       });
     }
-    if (first && !keepScroll) first.scrollIntoView({ block: 'nearest' });
-    if (!keepHash) history.replaceState(null, '', '#' + target.closest('.target-item').id);
+
+    // The same target, in the rendered Markdown: its section, its marker line
+    // and the block that injection filled.
+    mdSections.forEach(function (section) {
+      section.classList.toggle('md-section-active', section.dataset.mdSection === target.dataset.section);
+    });
+    mdHits.forEach(function (hit) { hit.classList.remove('md-hit'); });
+    var marker = document.querySelector('[data-marker="' + item.id + '"]');
+    var inject = document.querySelector('[data-inject="' + item.id + '"]');
+    if (marker) marker.classList.add('md-hit');
+    if (inject) inject.classList.add('md-hit');
+
+    if (!keepScroll) {
+      if (first) first.scrollIntoView({ block: 'nearest' });
+      if (marker) marker.scrollIntoView({ block: 'center' });
+    }
+    if (!keepHash) history.replaceState(null, '', '#' + item.id);
   }
 
   targets.forEach(function (target) {
@@ -280,7 +485,7 @@ public class Inventory {
   var initial = targets.filter(function (target) {
     return target.closest('.target-item').id === wanted;
   })[0];
-  if (initial) select(initial, true, true);
+  if (initial) select(initial, false, true);
 })();
 </script>
 </body>
