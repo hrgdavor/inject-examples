@@ -4,7 +4,11 @@ Keep the code samples in your Markdown honest.
 
 This project [dogfoods](https://en.wikipedia.org/wiki/Dogfooding) its own
 documentation: [`doc/usage.md`](./doc/usage.md) is written with inject-examples
-itself, and every file it shows is exercised by the test suite.
+itself, and every file it shows is exercised by the test suite. The
+[demo page](./docs/index.html) goes one step further — it is built from
+[`docs/demo.md`](./docs/demo.md), a Markdown document that this tool keeps in
+sync and a generator turns into a clickable page (see
+[The demo page](#the-demo-page)).
 
 A **marker** is a line that is nothing but a link to a real file, labelled with
 that same path. The fenced code block that follows it is replaced — byte for
@@ -479,6 +483,33 @@ npx @hrg/inject-examples --check || {
   exit 1
 }
 ```
+
+## The demo page
+
+[`docs/index.html`](./docs/index.html) is a two-pane page: the numbered
+explanations on the left, the sample file on the right, and every target syntax
+clickable — clicking one highlights the lines that reference selects in the
+file. It is generated, never hand-written:
+
+- [`docs/demo.md`](./docs/demo.md) is the source: an ordinary Markdown document,
+  readable on its own, whose markers this tool keeps in sync exactly as it keeps
+  `doc/usage.md`.
+- [`docs/samples/Inventory.java`](./docs/samples/Inventory.java) is the sample
+  those markers inject from.
+- [`tools/build-demo.mjs`](./tools/build-demo.mjs) reads the document, resolves
+  every marker with the library — so the page cannot highlight a range the tool
+  would not inject — and writes the page.
+
+```bash
+bun tools/build-demo.mjs           # write docs/index.html
+bun tools/build-demo.mjs --check   # exit 1 when it is stale
+```
+
+To add an example: write a `##` section with its prose and a marker in
+`docs/demo.md`, run `inject-examples docs/demo.md` to fill the block, then run
+the generator — the page grows a numbered paragraph and a clickable target.
+`npm test` fails when the committed page is not exactly what the generator
+writes, or when the document has drifted from the sample.
 
 ## Library
 

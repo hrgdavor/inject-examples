@@ -2237,6 +2237,144 @@ test('the documentation stays in sync with the files it shows', () => {
 });
 
 // ---------------------------------------------------------------------------
+// The demo page — docs/index.html is generated from docs/demo.md
+// ---------------------------------------------------------------------------
+//
+// `tools/build-demo.mjs` turns the Markdown document into the two-pane page:
+// every section becomes a numbered paragraph, every marker a clickable target,
+// and the lines a reference selects are the lines the page highlights. Both
+// halves are the library's own answer — `planSection` for the text,
+// `locateRange` for where it sits — so these tests check the page against the
+// resolver, not against a copy of its logic.
+
+import {
+    buildDemo,
+    locateRange,
+    parseDemoDoc,
+    run as runBuildDemo,
+} from './tools/build-demo.mjs';
+
+test('demo: the source document is read as numbered sections with targets', () => {
+    const doc = parseDemoDoc([
+        '# A title',
+        '',
+        'Intro prose.',
+        '',
+        '## First section',
+        '',
+        'Why it matters.',
+        '',
+        '[a/b.java](./a/b.java#one)',
+        '',
+        '```java',
+        '[a/b.java](./a/b.java#inside-a-fence)',
+        '```',
+        '',
+        '## Second section',
+        '',
+        '[a/b.java](./a/b.java)',
+        '',
+        '```java',
+        '```',
+    ].join('\n'));
+
+    assert.equal(doc.title, 'A title');
+    assert.deepEqual(doc.sections.map((section) => section.title), ['First section', 'Second section']);
+
+    const markers = doc.sections.flatMap((section) => section.blocks.filter((block) => block.type === 'marker'));
+    assert.deepEqual(markers.map((block) => [block.marker.path, block.marker.reference]),
+        [['a/b.java', 'one'], ['a/b.java', null]],
+        'a marker inside a fence is content, exactly as the tool reads it');
+
+    const first = doc.sections[0].blocks.map((block) => block.type);
+    assert.deepEqual(first, ['prose', 'marker'], 'prose and markers keep their document order');
+});
+
+test('demo: a marker outside any section is an error, not a silent drop', () => {
+    const read = (path) => (path === 'demo.md'
+        ? '# A title\n\n[a/b.java](./a/b.java#one)\n'
+        : 'class B {}\n');
+    assert.throws(() => buildDemo({ root: '.', docPath: 'demo.md', read }),
+        /a marker outside any "##" section/);
+});
+
+test('demo: locateRange finds the lines a reference selects', () => {
+    assert.deepEqual(locateRange('a\nb\nc\nd\n', 'b\nc', 'x'), { from: 2, to: 3 });
+    assert.deepEqual(locateRange('a\nb\nc\nd\n', 'a\nb\nc\nd', null), { from: 1, to: 4 });
+    assert.equal(locateRange('a\nb\n', 'zz', 'x'), null, 'text that is not in the file has no range');
+    assert.equal(locateRange('a\nb\n', '', 'x'), null, 'an empty selection has no range');
+    assert.equal(locateRange('', '', null), null, 'an empty file has no lines');
+
+    // A whole-line occurrence beats a loose fragment earlier in the file.
+    assert.deepEqual(locateRange('foo n;\nn;\n', 'n;', 'x'), { from: 2, to: 2 });
+    // A reference that resolves to part of a line still names that line.
+    assert.deepEqual(locateRange('int x = 41;\n', '41', 'x'), { from: 1, to: 1 });
+});
+
+test('demo: every target in docs/demo.md lands on the lines it injects', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const docText = readFileSync(join(root, 'docs', 'demo.md'), 'utf8');
+
+    const synced = updateDocument(docText, { root: join(root, 'docs'), gitignore: false });
+    assert.equal(synced.changed, false, 'docs/demo.md must match docs/samples/Inventory.java');
+    for (const entry of synced.results) {
+        assert.equal(entry.skipped, false, `${entry.marker.raw} must resolve`);
+        assert.ok(entry.warning === null, `${entry.marker.raw}: unexpected section warning`);
+    }
+
+    const { html, model } = buildDemo({ root });
+    assert.ok(model.exampleCount >= 9, 'the page shows a substantial set of targets');
+    assert.equal(model.files.length, 1, 'one sample file backs the page');
+
+    for (const section of model.sections) {
+        for (const example of section.examples) {
+            const file = model.files.find((candidate) => candidate.path === example.path);
+            assert.ok(file, `${example.raw}: the target file is on the page`);
+            assert.ok(example.from >= 1 && example.to <= file.lines.length,
+                `${example.raw}: the range is inside ${file.path}`);
+            const highlighted = file.lines.slice(example.from - 1, example.to).join('\n');
+            assert.equal(example.to - example.from + 1, example.text.split('\n').length,
+                `${example.raw}: the range spans the injected lines`);
+            assert.ok(highlighted.startsWith(example.text),
+                `${example.raw}: the highlighted lines are exactly the injected text`);
+            assert.ok(html.includes(`id="${example.id}"`), `${example.raw}: the target is clickable`);
+            assert.ok(html.includes(`data-from="${example.from}" data-to="${example.to}"`),
+                `${example.raw}: the range travels to the page`);
+        }
+    }
+
+    assert.ok(html.includes('data-file="samples/Inventory.java"'), 'the file pane is wired to the target');
+    assert.ok(html.includes('<span class="tok-k">public</span>'), 'the sample is highlighted by the tokenizer');
+});
+
+test('demo: the committed docs/index.html is exactly what the generator writes', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const { html } = buildDemo({ root });
+    assert.equal(readFileSync(join(root, 'docs', 'index.html'), 'utf8'), html,
+        'run: bun tools/build-demo.mjs');
+});
+
+test('demo: --check reports a stale page and --out writes a fresh one', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.demo-test-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const page = join(dir, 'index.html');
+
+    const lines = [];
+    const io = { out: (line) => lines.push(line), err: (line) => lines.push(line) };
+
+    assert.equal(runBuildDemo(['--out', page], io), 0, 'writes the page');
+    assert.ok(existsSync(page), 'the page is written');
+    assert.equal(runBuildDemo(['--check', '--out', page], io), 0, 'a fresh page passes --check');
+
+    writeFileSync(page, 'stale\n');
+    assert.equal(runBuildDemo(['--check', '--out', page], io), 1, 'a stale page fails --check');
+    assert.match(lines.join('\n'), /stale/);
+
+    assert.equal(runBuildDemo(['--bogus'], io), 2, 'an unknown flag is a usage error');
+    assert.equal(runBuildDemo(['--check'], io), 0, 'the default page is current');
+});
+
+// ---------------------------------------------------------------------------
 // Doc links must be functional
 // ---------------------------------------------------------------------------
 //
@@ -2264,7 +2402,9 @@ test('every link in the docs is functional', () => {
 
     for (const file of mdFiles) {
         const rel = file.slice(root.length + 1);
-        const lines = readFileSync(file, 'utf8').split('\n');
+        // Normalise endings first: a Windows checkout with `core.autocrlf` hands
+        // back CRLF, and a trailing `\r` would hide every heading from the scan.
+        const lines = readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\n');
 
         const fences = fenceRanges(lines);
         const fenced = (i) => fences.some(([a, b]) => i >= a && i <= b);

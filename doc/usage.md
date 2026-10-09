@@ -112,7 +112,9 @@ The entire published package, verbatim:
   "scripts": {
     "test": "node --test test.mjs && node tools/section-vectors.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
-    "compare:zig": "node tools/compare-zig.mjs"
+    "compare:zig": "node tools/compare-zig.mjs",
+    "demo": "bun tools/build-demo.mjs",
+    "demo:check": "bun tools/build-demo.mjs --check"
   }
 }
 ```
