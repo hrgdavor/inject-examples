@@ -1,6 +1,6 @@
 # @hrg/inject-examples
 
-Keep the code samples in your Markdown honest.
+Keep the code samples in your Markdown honest. [demo page](https://hrgdavor.github.io/inject-examples/)
 
 This project [dogfoods](https://en.wikipedia.org/wiki/Dogfooding) its own
 documentation: [`doc/usage.md`](./doc/usage.md) is written with inject-examples
