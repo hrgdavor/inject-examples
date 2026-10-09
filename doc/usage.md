@@ -100,6 +100,7 @@ The entire published package, verbatim:
     "README.md",
     "LICENSE",
     "lib",
+    "src/js/scanner",
     "doc/section-matching.md"
   ],
   "engines": {

@@ -38,44 +38,40 @@ these documents disagree, these documents win**; it will not be updated.
 ## Language scanners
 
 The plan's scanner layer (step 5) builds `scanBlocks` in `lib/section.mjs` for structural
-scanning — classes, methods, properties, region directives, comment anchors. The per-language
-`if`-clause detection that feeds matcher 5 (**condition literal**, contract §6) has sample
-implementations in `./src/js/scanner/`, which an implementation of the spec can reuse or copy;
-`lib/section.mjs` carries its own dependency-free mask so the vendorable module stays a single
-file. Spec consumers may substitute whatever lexical information they already have (a TreeSitter
-parse, an IDE index) — see the "Tokenizers" section of `doc/section-matching.md`. Each scanner
-masks out comments and string literals for its target language, then reports every `if` clause whose header spans up to the
-opening brace contain `targetString`:
+scanning — classes, methods, properties, region directives, comment anchors — and it owns
+precedence, the sibling-first walk, the modifier-on-last rule and rendering. The genuinely
+language-specific part is only **lexical**: blanking comments and string literals (the mask) and
+locating the comments. That is the **lexer seam**: `scanBlocks`/`planSection`/`resolveSection` take
+an optional `lexer` (`{ name, mask, comments }`, plus an inherited `conditionLiterals`) and fall
+back to a built-in default mask — the language-agnostic union — when none is supplied, i.e. when
+the file's type is unknown. A lexer changes only what is blanked, never how the blanked text is
+walked, so a known type and the default engine resolve the same reference to the same bytes.
 
-| File | Function | Language support |
-| --- | --- | --- |
-| [`src/js/scanner/scanJS.js`](src/js/scanner/scanJS.js) | `scanJS(source, targetString)` | JavaScript/TypeScript — single/double quotes, template literals, `//` and `/* */` |
-| [`src/js/scanner/scanJava.js`](src/js/scanner/scanJava.js) | `scanJava(source, targetString)` | Java — standard strings, text blocks (`"""`), `//` and `/* */` |
-| [`src/js/scanner/scanZig.js`](src/js/scanner/scanZig.js) | `scanZig(source, targetString)` | Zig — regular strings, multiline strings (`\`), line comments, **nested** block comments |
+`index.mjs` selects a lexer by extension via `src/js/scanner/lexers.js` (`lexerFor(path)` →
+lexer or `undefined`). The three sample scanners are built on a shared one-pass tokenizer
+(`src/js/scanner/tokenizer.js`, parameterised by syntax) and each exports three things:
 
-All three are pure functions taking `(source, targetString)` and returning an array of match
-objects `{ type: 'if_clause', line, col, snippet }`, where `snippet` is the clause from `if` to
-`{` trimmed of surrounding whitespace. They skip the contents of comments and string literals so
-that `if` keywords and `{` braces appearing inside them do not produce false matches. Keyword
-detection is guarded by `isBoundary` from [`src/js/utils.js`](src/js/utils.js), so `gift` is not
-matched as `if`.
+| File | `lexerX` (the seam) | `scanX(source, target)` (the original sample) | `visitX(source, visitor)` (one-pass enumeration) | Language support |
+| --- | --- | --- | --- | --- |
+| [`src/js/scanner/scanJS.js`](src/js/scanner/scanJS.js) | `lexerJS` | `scanJS` | `visitJS` | JS/TS — `'` `"`, backtick templates, `//`, `/* */` |
+| [`src/js/scanner/scanJava.js`](src/js/scanner/scanJava.js) | `lexerJava` | `scanJava` | `visitJava` | Java — `"` `'`, text blocks `"""`, `//`, `/* */` |
+| [`src/js/scanner/scanZig.js`](src/js/scanner/scanZig.js) | `lexerZig` | `scanZig` | `visitZig` | Zig — `"`, multiline `\\`, `//`, **nested** `/* /* */ */` |
 
-Usage:
+`scanX(source, targetString)` keeps its original shape: the `if` clauses whose header (up to the
+opening brace) contains `targetString`, as `{ type: 'if_clause', line, col, snippet }`, detected on
+the mask so an `if` or `{` inside a string or comment never matches. `visitX(source, visitor)` runs
+the same single pass and calls `visitor.comment`, `visitor.string`, `visitor.ifClause`, so a file is
+enumerable for tests or another use without resolving anything — the resolver uses that very pass
+through `lexerX`. The mask invariant (same length, every `\n` at the same offset) is asserted once
+per scan in `lib/section.mjs` and names the lexer that breaks it. `lib/section.mjs` imports nothing
+(contract §10), so the lexers are injected from `index.mjs`, never imported by the module; a test
+pins that boundary.
 
-```js
-import { scanJS } from './src/js/scanner/scanJS.js';
-
-const source = 'if ("getUsers".equals(methodName)) {\n    handle();\n}';
-const matches = scanJS(source, 'getUsers');
-console.log(matches[0]);
-// → { type: 'if_clause', line: 1, col: 1, snippet: 'if ("getUsers".equals(methodName))' }
-```
-
-Each scanner is self-contained and may be imported directly; there is no barrel index. They share
-the same `(source, targetString)` signature and return shape so step 5 can route by language
-without a parser (house rule §3.5: "This is a heuristic, not a parser"). The JS scanner is the
-reference implementation for the plan; the Java and Zig scanners mirror its shape for the
-matching-language cases the resolver may later delegate to.
+A per-type lexer matters where the default union is wrong — chiefly Zig's nested block comments,
+which the non-nesting default mask leaks (a commented-out `fn decoy` becomes a section). The golden
+vectors pin it (`z-decoy-hidden-by-nested-comment`). Spec consumers may substitute any lexer — a
+TreeSitter parse, an IDE index — that satisfies the invariant; see the "Tokenizers" section of
+`doc/section-matching.md`.
 
 ## Status
 

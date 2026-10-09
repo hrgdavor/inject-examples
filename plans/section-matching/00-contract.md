@@ -300,3 +300,40 @@ Consequences for §12, regenerated into `test/vectors/section-vectors.json`: on
 condition literals inside `dispatch`; `dispatch/getUsers` and
 `dispatch/getOrders` still reach those. `doc/section-matching.md` carries the
 normative wording.
+
+---
+
+## Amendment (maintainer decision, 2026-10-08): a per-type lexer seam, with the built-in engine as default
+
+§6 and §10 are extended (not superseded). The matcher table, the sibling-first
+walk, the modifier-on-last rule and rendering stay wholly in `lib/section.mjs`.
+The only language-specific work is **lexical**, and it is now an injectable
+**lexer**: `scanBlocks`/`planSection`/`resolveSection` take an optional
+`lexer = { name, mask(text), comments(text) }` (with `conditionLiterals`
+inherited unless overridden). A lexer owns nothing but the mask and the comment
+spans; it MUST preserve the mask invariant — same length, every `\n` at the same
+offset — which `lib/section.mjs` asserts once per scan and names on failure.
+
+**The default engine is `lib/section.mjs`'s built-in mask** (`masked`/
+`commentsIn`, the language-agnostic union) and applies whenever no lexer is
+supplied — i.e. when the file's type is unknown. `index.mjs` selects a lexer by
+extension (`src/js/scanner/lexers.js` → `lexerFor`); the three sample scanners
+are rebuilt on a shared one-pass `tokenizer.js` and each exports `lexerX` (the
+seam), `scanX(source, target)` (the original sample shape, unchanged) and
+`visitX(source, visitor)` (the same pass, for enumeration/tests). Because a lexer
+changes only what is blanked, a known type and the default engine resolve the
+same reference to the same bytes — pinned by the parity tests and by the
+regenerated vectors (the existing cases are byte-identical).
+
+House rule 2 ("all porting is frozen, no step touches `src/**`") is lifted **for
+`src/js/scanner/` only**, and only for this wiring: the JavaScript sample
+tokenizers become the per-type lexers. The Zig port (`src/root.zig`, `build.zig`,
+`build.zig.zon`) and every non-JavaScript implementation remain frozen and are
+untouched. §10's vendorable boundary is unchanged and now has an explicit test:
+`lib/section.mjs` imports nothing; lexers are injected from `index.mjs`.
+
+Consequence for §12: two Zig vectors are added on a new
+`test/fixtures/Nesting.zig` — `z-target-method` (found) and
+`z-decoy-hidden-by-nested-comment` (error) — the latter showing the Zig lexer
+hide a declaration the non-nesting default mask would leak. `doc/section-matching.md`
+carries the normative wording (the "Tokenizers" section).

@@ -31,6 +31,7 @@ import {
     commentsIn,
     extractDeclaration,
 } from './lib/section.mjs';
+import { lexerFor } from './src/js/scanner/lexers.js';
 
 /** A fence is a line starting with this; three backticks, per CommonMark. */
 export const FENCE = '```';
@@ -154,9 +155,15 @@ export function codeReference(reference) {
  * matched by the precedence in the contract (`lib/section.mjs`), which covers
  * declarations, condition literals and comment anchors. Nothing matching is an
  * error.
+ *
+ * When `path` names a type this repository has a sample tokenizer for (see
+ * `src/js/scanner/lexers.js`), that language lexer masks the file; for an
+ * unknown type `lib/section.mjs`'s built-in default engine applies. The lexer
+ * changes only the lexical mask — precedence, the sibling-first walk and the
+ * modifier-on-last-segment rule are identical either way.
  */
-export function extractCodeRegion(text, reference) {
-    return resolveSection(text, reference);
+export function extractCodeRegion(text, reference, path) {
+    return resolveSection(text, reference, path ? lexerFor(path) : undefined);
 }
 
 /**
@@ -430,7 +437,7 @@ export function planMarker(marker, read, rule = ruleFor(marker.path)) {
     const text = read(marker.path);
     if (marker.reference === null) return { text: normalize(text), warning: null };
     if (rule === CODE_RULE) {
-        const plan = planSection(text, marker.reference);
+        const plan = planSection(text, marker.reference, lexerFor(marker.path));
         return { text: plan.text, warning: plan.reference.warning };
     }
     return { text: rule.resolve(text, marker.reference, marker.path), warning: null };

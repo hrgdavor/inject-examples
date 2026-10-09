@@ -46,6 +46,12 @@ import {
 
 import { main, parseArgs, UsageError } from './cli.mjs';
 
+import { lexerFor, LEXERS } from './src/js/scanner/lexers.js';
+import { lexerJS, scanJS, visitJS } from './src/js/scanner/scanJS.js';
+import { lexerJava, scanJava, visitJava } from './src/js/scanner/scanJava.js';
+import { lexerZig, scanZig, visitZig } from './src/js/scanner/scanZig.js';
+import { tokenize, JS_SYNTAX, JAVA_SYNTAX, ZIG_SYNTAX } from './src/js/scanner/tokenizer.js';
+
 /** A `readFile` stub over a plain object of path -> text. */
 const reader = (files) => (path) => {
     if (!(path in files)) {
@@ -949,6 +955,130 @@ test('planSection: contradiction resolves to the dominant reading with a warning
     }
     // A non-contradictory reference carries no warning.
     assert.equal(planSection(ANCHORS, 'getUsers').reference.warning, null);
+});
+
+// ---------------------------------------------------------------------------
+// Lexer hook — per-type tokenizers, the default engine, and the visitor
+// ---------------------------------------------------------------------------
+// `lib/section.mjs` owns structure, precedence, the sibling-first walk and the
+// modifier-on-last rule. A language lexer supplies only the lexical mask and
+// comment spans; `index.mjs` selects one by file extension and falls back to the
+// built-in default engine when the type is unknown. These pin that seam.
+
+const lexRead = fileReader(dirname(fileURLToPath(import.meta.url)));
+const NESTING_ZIG = lexRead('test/fixtures/Nesting.zig');
+
+// Contract §10: the vendorable module imports nothing. Codified here so it cannot rot.
+test('lexer hook: lib/section.mjs is dependency-free (vendorable boundary)', () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'lib', 'section.mjs'), 'utf8');
+    assert.doesNotMatch(src, /^\s*import\s/m, 'no ESM imports');
+    assert.doesNotMatch(src, /\brequire\s*\(/, 'no require');
+    assert.doesNotMatch(src, /node:/, 'no node builtins');
+});
+
+test('lexer hook: lexerFor maps known types and omits unknown ones', () => {
+    assert.equal(lexerFor('a/b/C.java').name, 'java');
+    assert.equal(lexerFor('x.y/Z.kt') === undefined, true, 'no Kotlin lexer -> default engine');
+    for (const ext of ['js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'mts', 'cts']) {
+        assert.equal(lexerFor(`src/mod.${ext}`).name, 'javascript', ext);
+    }
+    assert.equal(lexerFor('pkg/main.zig').name, 'zig');
+    assert.equal(lexerFor('notes.md') === undefined, true, 'markdown is not code');
+    assert.equal(lexerFor('Makefile') === undefined, true, 'no extension');
+    assert.equal(lexerFor('.gitignore') === undefined, true, 'dotfile, not a suffix');
+    assert.equal(new Set(Object.values(LEXERS)).size, 3, 'three distinct lexers');
+});
+
+test('lexer hook: a known-type lexer resolves byte-identical to the default engine', () => {
+    for (const ref of ['getUsers', 'getUsers-', 'getOrders', 'dispatch/getUsers', 'handler/getUsers']) {
+        assert.equal(resolveSection(ANCHORS, ref, lexerJava), resolveSection(ANCHORS, ref), `Anchors ${ref}`);
+    }
+    for (const ref of ['toString', 'toString++', 'Line', 'Cart/Line/render', 'Cart/Line/render-']) {
+        assert.equal(resolveSection(EXAMPLE, ref, lexerJava), resolveSection(EXAMPLE, ref), `Example ${ref}`);
+    }
+    const ts = lexRead('test/fixtures/example.ts');
+    for (const ref of ['table', 'config']) {
+        assert.equal(resolveSection(ts, ref, lexerJS), resolveSection(ts, ref), `TS ${ref}`);
+    }
+});
+
+test('lexer hook: the modifier still binds only to the last segment through a lexer', () => {
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render-', lexerJava),
+        '            return name + " x" + quantity;');
+    assert.throws(() => resolveSection(EXAMPLE, 'Cart/-Line/render', lexerJava),
+        /may only modify the last path segment/);
+});
+
+test('lexer hook: the Zig lexer hides a declaration a nested block comment wraps', () => {
+    // The default mask is non-nesting, so it leaks `fn decoy` out of the comment.
+    assert.match(resolveSection(NESTING_ZIG, 'decoy'), /fn decoy\(\) void/);
+    // The Zig lexer blanks the whole nested comment, so `decoy` is not a section.
+    assert.throws(() => resolveSection(NESTING_ZIG, 'decoy', lexerZig),
+        /no section named "decoy"/);
+    // Both engines find the real target, byte-identical.
+    assert.equal(resolveSection(NESTING_ZIG, 'target', lexerZig), resolveSection(NESTING_ZIG, 'target'));
+    assert.match(resolveSection(NESTING_ZIG, 'target', lexerZig), /fn target\(\) void/);
+});
+
+test('lexer hook: a lexer that breaks the mask invariant fails loudly, naming itself', () => {
+    const short = { name: 'short', mask: (s) => s.slice(0, -1), comments: () => [] };
+    assert.throws(() => resolveSection(EXAMPLE, 'toString', short),
+        /lexer "short" mask must preserve length/);
+    const eatsNewline = { name: 'flat', mask: (s) => s.replace(/\n/g, ' '), comments: () => [] };
+    assert.throws(() => resolveSection(EXAMPLE, 'toString', eatsNewline),
+        /lexer "flat" mask must preserve every newline offset/);
+});
+
+test('lexer hook: the shared tokenizer preserves length and every newline offset', () => {
+    for (const [syntax, src] of [
+        [JS_SYNTAX, 'const s = `a\nb`; // c\n{ d }'],
+        [JAVA_SYNTAX, 'String s = """\nx\n"""; /* c */ class T {}'],
+        [ZIG_SYNTAX, 'const p = "a"; /* o /* i */ sneaky { */ fn f() void {}'],
+    ]) {
+        const { masked } = tokenize(src, syntax);
+        assert.equal(masked.length, src.length, syntax.name);
+        for (let i = 0; i < src.length; i++) {
+            if (src[i] === '\n') assert.equal(masked[i], '\n', `${syntax.name} @${i}`);
+        }
+    }
+});
+
+test('lexer hook: the visitor enumerates a file in one pass without resolving', () => {
+    const seen = { comments: [], strings: 0, ifs: 0 };
+    visitJava('class C { // anchor\n void f() { if ("go".equals(m)) {} } }', {
+        comment: (c) => seen.comments.push(c.text.trim()),
+        string: () => { seen.strings++; },
+        ifClause: () => { seen.ifs++; },
+    });
+    assert.deepEqual(seen.comments, ['anchor'], 'the line comment is reported once, body only');
+    assert.equal(seen.strings, 1, 'the string literal is enumerated');
+    assert.equal(seen.ifs, 1, 'the if clause is enumerated from the mask');
+
+    // Zig nested comment counts as ONE comment; `//!` and `///` are line comments.
+    const zig = { comments: 0, strings: 0 };
+    visitZig(NESTING_ZIG, { comment: () => { zig.comments++; }, string: () => { zig.strings++; } });
+    assert.equal(zig.comments, 3, 'the two doc lines and the one nested block comment');
+    assert.equal(zig.strings, 1, 'the @import("std") literal');
+});
+
+test('lexer hook: scanJS/scanJava/scanZig keep their original sample shape', () => {
+    const java = scanJava('void f() { if ("getUsers".equals(m)) { g(); } }', 'getUsers');
+    assert.deepEqual(java, [{ type: 'if_clause', line: 1, col: 12, snippet: 'if ("getUsers".equals(m))' }]);
+    assert.equal(scanJava('void f() { if ("x".equals(m)) {} }', 'getUsers').length, 0, 'target filters');
+    // `if` inside a string is never reported (detected on the mask).
+    assert.equal(scanJS('const s = "if (a) {"; f();', 'if').length, 0);
+    assert.equal(scanZig('fn f() void { if ("tick"==c) {} }', 'tick').length, 1);
+});
+
+test('lexer hook: index.mjs resolves a marker through the extension lexer end to end', () => {
+    const read = (p) => (p === 'Nesting.zig' ? NESTING_ZIG : (() => { throw new Error('ENOENT ' + p); })());
+    const ok = planMarker(parseMarker('[Nesting.zig](./Nesting.zig#target)'), read);
+    assert.match(ok.text, /fn target\(\) void/, 'the wired path finds the real target');
+    assert.throws(() => planMarker(parseMarker('[Nesting.zig](./Nesting.zig#decoy)'), read),
+        /no section named "decoy"/, 'the Zig lexer hides the commented declaration');
+    // extractCodeRegion threads the lexer for a known path and defaults otherwise.
+    assert.equal(extractCodeRegion(NESTING_ZIG, 'target', 'x/main.zig'), resolveSection(NESTING_ZIG, 'target', lexerZig));
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers', 'notes.txt'), resolveSection(ANCHORS, 'getUsers'), 'unknown type -> default engine');
 });
 
 // ---------------------------------------------------------------------------
@@ -2196,10 +2326,10 @@ test('section vectors match a live implementation call', () => {
         // are parse-only probes (both null) whose value is the parsed warning.
         if (c.text !== null) {
             assert.equal(c.error, null, `${c.name}: exactly one of text/error`);
-            assert.equal(resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference), c.text,
+            assert.equal(resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference, lexerFor(c.input)), c.text,
                 `${c.name}: text`);
         } else if (c.error !== null) {
-            assert.throws(() => resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference),
+            assert.throws(() => resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference, lexerFor(c.input)),
                 (e) => { assert.equal(e.message, c.error, `${c.name}: error message`); return true; });
         }
     }

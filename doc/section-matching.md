@@ -303,7 +303,10 @@ The matcher blanks comments and string literals and counts brackets. It does
 matching step is:
 
 1. Walk the target's lines in order, with each line's comment and string-literal
-   text blanked to spaces of the same length.
+   text blanked to spaces of the same length. This blanking is the lexer's job —
+   the built-in default engine, or a per-type lexer when the file's type is known
+   (see [Tokenizers](#tokenizers)); either way the mask preserves length and
+   every newline offset.
 2. Track `{` / `}` over the blanked text to know where each block opens and
    closes. Indentation closes blocks in brace-less scopes (Python, Ruby).
 3. Offer the scopes of one depth, left to right, each in matcher-precedence
@@ -316,37 +319,83 @@ string or a comment is never a declaration.
 
 ## Tokenizers
 
-The only language-sensitive work in a match is lexical: blanking comments and
-string literals, and reading a statement header for matcher 5. Nothing else in
-this spec needs a language's grammar.
+The only language-sensitive work in a match is **lexical**: blanking comments
+and string literals, and locating the comments (for anchors and region
+directives). Everything else — the block tree, matcher precedence, the
+sibling-first walk, the modifier-on-last-segment rule and rendering — is
+language-neutral and lives in `lib/section.mjs`, so every engine agrees on it.
+That split is the **lexer seam**: `lib/section.mjs` accepts an optional *lexer*
+that supplies the lexical facts and otherwise uses its own built-in mask.
 
-This repository ships sample tokenizers for exactly that work, in
-`src/js/scanner/` — `scanJS.js`, `scanJava.js`, `scanZig.js`. Each is a pure
-function `(source, targetString)` that masks its language's comments and strings
-(template literals, Java text blocks, Zig multiline strings and *nested* block
-comments) and reports every `if` clause whose header, up to the opening brace,
-carries the target — the matcher-5 candidate list. `lib/section.mjs` keeps its
-own dependency-free mask so the vendorable module stays a single file; the
-scanners are the reference shape an implementation of this spec can reuse or
-copy.
+A lexer is `{ name, mask(text), comments(text) }`, with an optional
+`conditionLiterals(line, from)` (matcher 5's double-quoted-literal reader, which
+is the same across these languages and so usually inherited). The one hard
+contract is the **mask invariant**: `mask` returns a string of the *same length*
+as the input with *every `\n` at the same offset* — comments and strings become
+spaces, never disappear. `lib/section.mjs` asserts this once per scan and names
+the offending lexer, so a bad engine fails loudly instead of silently
+mislocating a brace.
 
-An implementation is free to use whatever lexical information it already has —
-a TreeSitter parse, an IDE index, a compiler frontend — instead. The substitute
-must only keep the observable rules of this document: exact-byte, case-sensitive
-names; a name inside a comment or string is never a declaration; the matcher
-precedence; the sibling-first walk. `test/vectors/section-vectors.json` is the
-conformance set such a substitution has to reproduce, gated by
+**The default engine.** When no lexer is supplied — the file's type is unknown —
+`lib/section.mjs` masks the file with its built-in `masked`/`commentsIn`, the
+language-agnostic union of the comment and string spellings seen in the wild.
+This is the authority: a reference resolves to the same bytes whether the type
+is recognised or not, because a per-type lexer only changes *what is blanked*,
+never how the blanked text is walked.
+
+**The per-type lexers.** `index.mjs` selects a lexer by file extension through
+`src/js/scanner/lexers.js` (`lexerFor(path)` → a lexer, or `undefined` for an
+unknown type, which then takes the default engine). The lexers are built on a
+shared one-pass tokenizer, `src/js/scanner/tokenizer.js`, parameterised by
+syntax; the three sample scanners are now that wiring:
+
+| File | Exports | Covers |
+| --- | --- | --- |
+| `scanJS.js` | `lexerJS`, `scanJS(source, target)`, `visitJS(source, visitor)` | JS/TS — `'` `"` and backtick templates |
+| `scanJava.js` | `lexerJava`, `scanJava`, `visitJava` | Java — `"` `'` and text blocks `"""` |
+| `scanZig.js` | `lexerZig`, `scanZig`, `visitZig` | Zig — `"` and `\\` multiline strings, **nested** `/* /* */ */` comments |
+
+`scanX(source, target)` keeps the original sample shape — the `if` clauses whose
+header carries `target`, the matcher-5 candidate list. `visitX(source, visitor)`
+runs the same single pass and calls `visitor.comment`, `visitor.string` and
+`visitor.ifClause`, so a file can be **enumerated** for a test or another use
+without resolving anything; the resolver uses the very same pass through
+`lexerX`.
+
+A per-type lexer earns its keep where the default union is wrong. The clearest
+case is Zig's nested block comments: the default mask is non-nesting, so in
+
+```zig
+/* outer /* inner */ fn decoy() void { x(); } */
+```
+
+it blanks only up to the first `*/`, leaking `fn decoy` out as a real
+declaration — `decoy` then resolves to a commented-out method. `lexerZig` blanks
+the whole nested comment, so `decoy` is not a section at all. The golden vectors
+pin both readings (`z-decoy-hidden-by-nested-comment`).
+
+**Substituting an engine.** An implementation is free to produce the mask and
+comment spans from whatever it already has — a TreeSitter parse, an IDE index, a
+compiler frontend — by handing `lib/section.mjs` (or its own resolver) a lexer
+that satisfies the invariant. The substitute must keep the observable rules of
+this document: exact-byte, case-sensitive names; a name inside a comment or
+string is never a declaration; the matcher precedence; the sibling-first walk;
+the modifier on the last segment only. `test/vectors/section-vectors.json` is
+the conformance set it has to reproduce, gated by
 `node tools/section-vectors.mjs --check`.
 
 ## The vendorable module boundary
 
 `lib/section.mjs` is a single, dependency-free ES module that exports the
 matching algorithm only. It must not import or reference `node:fs`, `node:path`,
-`process`, `cli.mjs`, or anything that reads the disk or the environment — a
-consumer project vendors this one file. `index.mjs` owns markers, fences, rule
-dispatch, gitignore and document rewriting, and delegates only section
-resolution. A test asserts the boundary (see §10 of the contract), so it cannot
-rot.
+`process`, `cli.mjs`, the `src/js/scanner/` lexers, or anything that reads the
+disk or the environment — a consumer project vendors this one file. The per-type
+lexers are *injected* (a `lexer` argument threaded from `index.mjs`), so the
+module stays dependency-free while still resolving through a language engine; a
+lexer that is not supplied leaves the built-in default engine. `index.mjs` owns
+markers, fences, rule dispatch, the extension→lexer selection, gitignore and
+document rewriting, and delegates only section resolution. A test asserts the
+boundary (see §10 of the contract), so it cannot rot.
 
 A project adds a rule for another type with `options.regionRules` (see the
 README's "Region rules by file type" section); a custom rule calls

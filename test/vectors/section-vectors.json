@@ -53,5 +53,7 @@
   {"name":"ts-table-region","input":"test/fixtures/example.ts","reference":"table","text":"| name | qty |\n| ---- | --- |\n| bolt | 12  |","error":null,"warning":null},
   {"name":"ts-table-ignores-modifier","input":"test/fixtures/example.ts","reference":"table+","text":"| name | qty |\n| ---- | --- |\n| bolt | 12  |","error":null,"warning":null},
   {"name":"ts-config-region","input":"test/fixtures/example.ts","reference":"config","text":"export const config = { retries: 3 };","error":null,"warning":null},
+  {"name":"z-target-method","input":"test/fixtures/Nesting.zig","reference":"target","text":"fn target() void {\n    z();\n}","error":null,"warning":null},
+  {"name":"z-decoy-hidden-by-nested-comment","input":"test/fixtures/Nesting.zig","reference":"decoy","text":null,"error":"no \"#region decoy\" found, and no section named \"decoy\"","warning":null},
   {"name":"walkorder-siblings-before-deeper","input":"test/fixtures/Anchors.java","reference":"getUsers","text":"    public void handler() { //getUsers\n        System.out.println(\"anchor same line\");\n    }","error":null,"warning":null}
 ]
