@@ -2,7 +2,8 @@
 
 Click a target: it highlights the lines it selects in
 [samples/Inventory.java](./samples/Inventory.java), and the same injection in
-the rendered Markdown ([source](https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md)) beside it. [GIT](https://github.com/hrgdavor/inject-examples)
+the rendered Markdown ([source](https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md)) beside it. 
+/ [GIT source](https://github.com/hrgdavor/inject-examples) / [section-matching SPEC](https://github.com/hrgdavor/inject-examples/blob/main/doc/section-matching.md)
 
 ## A named region
 
