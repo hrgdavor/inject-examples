@@ -490,10 +490,11 @@ npx @hrg/inject-examples --check || {
 ## The demo page
 
 [`docs/index.html`](./docs/index.html) is a three-column page — the targets, the
-source file, and the document rendered the way GitHub renders it. Every target
-syntax is clickable: clicking one highlights the lines that reference selects in
-the source, and the matching marker and injected block in the rendered
-Markdown. It is generated, never hand-written:
+source file, and the document rendered the way GitHub renders it, code fences
+syntax-highlighted and all. Every target syntax is clickable: clicking one
+highlights the lines that reference selects in the source, and the matching
+marker and injected block in the rendered Markdown. It is generated, never
+hand-written:
 
 - [`docs/demo.md`](./docs/demo.md) is the source: an ordinary Markdown document,
   readable on its own, whose markers this tool keeps in sync exactly as it keeps

@@ -2249,6 +2249,7 @@ test('the documentation stays in sync with the files it shows', () => {
 
 import {
     buildDemo,
+    highlightCode,
     locateRange,
     parseDemoDoc,
     renderMarkdown,
@@ -2381,8 +2382,22 @@ test('demo: the rendered Markdown keeps its shape and marks each injection', () 
     assert.match(html, /<ul data-md-from="7" data-md-to="8">/);
     assert.match(html, /<p class="md-marker" data-marker="t-2-1"><a href="\.\/a\/b\.java#one">a\/b\.java<\/a>/);
     assert.match(html, /<pre class="md-pre" data-inject="t-2-1" data-md-from="12" data-md-to="14">/);
-    assert.match(html, /<code class="language-java">class A&lt;T&gt; \{ \}<\/code>/, 'code is escaped');
+    assert.match(html, /<code class="language-java"><span class="tok-k">class<\/span> <span class="tok-t">A<\/span>&lt;<span class="tok-t">T<\/span>&gt; \{ \}<\/code>/,
+        'the fence is highlighted in its language, and still escaped');
     assert.equal((html.match(/data-md-section="/g) ?? []).length, 2, 'a lead section plus one per "##"');
+});
+
+test('demo: fenced code is highlighted per language, or escaped when unknown', () => {
+    assert.equal(highlightCode('int n = 1; // one', 'java'),
+        '<span class="tok-k">int</span> n = <span class="tok-n">1</span>; <span class="tok-c">// one</span>');
+    assert.equal(highlightCode('const s = "a\\"b";', 'js'),
+        '<span class="tok-k">const</span> s = <span class="tok-s">&quot;a\\&quot;b&quot;</span>;');
+    assert.equal(highlightCode('pub fn main() void {}', 'zig'),
+        '<span class="tok-k">pub</span> <span class="tok-k">fn</span> main() void {}');
+    assert.equal(highlightCode('a < b && c', 'text'), 'a &lt; b &amp;&amp; c',
+        'an unknown language is escaped but never coloured');
+    assert.equal(highlightCode('', 'java'), '');
+    assert.equal(highlightCode('x', 'json'), 'x');
 });
 
 test('demo: the page is three titled columns', () => {

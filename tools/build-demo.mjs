@@ -4,14 +4,17 @@
  * The page at `docs/index.html` is not edited by hand. It is built from
  * `docs/demo.md`, a Markdown document that is also read by people:
  *
- *   - every `##` section is one numbered paragraph in the left pane, with its
- *     prose explanation rendered above the targets it shows;
- *   - every inject-examples marker in a section is one clickable target: the
- *     chip shows the syntax as written, and clicking it highlights the lines
- *     that reference selects in the file on the right;
- *   - the right pane is the target file itself, from `docs/samples/`, with a
- *     plain Java highlighter (the project's own tokenizer supplies the comment
- *     and string spans) and a line per source line.
+ *   - the first column lists the document's `##` sections as numbered
+ *     paragraphs, each with its prose explanation and its clickable targets;
+ *   - the second column is the target file itself, from `docs/samples/`, one
+ *     line per source line, with the selected range highlighted;
+ *   - the third column renders the document the way GitHub renders it, code
+ *     fences highlighted and all, and marks the marker line and the injected
+ *     block of the selected target.
+ *
+ * Code is highlighted with the project's own tokenizers (`src/js/scanner/`) for
+ * Java, JavaScript/TypeScript and Zig — the same lexical pass the resolver uses
+ * — so a comment or string never mis-colours the code beside it.
  *
  * Both the reference text and its line range are resolved with the library the
  * tool ships (`lib/section.mjs` through `index.mjs`), so the page cannot claim
@@ -36,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 import { fenceRanges, fileLanguage, fileReader, normalize, parseMarker, ruleFor, CODE_RULE } from '../index.mjs';
 import { planSection } from '../lib/section.mjs';
 import { lexerFor } from '../src/js/scanner/lexers.js';
-import { JAVA_SYNTAX, tokenize } from '../src/js/scanner/tokenizer.js';
+import { JAVA_SYNTAX, JS_SYNTAX, ZIG_SYNTAX, tokenize } from '../src/js/scanner/tokenizer.js';
 
 /** The repository root — this file lives in `tools/`. */
 export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -395,7 +398,7 @@ function precedingMarkerLine(lines, open) {
     return i >= 0 && parseMarker(lines[i]) ? i + 1 : null;
 }
 
-/** One fenced block, escaped, with the target it injects for. */
+/** One fenced block, highlighted in its language, with the target it injects for. */
 function renderFence(lines, open, fence, markerIds) {
     const markerLine = precedingMarkerLine(lines, open);
     const id = markerLine !== null ? markerIds.get(markerLine) : undefined;
@@ -403,7 +406,8 @@ function renderFence(lines, open, fence, markerIds) {
     const code = lines.slice(open + 1, fence.close).join('\n');
     return `<pre class="md-pre"${id ? ` data-inject="${id}"` : ''}`
         + ` data-md-from="${open + 1}" data-md-to="${fence.close + 1}">`
-        + `<code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code)}</code></pre>`;
+        + `<code${language ? ` class="language-${escapeHtml(language)}"` : ''}>`
+        + `${highlightCode(code, language)}</code></pre>`;
 }
 
 /** One marker line, rendered the way Markdown would render it — as a link. */
@@ -513,18 +517,62 @@ const JAVA_KEYWORDS = new Set([
     'try', 'var', 'void', 'volatile', 'while', 'true', 'false', 'null', 'yield', 'permits',
 ]);
 
-const JAVA_TOKEN = /@[A-Za-z_$][\w$]*|\d[\w.]*|[A-Za-z_$][\w$]*/g;
+const JS_KEYWORDS = new Set([
+    'as', 'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+    'default', 'delete', 'do', 'else', 'export', 'extends', 'false', 'finally', 'for', 'from',
+    'function', 'get', 'if', 'import', 'in', 'instanceof', 'let', 'new', 'null', 'of', 'return',
+    'set', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'undefined',
+    'var', 'void', 'while', 'with', 'yield',
+]);
+
+const TS_KEYWORDS = new Set([
+    ...JS_KEYWORDS,
+    'abstract', 'any', 'asserts', 'declare', 'enum', 'implements', 'interface', 'is', 'keyof',
+    'namespace', 'never', 'private', 'protected', 'public', 'readonly', 'satisfies', 'type', 'unique',
+    'unknown',
+]);
+
+const ZIG_KEYWORDS = new Set([
+    'align', 'allowzero', 'and', 'anyframe', 'anytype', 'asm', 'async', 'await', 'break', 'catch',
+    'comptime', 'const', 'continue', 'defer', 'else', 'enum', 'errdefer', 'error', 'export', 'extern',
+    'fn', 'for', 'if', 'inline', 'linksection', 'noalias', 'nosuspend', 'opaque', 'or', 'orelse',
+    'packed', 'pub', 'resume', 'return', 'struct', 'suspend', 'switch', 'test', 'threadlocal', 'try',
+    'union', 'unreachable', 'usingnamespace', 'var', 'volatile', 'while',
+]);
+
+/** The languages a fenced block can be highlighted in, by fence info string. */
+const HIGHLIGHTERS = {
+    java: { syntax: JAVA_SYNTAX, keywords: JAVA_KEYWORDS },
+    javascript: { syntax: JS_SYNTAX, keywords: JS_KEYWORDS },
+    typescript: { syntax: JS_SYNTAX, keywords: TS_KEYWORDS },
+    zig: { syntax: ZIG_SYNTAX, keywords: ZIG_KEYWORDS },
+};
+
+/** Fence info-string aliases, as the extensions of `lexers.js` spell them. */
+const LANGUAGE_ALIASES = {
+    js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
+    ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
+};
+
+/** The highlighter a fence language names, or null when it has none. */
+export function highlighterFor(language) {
+    if (!language) return null;
+    const name = String(language).toLowerCase();
+    return HIGHLIGHTERS[LANGUAGE_ALIASES[name] ?? name] ?? null;
+}
+
+const CODE_TOKEN = /@[A-Za-z_$][\w$]*|\d[\w.]*|[A-Za-z_$][\w$]*/g;
 
 /** Highlight the identifiers of one run of plain (non-comment, non-string) text. */
-function renderPlain(text) {
+function renderPlain(text, keywords) {
     let html = '';
     let last = 0;
-    for (const match of text.matchAll(JAVA_TOKEN)) {
+    for (const match of text.matchAll(CODE_TOKEN)) {
         const token = match[0];
         html += escapeHtml(text.slice(last, match.index));
         let cls = null;
         if (token.startsWith('@')) cls = 'tok-a';
-        else if (JAVA_KEYWORDS.has(token)) cls = 'tok-k';
+        else if (keywords && keywords.has(token)) cls = 'tok-k';
         else if (/^\d/.test(token)) cls = 'tok-n';
         else if (/^[A-Z]/.test(token)) cls = 'tok-t';
         html += cls === null ? escapeHtml(token) : `<span class="${cls}">${escapeHtml(token)}</span>`;
@@ -536,11 +584,13 @@ function renderPlain(text) {
 /**
  * A class per character: 0 plain, 1 comment, 2 string. The spans come from the
  * project's own tokenizer, so the highlighting agrees with the lexer the
- * resolver uses.
+ * resolver uses for that file type.
  */
-export function javaKinds(text) {
+export function codeKinds(text, language) {
     const kinds = new Array(text.length).fill(0);
-    const { comments, strings } = tokenize(text, JAVA_SYNTAX);
+    const highlighter = highlighterFor(language);
+    if (!highlighter) return kinds;
+    const { comments, strings } = tokenize(text, highlighter.syntax);
     for (const span of strings) {
         for (let i = span.from; i < span.to && i < kinds.length; i++) kinds[i] = 2;
     }
@@ -551,7 +601,7 @@ export function javaKinds(text) {
 }
 
 /** One source line, split by its character kinds and highlighted. */
-function renderLine(line, kinds, offset) {
+function renderLine(line, kinds, offset, keywords) {
     let html = '';
     let i = 0;
     while (i < line.length) {
@@ -561,19 +611,38 @@ function renderLine(line, kinds, offset) {
         const chunk = line.slice(i, j);
         if (kind === 1) html += `<span class="tok-c">${escapeHtml(chunk)}</span>`;
         else if (kind === 2) html += `<span class="tok-s">${escapeHtml(chunk)}</span>`;
-        else html += renderPlain(chunk);
+        else html += renderPlain(chunk, keywords);
         i = j;
     }
     return html;
 }
 
+/**
+ * A code block as highlighted HTML, newlines kept (so it can sit in a `<pre>`).
+ * An unknown language is escaped and left plain.
+ */
+export function highlightCode(text, language) {
+    const keywords = highlighterFor(language)?.keywords ?? null;
+    const kinds = codeKinds(text, language);
+    let offset = 0;
+    return text
+        .split('\n')
+        .map((line) => {
+            const html = renderLine(line, kinds, offset, keywords);
+            offset += line.length + 1;
+            return html;
+        })
+        .join('\n');
+}
+
 /** The whole file as `<span class="line">` rows, numbered from 1. */
 export function renderSourceLines(file) {
-    const kinds = file.language === 'java' ? javaKinds(file.text) : new Array(file.text.length).fill(0);
+    const keywords = highlighterFor(file.language)?.keywords ?? null;
+    const kinds = codeKinds(file.text, file.language);
     let offset = 0;
     return file.lines
         .map((line, index) => {
-            const html = renderLine(line, kinds, offset);
+            const html = renderLine(line, kinds, offset, keywords);
             offset += line.length + 1;
             return `<span class="line" id="${escapeHtml(file.slug)}-L${index + 1}" data-line="${index + 1}">`
                 + `<span class="ln">${index + 1}</span><span class="lc">${html}</span></span>`;
@@ -714,6 +783,13 @@ body {
 }
 .md .md-pre { background: #f6f8fa; border-radius: 6px; padding: .75rem .9rem; margin: 0 0 .9em; overflow: auto; }
 .md .md-pre code { background: none; padding: 0; font-size: .84em; line-height: 1.45; }
+/* GitHub light's own token colours: the column stays light in either theme. */
+.md .tok-c { color: #6e7781; font-style: italic; }
+.md .tok-s { color: #0a3069; }
+.md .tok-k { color: #cf222e; }
+.md .tok-a { color: #8250df; }
+.md .tok-n { color: #0550ae; }
+.md .tok-t { color: #953800; }
 .md .md-marker { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
 .md .md-badge {
   font: 600 10px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .05em;

@@ -133,6 +133,13 @@ body {
 }
 .md .md-pre { background: #f6f8fa; border-radius: 6px; padding: .75rem .9rem; margin: 0 0 .9em; overflow: auto; }
 .md .md-pre code { background: none; padding: 0; font-size: .84em; line-height: 1.45; }
+/* GitHub light's own token colours: the column stays light in either theme. */
+.md .tok-c { color: #6e7781; font-style: italic; }
+.md .tok-s { color: #0a3069; }
+.md .tok-k { color: #cf222e; }
+.md .tok-a { color: #8250df; }
+.md .tok-n { color: #0550ae; }
+.md .tok-t { color: #953800; }
 .md .md-marker { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
 .md .md-badge {
   font: 600 10px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .05em;
@@ -307,8 +314,8 @@ public class Inventory {
 <h2 data-md-from="8" data-md-to="8">A named region</h2>
 <p data-md-from="10" data-md-to="12">Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
 <p class="md-marker" data-marker="t-1-1"><a href="./samples/Inventory.java#catalog">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-1-1" data-md-from="16" data-md-to="19"><code class="language-java">    /** The catalog, kept as an explicit region directive. */
-    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre>
+<pre class="md-pre" data-inject="t-1-1" data-md-from="16" data-md-to="19"><code class="language-java">    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
+    <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
 <h2 data-md-from="21" data-md-to="21">A declaration, and how much of it comes along</h2>
@@ -321,99 +328,99 @@ public class Inventory {
 </ul>
 <p data-md-from="33" data-md-to="33">The same method, four ways:</p>
 <p class="md-marker" data-marker="t-2-1"><a href="./samples/Inventory.java#toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-1" data-md-from="37" data-md-to="41"><code class="language-java">    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
+<pre class="md-pre" data-inject="t-2-1" data-md-from="37" data-md-to="41"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
+        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
 <p class="md-marker" data-marker="t-2-2"><a href="./samples/Inventory.java#-toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-2" data-md-from="45" data-md-to="47"><code class="language-java">        return items.size() + &quot; item(s)&quot;;</code></pre>
+<pre class="md-pre" data-inject="t-2-2" data-md-from="45" data-md-to="47"><code class="language-java">        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;</code></pre>
 <p class="md-marker" data-marker="t-2-3"><a href="./samples/Inventory.java#+toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-3" data-md-from="51" data-md-to="56"><code class="language-java">    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
+<pre class="md-pre" data-inject="t-2-3" data-md-from="51" data-md-to="56"><code class="language-java">    <span class="tok-a">@Override</span>
+    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
+        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
 <p class="md-marker" data-marker="t-2-4"><a href="./samples/Inventory.java#++toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-4" data-md-from="60" data-md-to="66"><code class="language-java">    /** Summarise the inventory. */
-    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
+<pre class="md-pre" data-inject="t-2-4" data-md-from="60" data-md-to="66"><code class="language-java">    <span class="tok-c">/** Summarise the inventory. */</span>
+    <span class="tok-a">@Override</span>
+    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
+        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
 <h2 data-md-from="68" data-md-to="68">A nested declaration</h2>
 <p data-md-from="70" data-md-to="73">A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
 <p class="md-marker" data-marker="t-3-1"><a href="./samples/Inventory.java#Inventory/Item/render">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-3-1" data-md-from="77" data-md-to="81"><code class="language-java">        String render() {
-            return name + &quot; x&quot; + quantity;
+<pre class="md-pre" data-inject="t-3-1" data-md-from="77" data-md-to="81"><code class="language-java">        <span class="tok-t">String</span> render() {
+            <span class="tok-k">return</span> name + <span class="tok-s">&quot; x&quot;</span> + quantity;
         }</code></pre>
 </section>
 <section class="md-section" data-md-section="4">
 <h2 data-md-from="83" data-md-to="83">A condition literal</h2>
 <p data-md-from="85" data-md-to="87">Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
 <p class="md-marker" data-marker="t-4-1"><a href="./samples/Inventory.java#dispatch/count">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-4-1" data-md-from="91" data-md-to="95"><code class="language-java">        if (&quot;count&quot;.equals(methodName)) {
-            System.out.println(&quot;items: &quot; + items.size());
+<pre class="md-pre" data-inject="t-4-1" data-md-from="91" data-md-to="95"><code class="language-java">        <span class="tok-k">if</span> (<span class="tok-s">&quot;count&quot;</span>.equals(methodName)) {
+            <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
         }</code></pre>
 </section>
 <section class="md-section" data-md-section="5">
 <h2 data-md-from="97" data-md-to="97">A comment anchor</h2>
 <p data-md-from="99" data-md-to="101">A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
 <p class="md-marker" data-marker="t-5-1"><a href="./samples/Inventory.java#legacy/count">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-5-1" data-md-from="105" data-md-to="109"><code class="language-java">    public void legacy() { //count
-        System.out.println(&quot;items: &quot; + items.size());
+<pre class="md-pre" data-inject="t-5-1" data-md-from="105" data-md-to="109"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-k">void</span> legacy() { <span class="tok-c">//count</span>
+        <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="6">
 <h2 data-md-from="111" data-md-to="111">The whole file</h2>
 <p data-md-from="113" data-md-to="114">A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
 <p class="md-marker" data-marker="t-6-1"><a href="./samples/Inventory.java">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-6-1" data-md-from="118" data-md-to="169"><code class="language-java">package demo;
+<pre class="md-pre" data-inject="t-6-1" data-md-from="118" data-md-to="169"><code class="language-java"><span class="tok-k">package</span> demo;
 
-import java.util.ArrayList;
-import java.util.List;
+<span class="tok-k">import</span> java.util.<span class="tok-t">ArrayList</span>;
+<span class="tok-k">import</span> java.util.<span class="tok-t">List</span>;
 
-/** A small stock inventory: the sample every target on this page reads. */
-public class Inventory {
+<span class="tok-c">/** A small stock inventory: the sample every target on this page reads. */</span>
+<span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
 
-    // #region catalog
-    /** The catalog, kept as an explicit region directive. */
-    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };
-    // #endregion
+    <span class="tok-c">// #region catalog</span>
+    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
+    <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };
+    <span class="tok-c">// #endregion</span>
 
-    private final List&lt;Item&gt; items = new ArrayList&lt;&gt;();
+    <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">List</span>&lt;<span class="tok-t">Item</span>&gt; items = <span class="tok-k">new</span> <span class="tok-t">ArrayList</span>&lt;&gt;();
 
-    /** One stock line of this inventory. */
-    public static class Item {
-        private final String name;
-        private final int quantity;
+    <span class="tok-c">/** One stock line of this inventory. */</span>
+    <span class="tok-k">public</span> <span class="tok-k">static</span> <span class="tok-k">class</span> <span class="tok-t">Item</span> {
+        <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">String</span> name;
+        <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-k">int</span> quantity;
 
-        Item(String name, int quantity) {
-            this.name = name;
-            this.quantity = quantity;
+        <span class="tok-t">Item</span>(<span class="tok-t">String</span> name, <span class="tok-k">int</span> quantity) {
+            <span class="tok-k">this</span>.name = name;
+            <span class="tok-k">this</span>.quantity = quantity;
         }
 
-        /** Render one line the way the receipt shows it. */
-        String render() {
-            return name + &quot; x&quot; + quantity;
+        <span class="tok-c">/** Render one line the way the receipt shows it. */</span>
+        <span class="tok-t">String</span> render() {
+            <span class="tok-k">return</span> name + <span class="tok-s">&quot; x&quot;</span> + quantity;
         }
     }
 
-    /** Summarise the inventory. */
-    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
+    <span class="tok-c">/** Summarise the inventory. */</span>
+    <span class="tok-a">@Override</span>
+    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
+        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }
 
-    /** Run one named method. */
-    public void dispatch(String methodName) {
-        if (&quot;count&quot;.equals(methodName)) {
-            System.out.println(&quot;items: &quot; + items.size());
-        } else if (&quot;clear&quot;.equals(methodName)) {
+    <span class="tok-c">/** Run one named method. */</span>
+    <span class="tok-k">public</span> <span class="tok-k">void</span> dispatch(<span class="tok-t">String</span> methodName) {
+        <span class="tok-k">if</span> (<span class="tok-s">&quot;count&quot;</span>.equals(methodName)) {
+            <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
+        } <span class="tok-k">else</span> <span class="tok-k">if</span> (<span class="tok-s">&quot;clear&quot;</span>.equals(methodName)) {
             items.clear();
         }
     }
 
-    public void legacy() { //count
-        System.out.println(&quot;items: &quot; + items.size());
+    <span class="tok-k">public</span> <span class="tok-k">void</span> legacy() { <span class="tok-c">//count</span>
+        <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
     }
 }</code></pre>
 </section>
