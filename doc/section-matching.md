@@ -29,9 +29,10 @@ authoritative: a port that disagrees with it is wrong by definition.
 
 ## At a glance
 
-A section reference is a `/`-separated path of names that may end in `+`, `++`
-or `-`. Three questions fully specify it, and this document keeps each in its own
-section so they do not blur into one another:
+A section reference is a `/`-separated path of names. Only the **last** name may
+carry a trailing `+`, `++` or `-`; a modifier on an earlier name has no meaning,
+so it is an error. Three questions fully specify it, and this document keeps each
+in its own section so they do not blur into one another:
 
 | Question | In one line | Expanded in |
 | --- | --- | --- |
