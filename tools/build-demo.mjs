@@ -250,7 +250,6 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
         label: marker.reference === null ? 'whole file' : `#${marker.reference}`,
         from: range ? range.from : null,
         to: range ? range.to : null,
-        span: range === null ? 'rendered' : (range.from === range.to ? `L${range.from}` : `L${range.from}–${range.to}`),
         text,
     };
 }
@@ -735,9 +734,8 @@ body {
 .target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chip-file { color: var(--muted); white-space: nowrap; }
 .chip-ref { font-weight: 600; white-space: nowrap; }
-.chip-lines { color: var(--muted); font-size: .92em; white-space: nowrap; }
 .target-item.selected .target { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.target-item.selected .chip-file, .target-item.selected .chip-lines { color: inherit; opacity: .75; }
+.target-item.selected .chip-file { color: inherit; opacity: .75; }
 .snippet {
   display: none; margin: .5rem 0 0; padding: .55rem .7rem; border: 1px solid var(--line);
   border-radius: 8px; background: var(--panel); max-height: 18rem; overflow: auto; font-size: 12.5px;
@@ -895,7 +893,6 @@ function renderSection(section, index) {
             ` aria-pressed="false" aria-controls="${example.id}-snippet">`,
             `<span class="chip-file">${escapeHtml(example.fileLabel)}</span>`,
             `<span class="chip-ref">${escapeHtml(example.label)}</span>`,
-            `<span class="chip-lines">${escapeHtml(example.span)}</span>`,
             `</button>`,
             `<pre class="snippet" id="${example.id}-snippet"><span class="marker">${escapeHtml(example.raw)}</span>`,
             `<code>${escapeHtml(example.text)}</code></pre>`,

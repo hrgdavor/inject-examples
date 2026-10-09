@@ -2342,6 +2342,8 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
             assert.ok(html.includes(`id="${example.id}"`), `${example.raw}: the target is clickable`);
             assert.ok(html.includes(`data-from="${example.from}" data-to="${example.to}"`),
                 `${example.raw}: the range travels to the page`);
+            assert.ok(!html.includes('chip-lines'),
+                `${example.raw}: the chip shows the target syntax, not line numbers`);
             assert.ok(html.includes(`data-section="${example.section}"`),
                 `${example.raw}: the target names the Markdown section it lives in`);
             assert.ok(html.includes(`data-marker="${example.id}"`),
