@@ -47,10 +47,10 @@ npx @hrg/inject-examples --check doc/usage.md
   current text. The second only reports: anything stale or failed ends with
   exit `1` and writes nothing — that is the CI hook.
 - This document ships with the repository, not with the npm package: the
-  package's `files` field contains `cli.mjs`, `index.mjs`, `README.md`,
-  `LICENSE`, the `lib/` module and `doc/section-matching.md`, but not this
-  guide or its fixtures — those live in the source tree, where CI can check
-  them in.
+  package's `files` field contains `cli.mjs`, `index.mjs`, `lib/`,
+  `src/js/scanner/`, `doc/section-matching.md`, `README.md` and `LICENSE`, but
+  not this guide or its fixtures — those live in the source tree, where CI can
+  check them in.
 
 ## What ships
 

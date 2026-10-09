@@ -33,9 +33,8 @@ of keys. See [Region rules by file type](#region-rules-by-file-type).
 No dependencies. Node 18+. Works as a CLI and as a library.
 
 The JavaScript implementation — [`index.mjs`](./index.mjs) and
-[`cli.mjs`](./cli.mjs) — is the source of truth. Its author is more experienced
-in JavaScript, so the Zig port in `src/` follows it and never the other way
-round: when the two disagree about a byte, the JavaScript is right. See
+[`cli.mjs`](./cli.mjs) — is the source of truth: when the two disagree about a
+byte, the JavaScript is right and the Zig port in `src/` follows. See
 [The Zig port](#the-zig-port).
 
 A detailed usage guide lives in [`doc/usage.md`](./doc/usage.md).
@@ -611,33 +610,22 @@ into the global bin directory. The same `bin` entry is what `npx
 `package.json` carries the [repository](https://github.com/hrgdavor/inject-examples)
 field, so npm links the package page to the GitHub repository.
 
-Only `cli.mjs`, `index.mjs`, `README.md` and `LICENSE` ship (`files` in
-`package.json`); the test file stays out.
+`files` in `package.json` limits the package to `cli.mjs`, `index.mjs`, `lib/`,
+`src/js/scanner/`, `doc/section-matching.md`, `README.md` and `LICENSE`; the
+tests and fixtures stay out.
 
 ## The Zig port
 
-> **Paused.** The Zig port and the differential harness (`tools/compare-zig.mjs`)
-> are paused while file-section matching is formalised in JavaScript; the port
-> tracks an earlier revision of the syntax and is not currently verified against
-> the current one. Resume with its own plan once `doc/section-matching.md` is
-> settled.
-
 **The JavaScript implementation is the source of truth.** `index.mjs` and
-`cli.mjs` define what this tool does, and their author is more experienced in
-JavaScript, so the Zig code is the one that moves when the two disagree.
-
-> The Zig port and the differential harness (`tools/compare-zig.mjs`) are
-> **paused** while file-section matching is formalised in JavaScript. The port
-> tracks an earlier revision of the `#<reference>` fragment syntax and is not
-> currently verified against the current one — see
-> [doc/section-matching.md](./doc/section-matching.md). Porting resumes with its
-> own plan, written after the JavaScript syntax is settled.
+`cli.mjs` define what this tool does; the Zig code is the one that moves when
+the two disagree.
 
 `build.zig`, `build.zig.zon` and `src/` hold a second implementation of this
-exact tool in Zig, written against Zig 0.16.0 (this checkout used the toolchain
-at `D:\wrk\zig\16\zig.exe`). It is not a rewrite-with-ideas: its job is to
-produce the same bytes the JavaScript one produces, in every mode, on every
-input.
+exact tool in Zig, written against Zig 0.16.0. It is not a rewrite-with-ideas:
+its job is to produce the same bytes the JavaScript one produces, in every mode,
+on every input. The port is not verified against the current matching rules, so
+read `tools/compare-zig.mjs` as the check that would catch a divergence, not as
+proof there is none.
 
 ```bash
 zig build                     # -> zig-out/inject-examples(.exe)
@@ -650,10 +638,9 @@ their spellings, the same `inject-examples: …` messages on stderr, the same
 in-place and `--out` rewriting, and the same exit codes (0 for up to date or
 updated, 1 for stale or malformed, 2 for a wrong command line).
 
-Tagging `v*` runs `.github/workflows/release.yml` (the one from md-fix-tables,
-adjusted for this project), which cross-builds `ReleaseSafe` binaries for x86_64
-Linux, Windows, x86_64 macOS and aarch64 macOS, and attaches them to a GitHub
-release. That is the Zig side only: `npm publish` ships the JavaScript package,
+Tagging `v*` runs `.github/workflows/release.yml`, which cross-builds
+`ReleaseSafe` binaries for x86_64 Linux, Windows, x86_64 macOS and aarch64
+macOS, and attaches them to a GitHub release. That is the Zig side only: `npm publish` ships the JavaScript package,
 a `v*` tag ships the binaries.
 
 Five JavaScript details decide byte equality, so the Zig code mirrors them

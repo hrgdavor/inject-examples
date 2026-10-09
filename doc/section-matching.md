@@ -24,14 +24,8 @@ statement body (`if`/`for`/`while`/`switch`/`try`/`catch`), or a block
 introduced only by an anchor comment. The file itself is scope 0; every block
 that scope contains is scope 1; and so on.
 
-Written against the JavaScript implementation at commit `10646fb` (the
-revision that drops the `region:` fragment keyword): the implementation in
-`lib/section.mjs` and `index.mjs` at that revision is authoritative, and a port
-that disagrees with it is wrong by definition. Markers now carry the reference
-directly as `#<section-reference>`. Rule 5 was amended by maintainer decision
-after that commit: a segment is searched *sibling first* — every scope at one
-depth is tried before the walk descends into any block — replacing the original
-depth-first walk (see [Searching one element in a scope](#searching-one-element-in-a-scope)).
+The JavaScript implementation in `lib/section.mjs` and `index.mjs` is
+authoritative: a port that disagrees with it is wrong by definition.
 
 ## At a glance
 
@@ -46,9 +40,8 @@ section so they do not blur into one another:
 | Where do `+`, `++` and `-` apply, and what do they do? | A modifier is **trailing** and binds to the **last** segment only; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
 
 [Grammar](#grammar) gives the syntax and [The six rules](#the-six-rules) is the
-compact normative statement; the three topics expand them and the tables beneath
-each topic are the detail. This layout reorganises the rules so each question has
-one home — it changes no rule.
+compact normative statement; the three topics expand them, and the tables beneath
+each topic are the detail.
 
 ## Contents
 
@@ -62,7 +55,7 @@ one home — it changes no rule.
   - [Sibling-first descent](#sibling-first-descent)
 - [Applying the modifiers](#applying-the-modifiers)
   - [Where a modifier may appear](#where-a-modifier-may-appear)
-  - [Canonicalisation and compatibility spellings](#canonicalisation-and-compatibility-spellings)
+  - [Canonicalisation](#canonicalisation)
   - [Modifiers](#modifiers)
   - [Contradictory modifiers are a warning](#contradictory-modifiers-are-a-warning)
 - [Errors](#errors)
@@ -96,11 +89,11 @@ The grammar, as six rules. Each violated below is an error (see
 2. Only the last segment selects content to inject. Earlier segments are
    **scopes**: each must resolve, and each later segment is looked up only
    inside the block the previous segment found.
-3. The modifier is trailing and applies to the final segment. The **old leading
-   spelling stays supported**: `-add`, `+add`, `++add` are normalised to `add-`,
-   `add+`, `add++` (see [Canonicalisation](#canonicalisation-and-compatibility-spellings)).
-4. A bare name is a path of one segment, and keeps today's meaning: search the
-   whole file, at any depth.
+3. The modifier is trailing and applies to the final segment. A **leading
+   spelling is accepted too**: `-add`, `+add`, `++add` are normalised to `add-`,
+   `add+`, `add++` (see [Canonicalisation](#canonicalisation)).
+4. A bare name is a path of one segment: it searches the whole file, at any
+   depth.
 5. First match wins, walking **sibling first**: every scope at one depth is
    searched, left to right, before the walk descends into any block they
    contain. A declaration in a scope is therefore never shadowed by a same-named
@@ -243,9 +236,10 @@ class Svc {
 
 `doSomeAction` is matched at `Svc`'s depth (matcher 3, a method), so it wins
 before the walk ever descends into `bar`; the `if ("doSomeAction"…)` block is
-reached only by naming its scope — `bar/doSomeAction`. Under the superseded
-depth-first walk the deeper `if` would have won, because `bar` comes first. The
-[Worked examples](#worked-examples) pin both readings on `Anchors.java`.
+reached only by naming its scope — `bar/doSomeAction`. Naming the enclosing
+block is therefore how a deeper same-named section stays addressable, at any
+depth. The [Worked examples](#worked-examples) pin both readings on
+`Anchors.java`.
 
 ## Applying the modifiers
 
@@ -268,14 +262,14 @@ only in how much of it is taken.
 
 ### Where a modifier may appear
 
-The canonical spelling is trailing. For compatibility the parser also accepts a
-leading modifier and normalises it before parsing, so `-add` and `add-` mean the
-same thing, and a `-` on the second segment of a two-segment path is understood
-as belonging to the end (`Cart/-Line` → `Cart/Line-`). After normalisation a `+`
-or `-` anywhere except the very end is an error. The full accepted/rejected lists
-are in [Canonicalisation and compatibility spellings](#canonicalisation-and-compatibility-spellings).
+The canonical spelling is trailing. The parser also accepts a leading modifier
+and normalises it before parsing, so `-add` and `add-` mean the same thing, and
+a `-` on the second segment of a two-segment path is understood as belonging to
+the end (`Cart/-Line` → `Cart/Line-`). After normalisation a `+` or `-` anywhere
+except the very end is an error. The full accepted/rejected lists are in
+[Canonicalisation](#canonicalisation).
 
-### Canonicalisation and compatibility spellings
+### Canonicalisation
 
 The leading spelling reads `-`, `+`, `++` only as a prefix of the whole
 reference. The canonical form is **trailing**, so the parser normalises before
@@ -308,8 +302,7 @@ it parses:
 
 ### Modifiers
 
-A trailing `++`, `+` or `-` before the final segment selects how much of the
-match comes with it:
+A trailing `++`, `+` or `-` selects how much of the match comes with it:
 
 | Reference | Injection |
 | --- | --- |
@@ -323,9 +316,10 @@ match comes with it:
 
 Modifier semantics per match kind:
 
-- **Declaration (class / method / property)** — exactly today's semantics:
-  `declaration` / `body` / `annotated` / `documented`, with `-` also reaching a
-  property's initialiser. Byte-for-byte unchanged for the forms that exist today.
+- **Declaration (class / method / property)** — four scopes: no modifier takes
+  the whole declaration, `-` takes the body alone (reaching a property's
+  initialiser), `+` takes the declaration with the annotations above it, `++`
+  takes those with the doc comment above them.
 - **Region directive** — a region is already exactly its body, so the modifier is
   **ignored**: `add+` and `add` inject the same lines.
 - **Condition literal, comment anchor** — the block is the unit. No modifier (or
@@ -347,7 +341,7 @@ while refactoring, so it must not hold a whole document hostage.
 | `++` with `-` (`a++-`, `a-++`, `a-/b++`) | Warning | The **`++` reading wins**; the `-` is dropped. Reported once as `inject-examples: warn: <doc>:<line>: "<marker>": "++" contradicts "-"; using "#<ref-without-the-minus>"`. The run continues, every block is written, and the run **exits 1** |
 | `+` with `-` (`a+-`, `a-+`) | Warning | Same shape: contradictory, `+` wins |
 | One modifier named twice (`a+++`, `a---`) | Error | Malformed, not contradictory — see [Errors](#errors) |
-| A modifier anywhere but the end | Error | See [Canonicalisation](#canonicalisation-and-compatibility-spellings) |
+| A modifier anywhere but the end | Error | See [Canonicalisation](#canonicalisation) |
 
 Three consequences it is easy to miss:
 
@@ -383,9 +377,9 @@ A missing, duplicate or unclosed `#region`/`#endregion` directive is reported by
 the region directive itself (see `extractRegion`) and is not part of this
 catalogue.
 
-**One back-compatible message shape.** The single-segment "found nothing" error
-above must still match `/no "#region <name>" found/` so existing callers that
-test against it keep working.
+**One message shape is load-bearing.** Consumers match the single-segment "found
+nothing" error against `/no "#region <name>" found/`, so that pattern must keep
+holding.
 
 ## Worked examples
 
@@ -398,11 +392,11 @@ documented `toString()` and an inner `Line` with a `render()`:
 
 | Reference | Result |
 | --- | --- |
-| `toString` | today's output, unchanged |
-| `toString-` (or `-toString`) | today's output, unchanged |
-| `toString+` (or `+toString`) | today's output, unchanged |
-| `toString++` (or `++toString`) | today's output, unchanged |
-| `Line` | today's output, unchanged |
+| `toString` | `public String toString() { … }`, signature line through closing brace |
+| `toString-` (or `-toString`) | `        return String.join(",", items);` |
+| `toString+` (or `+toString`) | the declaration plus the `@Override` above it |
+| `toString++` (or `++toString`) | that plus the `/** Add one item to this cart. */` doc comment |
+| `Line` | the `public static class Line { … }` declaration, doc comment excluded |
 | `Cart/Line` | identical to `Line` |
 | `Cart/toString` | identical to `toString` |
 | `Cart/Line/render` | the `render` declaration, line through closing brace |
@@ -428,8 +422,8 @@ the anchor comment `{ //getUsers`, and an `other` method whose body opens with
 | `other/getOrders` | identical to `getOrders` |
 | `getusers` | error: case-sensitive exact-byte matching |
 
-The rule that decided the first row, in the shape that motivated it — a method
-and a same-named block inside an earlier method of the same class:
+The rule that decided the first row, in its minimal shape — a method and a
+same-named block inside an earlier method of the same class:
 
 ```java
 class Svc {
@@ -496,7 +490,7 @@ never how the blanked text is walked.
 `src/js/scanner/lexers.js` (`lexerFor(path)` → a lexer, or `undefined` for an
 unknown type, which then takes the default engine). The lexers are built on a
 shared one-pass tokenizer, `src/js/scanner/tokenizer.js`, parameterised by
-syntax; the three sample scanners are now that wiring:
+syntax; the three language scanners expose it:
 
 | File | Exports | Covers |
 | --- | --- | --- |
@@ -504,8 +498,9 @@ syntax; the three sample scanners are now that wiring:
 | `scanJava.js` | `lexerJava`, `scanJava`, `visitJava` | Java — `"` `'` and text blocks `"""` |
 | `scanZig.js` | `lexerZig`, `scanZig`, `visitZig` | Zig — `"` and `\\` multiline strings, **nested** `/* /* */ */` comments |
 
-`scanX(source, target)` keeps the original sample shape — the `if` clauses whose
-header carries `target`, the matcher-5 candidate list. `visitX(source, visitor)`
+`scanX(source, target)` returns the `if` clauses whose header carries `target` —
+matcher 5's candidate list, as `{ type: 'if_clause', line, col, snippet }`.
+`visitX(source, visitor)`
 runs the same single pass and calls `visitor.comment`, `visitor.string` and
 `visitor.ifClause`, so a file can be **enumerated** for a test or another use
 without resolving anything; the resolver uses the very same pass through
@@ -544,7 +539,7 @@ module stays dependency-free while still resolving through a language engine; a
 lexer that is not supplied leaves the built-in default engine. `index.mjs` owns
 markers, fences, rule dispatch, the extension→lexer selection, gitignore and
 document rewriting, and delegates only section resolution. A test asserts the
-boundary (see §10 of the contract), so it cannot rot.
+boundary, so it cannot rot.
 
 A project adds a rule for another type with `options.regionRules` (see the
 README's "Region rules by file type" section); a custom rule calls
