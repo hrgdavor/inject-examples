@@ -160,7 +160,7 @@ body {
 <p class="note">Generated from <code>docs/demo.md</code> by <code>tools/build-demo.mjs</code> — edit the Markdown, not this file.</p>
 </div>
 <div class="intro">
-<p>Click a target: it highlights the lines it selects in <a href="./samples/Inventory.java">samples/Inventory.java</a>, and the same injection in the rendered Markdown beside it.</p>
+<p>Click a target: it highlights the lines it selects in <a href="./samples/Inventory.java">samples/Inventory.java</a>, and the same injection in the rendered Markdown (<a href="https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md">source</a>) beside it.</p>
 </div>
 </header>
 <main class="split">
@@ -168,10 +168,71 @@ body {
 <div class="col-head">Targets<span class="col-note">click one to highlight it</span></div>
 <ol class="examples">
 <li class="example" id="ex-1">
-<h2><span class="num">1</span>The whole file</h2>
+<h2><span class="num">1</span>A named region</h2>
+<p>Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
+<ul class="targets">
+<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="10" data-to="11" aria-pressed="false" aria-controls="t-1-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span><span class="chip-lines">L10–11</span></button><pre class="snippet" id="t-1-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#catalog)</span><code>    /** The catalog, kept as an explicit region directive. */
+    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-2">
+<h2><span class="num">2</span>A declaration, and how much of it comes along</h2>
+<p>When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A leading <code>-</code>, <code>+</code> or <code>++</code> selects how far up the text starts:</p>
+<ul>
+  <li><code>#toString</code> — the declaration: signature through closing brace.</li>
+  <li><code>#-toString</code> — the body only, without the signature.</li>
+  <li><code>#+toString</code> — the declaration and the annotations above it.</li>
+  <li><code>#++toString</code> — those and the doc comment above them.</li>
+</ul>
+<p>The same method, four ways:</p>
+<ul class="targets">
+<li class="target-item" id="t-2-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="34" data-to="36" aria-pressed="false" aria-controls="t-2-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString</span><span class="chip-lines">L34–36</span></button><pre class="snippet" id="t-2-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#toString)</span><code>    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre></li>
+<li class="target-item" id="t-2-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="35" data-to="35" aria-pressed="false" aria-controls="t-2-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#-toString</span><span class="chip-lines">L35</span></button><pre class="snippet" id="t-2-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#-toString)</span><code>        return items.size() + &quot; item(s)&quot;;</code></pre></li>
+<li class="target-item" id="t-2-3"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="33" data-to="36" aria-pressed="false" aria-controls="t-2-3-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#+toString</span><span class="chip-lines">L33–36</span></button><pre class="snippet" id="t-2-3-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#+toString)</span><code>    @Override
+    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre></li>
+<li class="target-item" id="t-2-4"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="32" data-to="36" aria-pressed="false" aria-controls="t-2-4-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#++toString</span><span class="chip-lines">L32–36</span></button><pre class="snippet" id="t-2-4-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#++toString)</span><code>    /** Summarise the inventory. */
+    @Override
+    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-3">
+<h2><span class="num">3</span>A nested declaration</h2>
+<p>A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
+<ul class="targets">
+<li class="target-item" id="t-3-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="27" data-to="29" aria-pressed="false" aria-controls="t-3-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#Inventory/Item/render</span><span class="chip-lines">L27–29</span></button><pre class="snippet" id="t-3-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#Inventory/Item/render)</span><code>        String render() {
+            return name + &quot; x&quot; + quantity;
+        }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-4">
+<h2><span class="num">4</span>A condition literal</h2>
+<p>Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
+<ul class="targets">
+<li class="target-item" id="t-4-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="4" data-from="40" data-to="42" aria-pressed="false" aria-controls="t-4-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#dispatch/count</span><span class="chip-lines">L40–42</span></button><pre class="snippet" id="t-4-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#dispatch/count)</span><code>        if (&quot;count&quot;.equals(methodName)) {
+            System.out.println(&quot;items: &quot; + items.size());
+        }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-5">
+<h2><span class="num">5</span>A comment anchor</h2>
+<p>A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
+<ul class="targets">
+<li class="target-item" id="t-5-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="5" data-from="47" data-to="49" aria-pressed="false" aria-controls="t-5-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#legacy/count</span><span class="chip-lines">L47–49</span></button><pre class="snippet" id="t-5-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#legacy/count)</span><code>    public void legacy() { //count
+        System.out.println(&quot;items: &quot; + items.size());
+    }</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-6">
+<h2><span class="num">6</span>The whole file</h2>
 <p>A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
 <ul class="targets">
-<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="1" data-to="50" aria-pressed="false" aria-controls="t-1-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">whole file</span><span class="chip-lines">L1–50</span></button><pre class="snippet" id="t-1-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java)</span><code>package demo;
+<li class="target-item" id="t-6-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="6" data-from="1" data-to="50" aria-pressed="false" aria-controls="t-6-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">whole file</span><span class="chip-lines">L1–50</span></button><pre class="snippet" id="t-6-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java)</span><code>package demo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -223,67 +284,6 @@ public class Inventory {
 }</code></pre></li>
 </ul>
 </li>
-<li class="example" id="ex-2">
-<h2><span class="num">2</span>A named region</h2>
-<p>Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
-<ul class="targets">
-<li class="target-item" id="t-2-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="10" data-to="11" aria-pressed="false" aria-controls="t-2-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span><span class="chip-lines">L10–11</span></button><pre class="snippet" id="t-2-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#catalog)</span><code>    /** The catalog, kept as an explicit region directive. */
-    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-3">
-<h2><span class="num">3</span>A declaration, and how much of it comes along</h2>
-<p>When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A leading <code>-</code>, <code>+</code> or <code>++</code> selects how far up the text starts:</p>
-<ul>
-  <li><code>#toString</code> — the declaration: signature through closing brace.</li>
-  <li><code>#-toString</code> — the body only, without the signature.</li>
-  <li><code>#+toString</code> — the declaration and the annotations above it.</li>
-  <li><code>#++toString</code> — those and the doc comment above them.</li>
-</ul>
-<p>The same method, four ways:</p>
-<ul class="targets">
-<li class="target-item" id="t-3-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="34" data-to="36" aria-pressed="false" aria-controls="t-3-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString</span><span class="chip-lines">L34–36</span></button><pre class="snippet" id="t-3-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#toString)</span><code>    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre></li>
-<li class="target-item" id="t-3-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="35" data-to="35" aria-pressed="false" aria-controls="t-3-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#-toString</span><span class="chip-lines">L35</span></button><pre class="snippet" id="t-3-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#-toString)</span><code>        return items.size() + &quot; item(s)&quot;;</code></pre></li>
-<li class="target-item" id="t-3-3"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="33" data-to="36" aria-pressed="false" aria-controls="t-3-3-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#+toString</span><span class="chip-lines">L33–36</span></button><pre class="snippet" id="t-3-3-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#+toString)</span><code>    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre></li>
-<li class="target-item" id="t-3-4"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="32" data-to="36" aria-pressed="false" aria-controls="t-3-4-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#++toString</span><span class="chip-lines">L32–36</span></button><pre class="snippet" id="t-3-4-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#++toString)</span><code>    /** Summarise the inventory. */
-    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-4">
-<h2><span class="num">4</span>A nested declaration</h2>
-<p>A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
-<ul class="targets">
-<li class="target-item" id="t-4-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="4" data-from="27" data-to="29" aria-pressed="false" aria-controls="t-4-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#Inventory/Item/render</span><span class="chip-lines">L27–29</span></button><pre class="snippet" id="t-4-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#Inventory/Item/render)</span><code>        String render() {
-            return name + &quot; x&quot; + quantity;
-        }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-5">
-<h2><span class="num">5</span>A condition literal</h2>
-<p>Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
-<ul class="targets">
-<li class="target-item" id="t-5-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="5" data-from="40" data-to="42" aria-pressed="false" aria-controls="t-5-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#dispatch/count</span><span class="chip-lines">L40–42</span></button><pre class="snippet" id="t-5-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#dispatch/count)</span><code>        if (&quot;count&quot;.equals(methodName)) {
-            System.out.println(&quot;items: &quot; + items.size());
-        }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-6">
-<h2><span class="num">6</span>A comment anchor</h2>
-<p>A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
-<ul class="targets">
-<li class="target-item" id="t-6-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="6" data-from="47" data-to="49" aria-pressed="false" aria-controls="t-6-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#legacy/count</span><span class="chip-lines">L47–49</span></button><pre class="snippet" id="t-6-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#legacy/count)</span><code>    public void legacy() { //count
-        System.out.println(&quot;items: &quot; + items.size());
-    }</code></pre></li>
-</ul>
-</li>
 </ol>
 </section>
 <section class="pane pane-mid" aria-label="Source file">
@@ -301,13 +301,72 @@ public class Inventory {
 <article class="md">
 <section class="md-section" data-md-section="0">
 <h1 data-md-from="1" data-md-to="1">What a marker target can say</h1>
-<p data-md-from="3" data-md-to="5">Click a target: it highlights the lines it selects in <a href="./samples/Inventory.java">samples/Inventory.java</a>, and the same injection in the rendered Markdown beside it.</p>
+<p data-md-from="3" data-md-to="5">Click a target: it highlights the lines it selects in <a href="./samples/Inventory.java">samples/Inventory.java</a>, and the same injection in the rendered Markdown (<a href="https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md">source</a>) beside it.</p>
 </section>
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="7" data-md-to="7">The whole file</h2>
-<p data-md-from="9" data-md-to="10">A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
-<p class="md-marker" data-marker="t-1-1"><a href="./samples/Inventory.java">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-1-1" data-md-from="14" data-md-to="65"><code class="language-java">package demo;
+<h2 data-md-from="7" data-md-to="7">A named region</h2>
+<p data-md-from="9" data-md-to="11">Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
+<p class="md-marker" data-marker="t-1-1"><a href="./samples/Inventory.java#catalog">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-1-1" data-md-from="15" data-md-to="18"><code class="language-java">    /** The catalog, kept as an explicit region directive. */
+    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre>
+</section>
+<section class="md-section" data-md-section="2">
+<h2 data-md-from="20" data-md-to="20">A declaration, and how much of it comes along</h2>
+<p data-md-from="22" data-md-to="25">When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A leading <code>-</code>, <code>+</code> or <code>++</code> selects how far up the text starts:</p>
+<ul data-md-from="27" data-md-to="30">
+<li><code>#toString</code> — the declaration: signature through closing brace.</li>
+<li><code>#-toString</code> — the body only, without the signature.</li>
+<li><code>#+toString</code> — the declaration and the annotations above it.</li>
+<li><code>#++toString</code> — those and the doc comment above them.</li>
+</ul>
+<p data-md-from="32" data-md-to="32">The same method, four ways:</p>
+<p class="md-marker" data-marker="t-2-1"><a href="./samples/Inventory.java#toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-1" data-md-from="36" data-md-to="40"><code class="language-java">    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre>
+<p class="md-marker" data-marker="t-2-2"><a href="./samples/Inventory.java#-toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-2" data-md-from="44" data-md-to="46"><code class="language-java">        return items.size() + &quot; item(s)&quot;;</code></pre>
+<p class="md-marker" data-marker="t-2-3"><a href="./samples/Inventory.java#+toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-3" data-md-from="50" data-md-to="55"><code class="language-java">    @Override
+    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre>
+<p class="md-marker" data-marker="t-2-4"><a href="./samples/Inventory.java#++toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-4" data-md-from="59" data-md-to="65"><code class="language-java">    /** Summarise the inventory. */
+    @Override
+    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }</code></pre>
+</section>
+<section class="md-section" data-md-section="3">
+<h2 data-md-from="67" data-md-to="67">A nested declaration</h2>
+<p data-md-from="69" data-md-to="72">A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
+<p class="md-marker" data-marker="t-3-1"><a href="./samples/Inventory.java#Inventory/Item/render">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-3-1" data-md-from="76" data-md-to="80"><code class="language-java">        String render() {
+            return name + &quot; x&quot; + quantity;
+        }</code></pre>
+</section>
+<section class="md-section" data-md-section="4">
+<h2 data-md-from="82" data-md-to="82">A condition literal</h2>
+<p data-md-from="84" data-md-to="86">Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
+<p class="md-marker" data-marker="t-4-1"><a href="./samples/Inventory.java#dispatch/count">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-4-1" data-md-from="90" data-md-to="94"><code class="language-java">        if (&quot;count&quot;.equals(methodName)) {
+            System.out.println(&quot;items: &quot; + items.size());
+        }</code></pre>
+</section>
+<section class="md-section" data-md-section="5">
+<h2 data-md-from="96" data-md-to="96">A comment anchor</h2>
+<p data-md-from="98" data-md-to="100">A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
+<p class="md-marker" data-marker="t-5-1"><a href="./samples/Inventory.java#legacy/count">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-5-1" data-md-from="104" data-md-to="108"><code class="language-java">    public void legacy() { //count
+        System.out.println(&quot;items: &quot; + items.size());
+    }</code></pre>
+</section>
+<section class="md-section" data-md-section="6">
+<h2 data-md-from="110" data-md-to="110">The whole file</h2>
+<p data-md-from="112" data-md-to="113">A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
+<p class="md-marker" data-marker="t-6-1"><a href="./samples/Inventory.java">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-6-1" data-md-from="117" data-md-to="168"><code class="language-java">package demo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -357,65 +416,6 @@ public class Inventory {
         System.out.println(&quot;items: &quot; + items.size());
     }
 }</code></pre>
-</section>
-<section class="md-section" data-md-section="2">
-<h2 data-md-from="67" data-md-to="67">A named region</h2>
-<p data-md-from="69" data-md-to="71">Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
-<p class="md-marker" data-marker="t-2-1"><a href="./samples/Inventory.java#catalog">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-1" data-md-from="75" data-md-to="78"><code class="language-java">    /** The catalog, kept as an explicit region directive. */
-    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre>
-</section>
-<section class="md-section" data-md-section="3">
-<h2 data-md-from="80" data-md-to="80">A declaration, and how much of it comes along</h2>
-<p data-md-from="82" data-md-to="85">When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A leading <code>-</code>, <code>+</code> or <code>++</code> selects how far up the text starts:</p>
-<ul data-md-from="87" data-md-to="90">
-<li><code>#toString</code> — the declaration: signature through closing brace.</li>
-<li><code>#-toString</code> — the body only, without the signature.</li>
-<li><code>#+toString</code> — the declaration and the annotations above it.</li>
-<li><code>#++toString</code> — those and the doc comment above them.</li>
-</ul>
-<p data-md-from="92" data-md-to="92">The same method, four ways:</p>
-<p class="md-marker" data-marker="t-3-1"><a href="./samples/Inventory.java#toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-3-1" data-md-from="96" data-md-to="100"><code class="language-java">    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre>
-<p class="md-marker" data-marker="t-3-2"><a href="./samples/Inventory.java#-toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-3-2" data-md-from="104" data-md-to="106"><code class="language-java">        return items.size() + &quot; item(s)&quot;;</code></pre>
-<p class="md-marker" data-marker="t-3-3"><a href="./samples/Inventory.java#+toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-3-3" data-md-from="110" data-md-to="115"><code class="language-java">    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre>
-<p class="md-marker" data-marker="t-3-4"><a href="./samples/Inventory.java#++toString">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-3-4" data-md-from="119" data-md-to="125"><code class="language-java">    /** Summarise the inventory. */
-    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre>
-</section>
-<section class="md-section" data-md-section="4">
-<h2 data-md-from="127" data-md-to="127">A nested declaration</h2>
-<p data-md-from="129" data-md-to="132">A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
-<p class="md-marker" data-marker="t-4-1"><a href="./samples/Inventory.java#Inventory/Item/render">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-4-1" data-md-from="136" data-md-to="140"><code class="language-java">        String render() {
-            return name + &quot; x&quot; + quantity;
-        }</code></pre>
-</section>
-<section class="md-section" data-md-section="5">
-<h2 data-md-from="142" data-md-to="142">A condition literal</h2>
-<p data-md-from="144" data-md-to="146">Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
-<p class="md-marker" data-marker="t-5-1"><a href="./samples/Inventory.java#dispatch/count">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-5-1" data-md-from="150" data-md-to="154"><code class="language-java">        if (&quot;count&quot;.equals(methodName)) {
-            System.out.println(&quot;items: &quot; + items.size());
-        }</code></pre>
-</section>
-<section class="md-section" data-md-section="6">
-<h2 data-md-from="156" data-md-to="156">A comment anchor</h2>
-<p data-md-from="158" data-md-to="160">A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
-<p class="md-marker" data-marker="t-6-1"><a href="./samples/Inventory.java#legacy/count">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-6-1" data-md-from="164" data-md-to="168"><code class="language-java">    public void legacy() { //count
-        System.out.println(&quot;items: &quot; + items.size());
-    }</code></pre>
 </section>
 </article>
 </div>

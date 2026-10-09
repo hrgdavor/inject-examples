@@ -2,67 +2,7 @@
 
 Click a target: it highlights the lines it selects in
 [samples/Inventory.java](./samples/Inventory.java), and the same injection in
-the rendered Markdown beside it.
-
-## The whole file
-
-A marker with no `#fragment` stands for the whole file, normalised to LF and
-without a trailing newline. It is the plainest thing a marker can say.
-
-[samples/Inventory.java](./samples/Inventory.java)
-
-```java
-package demo;
-
-import java.util.ArrayList;
-import java.util.List;
-
-/** A small stock inventory: the sample every target on this page reads. */
-public class Inventory {
-
-    // #region catalog
-    /** The catalog, kept as an explicit region directive. */
-    static final String[] CATALOG = { "bolt", "nut", "washer" };
-    // #endregion
-
-    private final List<Item> items = new ArrayList<>();
-
-    /** One stock line of this inventory. */
-    public static class Item {
-        private final String name;
-        private final int quantity;
-
-        Item(String name, int quantity) {
-            this.name = name;
-            this.quantity = quantity;
-        }
-
-        /** Render one line the way the receipt shows it. */
-        String render() {
-            return name + " x" + quantity;
-        }
-    }
-
-    /** Summarise the inventory. */
-    @Override
-    public String toString() {
-        return items.size() + " item(s)";
-    }
-
-    /** Run one named method. */
-    public void dispatch(String methodName) {
-        if ("count".equals(methodName)) {
-            System.out.println("items: " + items.size());
-        } else if ("clear".equals(methodName)) {
-            items.clear();
-        }
-    }
-
-    public void legacy() { //count
-        System.out.println("items: " + items.size());
-    }
-}
-```
+the rendered Markdown ([source](https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md)) beside it.
 
 ## A named region
 
@@ -165,4 +105,64 @@ whole method.
     public void legacy() { //count
         System.out.println("items: " + items.size());
     }
+```
+
+## The whole file
+
+A marker with no `#fragment` stands for the whole file, normalised to LF and
+without a trailing newline. It is the plainest thing a marker can say.
+
+[samples/Inventory.java](./samples/Inventory.java)
+
+```java
+package demo;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** A small stock inventory: the sample every target on this page reads. */
+public class Inventory {
+
+    // #region catalog
+    /** The catalog, kept as an explicit region directive. */
+    static final String[] CATALOG = { "bolt", "nut", "washer" };
+    // #endregion
+
+    private final List<Item> items = new ArrayList<>();
+
+    /** One stock line of this inventory. */
+    public static class Item {
+        private final String name;
+        private final int quantity;
+
+        Item(String name, int quantity) {
+            this.name = name;
+            this.quantity = quantity;
+        }
+
+        /** Render one line the way the receipt shows it. */
+        String render() {
+            return name + " x" + quantity;
+        }
+    }
+
+    /** Summarise the inventory. */
+    @Override
+    public String toString() {
+        return items.size() + " item(s)";
+    }
+
+    /** Run one named method. */
+    public void dispatch(String methodName) {
+        if ("count".equals(methodName)) {
+            System.out.println("items: " + items.size());
+        } else if ("clear".equals(methodName)) {
+            items.clear();
+        }
+    }
+
+    public void legacy() { //count
+        System.out.println("items: " + items.size());
+    }
+}
 ```
