@@ -31,17 +31,41 @@ that disagrees with it is wrong by definition. Markers now carry the reference
 directly as `#<section-reference>`. Rule 5 was amended by maintainer decision
 after that commit: a segment is searched *sibling first* — every scope at one
 depth is tried before the walk descends into any block — replacing the original
-depth-first walk (see [Matcher precedence](#matcher-precedence)).
+depth-first walk (see [Searching one element in a scope](#searching-one-element-in-a-scope)).
+
+## At a glance
+
+A section reference is a `/`-separated path of names that may end in `+`, `++`
+or `-`. Three questions fully specify it, and this document keeps each in its own
+section so they do not blur into one another:
+
+| Question | In one line | Expanded in |
+| --- | --- | --- |
+| How does a path with one or more `/` resolve? | Every name except the last **narrows the scope** to the block it finds; only the **last** name selects content; a single name searches the whole file. | [Paths and scopes](#paths-and-scopes) |
+| How is one name found inside a scope? | Inside that scope — the whole file, or a block a parent narrowed it to — the six matchers run in order against the scope's own members; the first match wins, and a shallower sibling always beats a deeper block. | [Searching one element in a scope](#searching-one-element-in-a-scope) |
+| Where do `+`, `++` and `-` apply, and what do they do? | A modifier is **trailing** and binds to the **last** segment only; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
+
+[Grammar](#grammar) gives the syntax and [The six rules](#the-six-rules) is the
+compact normative statement; the three topics expand them and the tables beneath
+each topic are the detail. This layout reorganises the rules so each question has
+one home — it changes no rule.
 
 ## Contents
 
 - [Grammar](#grammar)
 - [The six rules](#the-six-rules)
-- [Matcher precedence](#matcher-precedence)
-- [Canonicalisation and compatibility spellings](#canonicalisation-and-compatibility-spellings)
-- [Modifiers](#modifiers)
+- [Paths and scopes](#paths-and-scopes)
+  - [Narrowing the scope](#narrowing-the-scope)
+  - [A bare name](#a-bare-name)
+- [Searching one element in a scope](#searching-one-element-in-a-scope)
+  - [Matcher precedence](#matcher-precedence)
+  - [Sibling-first descent](#sibling-first-descent)
+- [Applying the modifiers](#applying-the-modifiers)
+  - [Where a modifier may appear](#where-a-modifier-may-appear)
+  - [Canonicalisation and compatibility spellings](#canonicalisation-and-compatibility-spellings)
+  - [Modifiers](#modifiers)
+  - [Contradictory modifiers are a warning](#contradictory-modifiers-are-a-warning)
 - [Errors](#errors)
-- [Contradictory modifiers are a warning](#contradictory-modifiers-are-a-warning)
 - [Worked examples](#worked-examples)
 - [Heuristic, not a parser](#heuristic-not-a-parser)
 - [Tokenizers](#tokenizers)
@@ -59,7 +83,13 @@ token             := /[A-Za-z_$][\w$]*/ | 'new'
 
 A `token` contains no `/`, `+`, `-` or whitespace. A name may be dotted
 (`Foo.Bar` is one token, because dotted names occur in JS/TS code); dots are
-never path separators. Each bullet below is an error when violated:
+never path separators. The syntax alone says nothing about resolution — the six
+rules below do, and each is expanded in its own topic.
+
+## The six rules
+
+The grammar, as six rules. Each violated below is an error (see
+[Errors](#errors)); rule 5 is the walk order other documents cite:
 
 1. `/` is not a package path or an FQDN. It only descends into nested blocks
    *inside the one target file*.
@@ -73,17 +103,99 @@ never path separators. Each bullet below is an error when violated:
    whole file, at any depth.
 5. First match wins, walking **sibling first**: every scope at one depth is
    searched, left to right, before the walk descends into any block they
-   contain.
-   A declaration in a scope is therefore never shadowed by a same-named block
-   nested inside an earlier sibling — `doSomeAction` resolves to the method, not
-   to an `if ("doSomeAction"…)` inside a method that comes sooner in the file. A
-   trailing modifier never changes which match is found.
-  6. The reference `add` matches a `#region add`
-   directive, a `void add()` method, a `String add` property, a `class add`, a
-   `//add` anchor, or an `if ("add".equals(...))` block — whichever the walk
-   finds first, the shallowest candidate winning.
+   contain. A declaration in a scope is therefore never shadowed by a same-named
+   block nested inside an earlier sibling — `doSomeAction` resolves to the
+   method, not to an `if ("doSomeAction"…)` inside a method that comes sooner in
+   the file. A trailing modifier never changes which match is found.
+6. The reference `add` matches a `#region add` directive, a `void add()` method,
+   a `String add` property, a `class add`, a `//add` anchor, or an
+   `if ("add".equals(...))` block — whichever the walk finds first, the
+   shallowest candidate winning.
 
-## Matcher precedence
+Rules 1, 2 and 4 are the subject of [Paths and scopes](#paths-and-scopes); rule
+5 (and the matcher table rule 6 names) of
+[Searching one element in a scope](#searching-one-element-in-a-scope); rule 3 of
+[Applying the modifiers](#applying-the-modifiers).
+
+## Paths and scopes
+
+*How a complex target — one name, or a path of several names separated by `/` —
+resolves. Rules 1, 2 and 4.*
+
+A path is read **left to right**. The first segment is looked up in **scope 0**,
+the whole target file. Every later segment is looked up **only inside the block
+the previous segment matched**, so the search space shrinks one step at a time.
+The **last** segment is the one that selects content to inject; all earlier
+segments are **scopes** that exist only to narrow where the last one is searched.
+
+```text
+Cart / Line / render
+│       │      └── last segment: selects the `render` declaration
+│       └── scope: found inside `Cart`, narrows the search to `Line`'s block
+└── scope: found in the whole file, narrows the search to `Cart`'s block
+```
+
+A segment used as a scope must resolve to a block that **can contain** other
+sections — a class, a method body, a statement block, or an anchor block. A
+property or a `#region` cannot, so naming one mid-path is the `"…" is not a
+container` error ([Errors](#errors)); a scope segment that matches nothing is
+`no section named "…" in "…"`. A path may have at most 8 segments.
+
+### Narrowing the scope
+
+Because a parent segment scopes the search to the block it found, a child name
+is searched in that smaller scope first — with the *same* matcher precedence and
+sibling-first walk described in
+[Searching one element in a scope](#searching-one-element-in-a-scope) — and only
+within it. So `Cart/Line/render` looks for `render` inside `Line`, which is
+itself inside `Cart`; it never finds a `render` elsewhere in the file. The scope
+may be as small as a single method or `if` block: `dispatch/getUsers` searches
+`getUsers` only inside the `dispatch` method's body, which is exactly how it
+reaches the `if ("getUsers"…)` block that a bare `getUsers` would skip in favour
+of a shallower sibling (see the [Worked examples](#worked-examples)).
+
+Narrowing is what makes a name that is not unique in the file addressable: qualify
+it with its ancestors, and the last segment resolves inside a scope where it *is*
+unique.
+
+### A bare name
+
+A reference with no `/` is a path of **one** segment (rule 4): scope 0 is the
+whole file, so the name is searched everywhere, at any depth — still sibling
+first. `render` finds `Line.render` even though it is nested inside `Cart`,
+because the walk descends to it once no shallower `render` matches. A bare name
+is therefore shorthand for "the shallowest thing in this file with this name",
+and it is the form that rule 5's shadowing guarantee protects: a method named
+`doSomeAction` wins over an `if ("doSomeAction"…)` buried in an earlier method.
+
+## Searching one element in a scope
+
+*How a single path element is found once you are inside one scope. Rule 5, and
+the matcher table rule 6 names.*
+
+A **scope** is the block currently being searched. It is the whole file for a
+bare name or the first segment of a path, and a narrowed block — a method body,
+an inner class, a single `if` — for every later segment reached through a parent
+([Narrowing the scope](#narrowing-the-scope)). Searching one element is the same
+operation regardless of how big the scope is; only its extent differs.
+
+Within one scope the lookup has two parts:
+
+1. **Precedence, on this scope's own members.** The six matchers below are tried
+   top to bottom, but only against the blocks that belong *directly* to this
+   scope — matchers 5 and 6 never sweep deeper blocks. The first matcher that
+   hits ends the search for this scope. Among equal-depth candidates the matcher
+   order decides, and within one matcher the left-to-right source order does.
+2. **Descent, one level at a time.** If no member of this scope matches, the walk
+   descends exactly one level — into every block this scope contains, left to
+   right — and retries the *same* element there, with the same precedence. It
+   repeats depth by depth until a match is found or the scope's subtree is
+   exhausted.
+
+The consequence is rule 5: **a shallower candidate always beats a deeper one,
+whatever the source order.** Nesting never shadows a sibling.
+
+### Matcher precedence
 
 Within one scope the matchers below are tried in this order; the first that
 matches ends the lookup *for that scope*. In a single-segment reference that
@@ -114,19 +226,56 @@ descent happens one step at a time: once `Cart` matches, later segments are
 searched **only inside `Cart`**, with the same precedence and the same
 sibling-first descent.
 
-## The six rules
+### Sibling-first descent
 
-The grammar above, in short form (each violated in some cases below):
+The descent is breadth first over *depths*, matcher precedence *within* a scope.
+That ordering is the whole point of rule 5, and it is what makes a declaration
+targetable even when a same-named block sits inside an earlier sibling:
 
-- `/` is not a package path; it descends into nested blocks of the one file.
-- Only the last segment selects content; earlier segments are only scopes.
-- The modifier is trailing and applies to the final segment; `-add` and `add-`
-  mean the same thing.
-- A bare name is a one-segment path and searches the whole file.
-- First match wins, sibling first and left to right: a shallower candidate
-  always beats a deeper one, whatever the source order.
+```java
+class Svc {
+    void bar() {                                  // comes sooner in the file
+        if ("doSomeAction".equals(m)) { legacy(); }
+    }
+    void doSomeAction() { current(); }
+}
+```
 
-## Canonicalisation and compatibility spellings
+`doSomeAction` is matched at `Svc`'s depth (matcher 3, a method), so it wins
+before the walk ever descends into `bar`; the `if ("doSomeAction"…)` block is
+reached only by naming its scope — `bar/doSomeAction`. Under the superseded
+depth-first walk the deeper `if` would have won, because `bar` comes first. The
+[Worked examples](#worked-examples) pin both readings on `Anchors.java`.
+
+## Applying the modifiers
+
+*How and where `+`, `++` and `-` apply. Rule 3.*
+
+A modifier is one of `+`, `++`, `-`. It says **how much** of the matched block to
+inject — the whole declaration, the body alone, the declaration with its
+annotations, or with its doc comment too. Two facts govern where it may sit:
+
+- It is **trailing**: it attaches to the very end of the whole reference.
+- It binds to the **last segment** only. A scope segment may not carry one:
+  `Cart/-Line/render` is an error, because `-` would modify the scope `Line`
+  rather than the selected `render`.
+
+And one fact governs what it does: a modifier never changes **which** block is
+matched. Precedence and the sibling-first walk ([Searching one element in a
+scope](#searching-one-element-in-a-scope)) run on the bare name; the modifier is
+applied to the result. `getUsers` and `getUsers-` find the same block and differ
+only in how much of it is taken.
+
+### Where a modifier may appear
+
+The canonical spelling is trailing. For compatibility the parser also accepts a
+leading modifier and normalises it before parsing, so `-add` and `add-` mean the
+same thing, and a `-` on the second segment of a two-segment path is understood
+as belonging to the end (`Cart/-Line` → `Cart/Line-`). After normalisation a `+`
+or `-` anywhere except the very end is an error. The full accepted/rejected lists
+are in [Canonicalisation and compatibility spellings](#canonicalisation-and-compatibility-spellings).
+
+### Canonicalisation and compatibility spellings
 
 The leading spelling reads `-`, `+`, `++` only as a prefix of the whole
 reference. The canonical form is **trailing**, so the parser normalises before
@@ -157,7 +306,7 @@ it parses:
 | --- |
 | `a/b++-`, `a-/b++`, `a+-` |
 
-## Modifiers
+### Modifiers
 
 A trailing `++`, `+` or `-` before the final segment selects how much of the
 match comes with it:
@@ -186,6 +335,32 @@ Modifier semantics per match kind:
   braces. `++` on a comment anchor behaves like `+` (there is nothing to
   document).
 
+### Contradictory modifiers are a warning
+
+`++` and `-` contradict each other: `++` asks for the declaration *with* its
+annotations and doc comment, `-` asks for the *body alone*. No single section is
+both, so the reference is meaningless — but it is exactly what a human types
+while refactoring, so it must not hold a whole document hostage.
+
+| Case | Kind | Behaviour |
+| --- | --- | --- |
+| `++` with `-` (`a++-`, `a-++`, `a-/b++`) | Warning | The **`++` reading wins**; the `-` is dropped. Reported once as `inject-examples: warn: <doc>:<line>: "<marker>": "++" contradicts "-"; using "#<ref-without-the-minus>"`. The run continues, every block is written, and the run **exits 1** |
+| `+` with `-` (`a+-`, `a-+`) | Warning | Same shape: contradictory, `+` wins |
+| One modifier named twice (`a+++`, `a---`) | Error | Malformed, not contradictory — see [Errors](#errors) |
+| A modifier anywhere but the end | Error | See [Canonicalisation](#canonicalisation-and-compatibility-spellings) |
+
+Three consequences it is easy to miss:
+
+- **Warnings are not gated on `--lenient`.** `--lenient` tolerates *broken
+  includes*; a contradictory modifier is not broken, it is merely contradictory.
+  It warns in every mode.
+- **Exit code is 1 whenever a warning was emitted**, even though every block was
+  written, and the summary counts it (`1 warning`). This is a deliberate
+  exception to "0 means up to date": the run did succeed at injecting, but the
+  document still says something nonsense.
+- **It is idempotent.** The second pass warns again with no change to the text —
+  the warning is about the document, not about the state of the block.
+
 ## Errors
 
 Every message quotes the reference **exactly as the user wrote it** (call it
@@ -211,32 +386,6 @@ catalogue.
 **One back-compatible message shape.** The single-segment "found nothing" error
 above must still match `/no "#region <name>" found/` so existing callers that
 test against it keep working.
-
-## Contradictory modifiers are a warning
-
-`++` and `-` contradict each other: `++` asks for the declaration *with* its
-annotations and doc comment, `-` asks for the *body alone*. No single section is
-both, so the reference is meaningless — but it is exactly what a human types
-while refactoring, so it must not hold a whole document hostage.
-
-| Case | Kind | Behaviour |
-| --- | --- | --- |
-| `++` with `-` (`a++-`, `a-++`, `a-/b++`) | Warning | The **`++` reading wins**; the `-` is dropped. Reported once as `inject-examples: warn: <doc>:<line>: "<marker>": "++" contradicts "-"; using "#<ref-without-the-minus>"`. The run continues, every block is written, and the run **exits 1** |
-| `+` with `-` (`a+-`, `a-+`) | Warning | Same shape: contradictory, `+` wins |
-| One modifier named twice (`a+++`, `a---`) | Error | Malformed, not contradictory — see [Errors](#errors) |
-| A modifier anywhere but the end | Error | See [Canonicalisation](#canonicalisation-and-compatibility-spellings) |
-
-Three consequences it is easy to miss:
-
-- **Warnings are not gated on `--lenient`.** `--lenient` tolerates *broken
-  includes*; a contradictory modifier is not broken, it is merely contradictory.
-  It warns in every mode.
-- **Exit code is 1 whenever a warning was emitted**, even though every block was
-  written, and the summary counts it (`1 warning`). This is a deliberate
-  exception to "0 means up to date": the run did succeed at injecting, but the
-  document still says something nonsense.
-- **It is idempotent.** The second pass warns again with no change to the text —
-  the warning is about the document, not about the state of the block.
 
 ## Worked examples
 
