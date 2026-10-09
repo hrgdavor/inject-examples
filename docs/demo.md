@@ -1,4 +1,4 @@
-# Keep the code samples in your Markdown honest.
+# Keep the code samples in your Markdown honest and target code sections semantically instead of line numbers that can drift much more easily.
 
 DEMO of what a marker target can say. Click a target: it highlights the lines it selects in
 [samples/Inventory.java](./samples/Inventory.java), and the same injection in
