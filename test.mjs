@@ -2359,9 +2359,11 @@ test('demo: the rendered Markdown keeps its shape and marks each injection', () 
     const text = [
         '# A title',
         '',
-        'Prose with **bold**, `code` and a [link](./a.md).',
+        'Intro prose the render leaves to the banner.',
         '',
         '## A section',
+        '',
+        'Prose with **bold**, `code` and a [link](./a.md).',
         '',
         '- one',
         '- two',
@@ -2373,18 +2375,24 @@ test('demo: the rendered Markdown keeps its shape and marks each injection', () 
         '```',
     ].join('\n');
 
-    const html = renderMarkdown(text, { markerIds: new Map([[10, 't-2-1']]) });
-    assert.match(html, /<h1 data-md-from="1" data-md-to="1">A title<\/h1>/);
-    assert.match(html, /<strong>bold<\/strong>/);
-    assert.match(html, /<code>code<\/code>/);
-    assert.match(html, /<a href="\.\/a\.md">link<\/a>/);
+    const html = renderMarkdown(text, { markerIds: new Map([[12, 't-2-1']]) });
+    assert.ok(!html.includes('<h1'), 'the lead belongs to the page banner, not the rendered column');
+    assert.ok(!html.includes('A title') && !html.includes('Intro prose'));
     assert.match(html, /<h2 data-md-from="5" data-md-to="5">A section<\/h2>/);
-    assert.match(html, /<ul data-md-from="7" data-md-to="8">/);
+    assert.match(html, /<p data-md-from="7" data-md-to="7">Prose with <strong>bold<\/strong>, <code>code<\/code> and a <a href="\.\/a\.md">link<\/a>\.<\/p>/);
+    assert.match(html, /<ul data-md-from="9" data-md-to="10">/);
     assert.match(html, /<p class="md-marker" data-marker="t-2-1"><a href="\.\/a\/b\.java#one">a\/b\.java<\/a>/);
-    assert.match(html, /<pre class="md-pre" data-inject="t-2-1" data-md-from="12" data-md-to="14">/);
+    assert.match(html, /<pre class="md-pre" data-inject="t-2-1" data-md-from="14" data-md-to="16">/);
     assert.match(html, /<code class="language-java"><span class="tok-k">class<\/span> <span class="tok-t">A<\/span>&lt;<span class="tok-t">T<\/span>&gt; \{ \}<\/code>/,
         'the fence is highlighted in its language, and still escaped');
-    assert.equal((html.match(/data-md-section="/g) ?? []).length, 2, 'a lead section plus one per "##"');
+    assert.equal((html.match(/data-md-section="/g) ?? []).length, 1, 'one per "##", and no lead section');
+    assert.match(html, /^<section class="md-section" data-md-section="1">/, 'the first "##" is section 1');
+
+    const whole = renderMarkdown('Just prose, no headings.\n');
+    assert.equal((whole.match(/data-md-section="/g) ?? []).length, 1,
+        'a document with no "##" is rendered whole, as its own section');
+    assert.match(whole, /<section class="md-section" data-md-section="0">/);
+    assert.match(whole, /<p data-md-from="1" data-md-to="1">Just prose, no headings\.<\/p>/);
 });
 
 test('demo: fenced code is highlighted per language, or escaped when unknown', () => {
@@ -2411,7 +2419,9 @@ test('demo: the page is three titled columns', () => {
         assert.ok(html.includes(`<div class="col-head">${title}<`), `the ${title} column is titled`);
     }
     assert.ok(html.includes('<article class="md">'), 'the rendered document is the third column');
-    assert.equal((html.match(/data-md-section="/g) ?? []).length, model.sections.length + 1);
+    assert.equal((html.match(/data-md-section="/g) ?? []).length, model.sections.length,
+        'one rendered section per "##", and no lead section');
+    assert.ok(!html.includes('data-md-section="0"'), 'the lead is the banner, not a rendered section');
 });
 
 test('demo: the committed docs/index.html is exactly what the generator writes', () => {

@@ -7,7 +7,9 @@
 - `docs/index.html` is **generated** — never edit it by hand.
 - Three columns: the targets (prose + clickable markers), the source file with
   the selected line range highlighted, and the document rendered GitHub-style
-  with the marker and its injected block highlighted in place.
+  (code fences highlighted) with the marker and its injected block highlighted
+  in place. The lead — title and intro before the first `##` — is shown once, as
+  the page banner, and is skipped in both the targets and the rendered column.
 - Source: `docs/demo.md`. It is an ordinary Markdown document whose `##`
   sections become the numbered paragraphs of the page and whose markers become
   its clickable targets. The markers inject `docs/samples/*` (currently

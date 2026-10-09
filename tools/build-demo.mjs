@@ -424,6 +424,11 @@ function renderMarker(line, id) {
  * headings, paragraphs, bullet lists and fenced code, each wrapper carrying
  * `data-md-from`/`data-md-to` line anchors and each `##` opening a section.
  *
+ * The document's lead — its title and intro before the first `##` — is left
+ * out, exactly as the targets column leaves it out: it is already the page
+ * banner, and repeating it would only push the first example down. A document
+ * with no `##` at all is rendered whole, as its own single section.
+ *
  * @param {string} text
  * @param {{ markerIds?: Map<number, string> }} [options] marker line -> target id
  */
@@ -431,6 +436,8 @@ export function renderMarkdown(text, options = {}) {
     const markerIds = options.markerIds ?? new Map();
     const lines = text.replace(/\r\n/g, '\n').split('\n');
     const fences = fenceInfo(lines);
+    const ranges = fenceRanges(lines);
+    const inFence = (index) => ranges.some(([from, to]) => index >= from && index <= to);
     const html = [];
     let opened = false;
     let section = 0;
@@ -445,9 +452,10 @@ export function renderMarkdown(text, options = {}) {
         return marker && markerIds.has(index + 1) ? marker : null;
     };
 
-    openSection(0);
+    const firstSection = lines.findIndex((line, index) => !inFence(index) && /^##\s+/.test(line));
+    let i = firstSection === -1 ? 0 : firstSection;
+    if (firstSection === -1) openSection(0);
 
-    let i = 0;
     while (i < lines.length) {
         const fence = fences.get(i);
         if (fence) {
