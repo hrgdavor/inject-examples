@@ -52,7 +52,7 @@ import {
 
 import { main, parseArgs, UsageError } from './cli.mjs';
 
-import { lexerFor, LEXERS } from './src/js/scanner/lexers.js';
+import { EXTENSIONS, lexerFor, LEXERS } from './src/js/scanner/lexers.js';
 import { lexerJS, scanJS, visitJS } from './src/js/scanner/scanJS.js';
 import { lexerJava, scanJava, visitJava } from './src/js/scanner/scanJava.js';
 import { lexerZig, scanZig, visitZig } from './src/js/scanner/scanZig.js';
@@ -2879,6 +2879,34 @@ test('every link in the docs is functional', () => {
 // changed, the file did not"; this catches "someone relaxed a case so --check
 // would still pass".
 // ---------------------------------------------------------------------------
+test('doc/languages.md lists exactly the languages and extensions the table has', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const page = readFileSync(join(root, 'doc', 'languages.md'), 'utf8');
+
+    // What the code ships: language → the extensions `lexerFor` answers for.
+    const shipped = new Map();
+    for (const [extension, language] of Object.entries(EXTENSIONS)) {
+        if (!shipped.has(language)) shipped.set(language, new Set());
+        shipped.get(language).add(extension);
+    }
+
+    // What the page claims: a row per language, `| \`name\` | \`ext\` \`ext\` | …`.
+    const listed = new Map();
+    for (const line of page.split('\n')) {
+        const row = /^\|\s*`([a-z]+)`\s*\|([^|]*)\|/.exec(line);
+        if (!row || !(row[1] in SYNTAXES)) continue;
+        listed.set(row[1], new Set([...row[2].matchAll(/`([a-z0-9]+)`/g)].map((match) => match[1])));
+    }
+
+    assert.deepEqual([...listed.keys()].sort(), [...shipped.keys()].sort(),
+        'every language in the table is listed once, and none is invented');
+    for (const [language, extensions] of shipped) {
+        assert.deepEqual([...listed.get(language)].sort(), [...extensions].sort(),
+            `${language}: the extensions on the page are the ones in lexers.js`);
+    }
+    assert.ok(page.includes('## Config formats'), 'the formats have their own section');
+});
+
 test('section vectors match a live implementation call', () => {
     const root = dirname(fileURLToPath(import.meta.url));
     const vectors = JSON.parse(readFileSync(join(root, 'test/vectors/section-vectors.json'), 'utf8'));

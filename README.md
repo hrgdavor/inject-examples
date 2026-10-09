@@ -210,8 +210,10 @@ eighteen languages in [`src/js/scanner/syntaxes.js`](./src/js/scanner/syntaxes.j
 Shell, VB, Haskell, YAML, TOML and INI — exact to each language's own syntax:
 template literals, text blocks, nested block comments, raw and verbatim strings,
 doubling escapes, `<<EOF` heredocs, and a Rust `'a` lifetime that is not a char
-literal. For every other type a best-effort union of the comment and string
-spellings stands in, so an unknown type still resolves, just less precisely. The
+literal. [doc/languages.md](./doc/languages.md) lists every entry, the construct
+it exists for and its extensions. For every other type a best-effort union of the
+comment and string spellings stands in, so an unknown type still resolves, just
+less precisely. The
 table is data: adding a language is one object there plus one extension line in
 `lexers.js`, and the places a language spells a member differently from the
 common shape — Ruby's paren-less `def add`, Haskell's `add x y = …` binding with
@@ -535,9 +537,9 @@ generated, never hand-written:
 
 - [`docs/demo.md`](./docs/demo.md) is the source: an ordinary Markdown document,
   readable on its own, whose markers this tool keeps in sync exactly as it keeps
-  `doc/usage.md`. It has a section per supported language and per config format —
-  Java, Go, Rust, Python, C#, Kotlin, PHP, Ruby, SQL, Shell, VB, Haskell, Zig,
-  YAML, TOML, INI and JSON.
+  `doc/usage.md`. It has a section per [supported language](./doc/languages.md)
+  and per config format — Java, Go, Rust, Python, C#, Kotlin, PHP, Ruby, SQL,
+  Shell, VB, Haskell, Zig, YAML, TOML, INI and JSON.
 - [`docs/samples/`](./docs/samples) holds one small sample per section, each
   written to show the construct its language needs a lexer for (a nested comment,
   a raw string, a heredoc, a doubled quote) beside a member to select.
@@ -718,8 +720,8 @@ into the global bin directory. The same `bin` entry is what `npx
 field, so npm links the package page to the GitHub repository.
 
 `files` in `package.json` limits the package to `cli.mjs`, `index.mjs`, `lib/`,
-`src/js/scanner/`, `doc/section-matching.md`, `README.md` and `LICENSE`; the
-tests and fixtures stay out.
+`src/js/scanner/`, `doc/languages.md`, `doc/section-matching.md`, `README.md` and
+`LICENSE`; the tests and fixtures stay out.
 
 ## The Zig port
 

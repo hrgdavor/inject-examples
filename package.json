@@ -40,6 +40,7 @@
     "LICENSE",
     "lib",
     "src/js/scanner",
+    "doc/languages.md",
     "doc/section-matching.md"
   ],
   "engines": {

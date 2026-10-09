@@ -48,9 +48,9 @@ npx @hrg/inject-examples --check doc/usage.md
   exit `1` and writes nothing — that is the CI hook.
 - This document ships with the repository, not with the npm package: the
   package's `files` field contains `cli.mjs`, `index.mjs`, `lib/`,
-  `src/js/scanner/`, `doc/section-matching.md`, `README.md` and `LICENSE`, but
-  not this guide or its fixtures — those live in the source tree, where CI can
-  check them in.
+  `src/js/scanner/`, `doc/languages.md`, `doc/section-matching.md`, `README.md`
+  and `LICENSE`, but not this guide or its fixtures — those live in the source
+  tree, where CI can check them in.
 
 ## What ships
 
@@ -101,6 +101,7 @@ The entire published package, verbatim:
     "LICENSE",
     "lib",
     "src/js/scanner",
+    "doc/languages.md",
     "doc/section-matching.md"
   ],
   "engines": {
