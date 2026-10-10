@@ -36,10 +36,19 @@ single named declaration, matched by a *flat* scan of every line (`index.mjs`,
 ## 3. House rules (non-negotiable)
 
 1. **`index.mjs` + `cli.mjs` are the source of truth.** Nothing is "fixed" anywhere else.
-2. **All porting is frozen.** No step touches `src/**`, `build.zig`, `build.zig.zon`, or
-   writes a Java/Zig/other-language implementation. The Zig differential harness
-   (`tools/compare-zig.mjs`) is switched off in step 1 and stays off. Porting resumes in a
-   **separate plan** after this plan set is complete and the syntax is settled.
+   **The source of truth has since grown:** the syntax these steps specify is now normative in
+   [`doc/section-matching.md`](../../doc/section-matching.md), which supersedes §4, §5 and §9
+   of this contract where the two disagree (the `region:` fragment keyword was dropped, and
+   the error catalogue and grammar moved on). Treat this document as the plan set's history and
+   as the source of the *design* rules in §3 and §10, not as the current grammar.
+2. **~~All porting is frozen.~~ Retired.** No step touched `src/**`, `build.zig`,
+   `build.zig.zon`, or wrote a Java/Zig implementation; the Zig differential harness
+   (`tools/compare-zig.mjs`) was switched off in step 1 and stayed off for the length of the
+   plan set. **The maintainer lifted the freeze on 2026-10-10**: the syntax is settled and the
+   port is active again, with the harness back on and held at parity by gates. The plan that
+   owns it is [`plans/zig-port.md`](../zig-port.md); it replaces this rule, and goal 1 of that
+   plan ("the JavaScript implementation stays the source of truth") is what this rule was
+   protecting.
 3. **Zero dependencies, Node 18+, ESM.** `node:fs` / `node:path` may be used by `index.mjs`
    and `cli.mjs`; `lib/section.mjs` may **not** use them (see §10).
 4. **No behaviour change beyond this contract.** Every existing test in `test.mjs` stays
@@ -51,21 +60,27 @@ single named declaration, matched by a *flat* scan of every line (`index.mjs`,
 
 ---
 
-## 4. Marker form (unchanged)
+## 4. Marker form (superseded — see the note below)
 
 ```text
 [label](path#region:<section-reference>)
 ```
 
+> **Superseded on 2026-10-09.** The `region:` fragment keyword was dropped: a marker carries
+> `#<section-reference>` directly, and anything after the `#` is the reference. The normative
+> statement is in [`doc/section-matching.md`](../../doc/section-matching.md). The rest of this
+> section is kept because the reasoning still holds — the fragment names a section, it is not a
+> name to match.
+
 `label` must still name the same path as `path`, `path` must not carry a URL scheme, and the
 line must be nothing but the link. **`inject:` is a consumer project's own marker prefix** —
 how *their* tooling recognises a line as an injection marker before rewriting it into the
-form above. `region:` is a fixed fragment keyword, not a name to match: it is what tells the
-tool "this fragment is a section reference".
+form above. The fragment is the section reference, verbatim: it is not a name to match, and
+there is no keyword in front of it.
 
 This contract changes the grammar of `<section-reference>` only — **never** the marker
-prefix, **never** the fragment keyword, never anything about fences, gitignore, the CLI or
-the JSON rule.
+prefix, never anything about fences, gitignore, the CLI or the JSON rule. (The fragment
+keyword it once fixed in place is gone; see the note above.)
 
 ## 5. Grammar
 

@@ -95,6 +95,20 @@ binaries no longer match the documented syntax. This is a real hazard, not a for
 
 ## Task 5 — the settle handoff
 
+> **Discharged on 2026-10-10.** The maintainer reviewed the syntax, lifted the porting freeze,
+> and the port is now active under [`plans/zig-port.md`](../zig-port.md). Two details differ
+> from what this task asks for, and both are deliberate:
+>
+> - the settled commit sha was never written into `doc/section-matching.md`; the syntax has
+>   since moved past any sha this step could have named (the `region:` keyword was dropped in
+>   `10646fb`). The spec is normative **as it stands** — `node tools/section-vectors.mjs
+>   --check` is what holds it to the implementation, not a commit pin;
+> - `node tools/compare-zig.mjs` no longer prints a disabled message. It runs the full
+>   comparison, and its green result is one of the gates the port plan requires.
+>
+> `lib/README.md` never carried the draft-API warning this task expected to remove, so there
+> was nothing to replace.
+
 This is the step that ends the plan set and hands the decision to a human.
 
 1. In `doc/section-matching.md`, replace the placeholder revision line from step 2 with the

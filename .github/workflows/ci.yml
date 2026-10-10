@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches-ignore:
+      - 'gh-pages'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  node:
+    name: JavaScript test suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        # `node --test`, the section vectors' drift gate, and the Zig
+        # conformance corpus' drift gate.
+        run: npm test
+
+      - name: Tokenizer oracle (highlight.js cross-check)
+        run: npm run oracle
+
+  zig:
+    name: Zig port
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build
+        run: zig build --summary all
+
+      - name: Test
+        # The ported suite, plus the golden section vectors generated from the
+        # JavaScript implementation.
+        run: zig build test --summary all
+
+  differential:
+    name: JS vs Zig, byte for byte
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build the Zig binary
+        run: zig build --summary all
+
+      - name: Compare the two tools
+        # `tools/compare-zig.mjs` needs no dependencies of its own; it runs
+        # both implementations over the edge-case corpus plus a seeded fuzzer
+        # and compares stdout, stderr, exit code and every rewritten file.
+        run: node tools/compare-zig.mjs

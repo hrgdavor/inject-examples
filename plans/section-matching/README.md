@@ -4,10 +4,18 @@ The work of formalising `#region:<reference>` into a specified **file-section ma
 syntax, split so that each part is small enough for one agent to complete and verify in one
 sitting. **Read this index first, then exactly two documents: the contract, and your step.**
 
+> **This plan set is complete, and its porting freeze is over.** All nine steps landed; the
+> syntax was settled and has since moved on (the `region:` keyword was dropped — a marker
+> carries `#<reference>` directly, per [`doc/section-matching.md`](../../doc/section-matching.md)).
+> Porting was unfrozen by a maintainer decision on 2026-10-10, and the port is now owned by
+> [**`plans/zig-port.md`**](../zig-port.md). Steps 1 and 9 are history: do not re-run them.
+> The one rule that outlives this plan set is the design boundary — structure stays in
+> `lib/section.mjs`, languages are data plus a lexer — which is what makes a port cheap.
+
 | Order | Document | One-line scope | Depends on |
 | --- | --- | --- | --- |
 | — | [00-contract.md](00-contract.md) | The frozen syntax + house rules. **Binding on every step; implement it, never change it.** | — |
-| 1 | [01-freeze-porting.md](01-freeze-porting.md) | Stop all porting; switch the Zig differential harness off; delete the stale hard-coded reference counts | — |
+| 1 | [01-freeze-porting.md](01-freeze-porting.md) | ~~Stop all porting; switch the Zig differential harness off; delete the stale hard-coded reference counts~~ — **reversed on 2026-10-10** | — |
 | 2 | [02-spec-document.md](02-spec-document.md) | Write the normative spec `doc/section-matching.md` from the contract | 00 |
 | 3 | [03-fixtures-and-failing-tests.md](03-fixtures-and-failing-tests.md) | Add the anchor fixture; pin every expected byte as failing tests | 00, 01 |
 | 4 | [04-parse-layer.md](04-parse-layer.md) | `lib/section.mjs`: reference parsing, canonicalisation, errors, the contradiction warning | 00, 03 |
@@ -30,8 +38,10 @@ these documents disagree, these documents win**; it will not be updated.
 - **Each step owns one commit.** A step is done when its own acceptance checklist passes and
   `node test.mjs` (or `node --test test.mjs` once steps 3+ add tests) is green. Steps land in
   order; do not start a step before its dependencies are committed.
-- **Every step is a pure JavaScript step.** Porting is frozen — see §3 of the contract.
-  No step may touch `src/**`, `build.zig`, `build.zig.zon`, or write a Java/Zig file.
+- **Every step was a pure JavaScript step.** Porting was frozen for the length of the plan set
+  — see §3 of the contract. No step touched `src/**`, `build.zig`, `build.zig.zon`, or wrote a
+  Java/Zig file. **That freeze is retired**; porting is active again under
+  [`plans/zig-port.md`](../zig-port.md).
 - **Test counts drift, so nothing depends on them.** Prefer "assert this exact string",
   "assert this throws", "the whole suite is green" over "there are exactly N tests".
 
@@ -53,9 +63,9 @@ lexer or `undefined`). The three sample scanners are built on a shared one-pass 
 
 | File | `lexerX` (the seam) | `scanX(source, target)` (the original sample) | `visitX(source, visitor)` (one-pass enumeration) | Language support |
 | --- | --- | --- | --- | --- |
-| [`src/js/scanner/scanJS.js`](src/js/scanner/scanJS.js) | `lexerJS` | `scanJS` | `visitJS` | JS/TS — `'` `"`, backtick templates, `//`, `/* */` |
-| [`src/js/scanner/scanJava.js`](src/js/scanner/scanJava.js) | `lexerJava` | `scanJava` | `visitJava` | Java — `"` `'`, text blocks `"""`, `//`, `/* */` |
-| [`src/js/scanner/scanZig.js`](src/js/scanner/scanZig.js) | `lexerZig` | `scanZig` | `visitZig` | Zig — `"`, multiline `\\`, `//`, **nested** `/* /* */ */` |
+| [`src/js/scanner/scanJS.js`](../../src/js/scanner/scanJS.js) | `lexerJS` | `scanJS` | `visitJS` | JS/TS — `'` `"`, backtick templates, `//`, `/* */` |
+| [`src/js/scanner/scanJava.js`](../../src/js/scanner/scanJava.js) | `lexerJava` | `scanJava` | `visitJava` | Java — `"` `'`, text blocks `"""`, `//`, `/* */` |
+| [`src/js/scanner/scanZig.js`](../../src/js/scanner/scanZig.js) | `lexerZig` | `scanZig` | `visitZig` | Zig — `"`, multiline `\\`, `//`, **nested** `/* /* */ */` |
 
 `scanX(source, targetString)` keeps its original shape: the `if` clauses whose header (up to the
 opening brace) contains `targetString`, as `{ type: 'if_clause', line, col, snippet }`, detected on
@@ -77,7 +87,7 @@ TreeSitter parse, an IDE index — that satisfies the invariant; see the "Tokeni
 
 | Step | Status |
 | --- | --- |
-| 1 freeze porting | ✅ done |
+| 1 freeze porting | ✅ done — **reversed 2026-10-10** (see below) |
 | 2 spec document | ✅ done |
 | 3 fixtures + failing tests | ✅ done |
 | 4 parse layer | ✅ done |
@@ -85,12 +95,14 @@ TreeSitter parse, an IDE index — that satisfies the invariant; see the "Tokeni
 | 6 resolve layer | ✅ done |
 | 7 wire into index | ✅ done |
 | 8 vectors | ✅ done |
-| 9 docs + settle | ✅ done |
+| 9 docs + settle | ✅ done — **handoff discharged 2026-10-10** (see below) |
 
-All nine steps are committed. The revision is **frozen and awaiting maintainer
-sign-off** (step 9, task 5): the settled reference is commit `656d280`, named in
-`doc/section-matching.md`; `lib/README.md` keeps its draft-API warning until a
-human reviews the syntax against a real document outside the fixtures.
+All nine steps are committed. Step 9 left the revision **frozen and awaiting maintainer
+sign-off**, and named commit `656d280` as the settled reference; `lib/README.md` kept a
+draft-API warning until a human reviewed the syntax against a real document outside the
+fixtures. That review happened, and the syntax has since moved past the sign-off point (the
+`region:` keyword was dropped in `10646fb`). **`doc/section-matching.md` is now the normative
+statement of the syntax** — treat it, not this plan set, as the contract.
 The plan set itself is complete: every step is written, each cites the contract rather than restating it,
 and each carries its own acceptance checklist and verification commands.
 
@@ -99,3 +111,11 @@ and each carries its own acceptance checklist and verification commands.
 [00-contract.md](00-contract.md) and rule 5 of `doc/section-matching.md`. The
 implementation, the tests and the golden vectors were updated with it, so the
 settled SHA above predates the amendment.
+
+**Amendment (2026-10-10, maintainer): the porting freeze is lifted.**
+The syntax is settled well enough to implement from, so steps 1 and 9 are reversed: the
+differential harness is back on (no `--force` gate), the port has been brought to parity, and
+[`plans/zig-port.md`](../zig-port.md) owns the port, its goals and its gates from here. House
+rule 2 of [00-contract.md](00-contract.md) is retired; the rule that replaces it — the
+JavaScript implementation is the source of truth and the port follows it — is the one the
+freeze was protecting.

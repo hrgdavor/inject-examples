@@ -2857,7 +2857,13 @@ test('every link in the docs is functional', () => {
 
         for (let i = 0; i < lines.length; i++) {
             if (fenced(i)) continue;
-            const prose = lines[i].replace(/`[^`]*`/g, '');
+            // Blank the inline code spans, keeping every offset: a link whose
+            // label is code (`` [`a`](./b.md) ``) is still a link, because its
+            // destination is outside the span, while `` `[a](./b.md)` `` — a
+            // link *inside* a code span — is data and loses its brackets.
+            const prose = blankCodeSpans(lines[i]);
+            // A destination that straddles a blanked span is not checkable; the
+            // blank is a space, so the pattern requires no whitespace.
             for (const link of prose.matchAll(/\[[^\]]+\]\(([^()\s]+)\)/g)) {
                 const dest = link[1];
                 if (/^[a-z][a-z0-9+.-]*:/i.test(dest)) continue; // external URL
@@ -2872,6 +2878,49 @@ test('every link in the docs is functional', () => {
         }
     }
 });
+
+/**
+ * `line` with every inline code span replaced by spaces of the same length.
+ *
+ * Length- and offset-preserving, so a link's destination keeps its position in
+ * the line. Backtick runs are paired the way CommonMark does it — a run opens a
+ * span and the next run of the *same* length closes it — and a run left
+ * unmatched does not blank the rest of the line, so prose with a stray backtick
+ * keeps its links.
+ */
+function blankCodeSpans(line) {
+    const out = line.split('');
+    const blank = (from, to) => {
+        for (let i = from; i < to; i++) out[i] = ' ';
+    };
+    let i = 0;
+    while (i < line.length) {
+        if (line[i] !== '`') {
+            i += 1;
+            continue;
+        }
+        let run = 0;
+        while (i + run < line.length && line[i + run] === '`') run += 1;
+        let close = -1;
+        for (let j = i + run; j < line.length; j++) {
+            if (line[j] !== '`') continue;
+            let other = 0;
+            while (j + other < line.length && line[j + other] === '`') other += 1;
+            if (other === run) {
+                close = j;
+                break;
+            }
+            j += other - 1;
+        }
+        if (close === -1) {
+            i += run;
+            continue;
+        }
+        blank(i, close + run);
+        i = close + run;
+    }
+    return out.join('');
+}
 
 // ---------------------------------------------------------------------------
 // Golden vectors — assert the committed JSON against a live implementation

@@ -1,4 +1,11 @@
-# Step 1 — Freeze porting
+# Step 1 — Freeze porting (reversed)
+
+> **Reversed on 2026-10-10.** This step was executed as written and kept the port honest while
+> the syntax moved. The maintainer has since lifted the freeze: the syntax is settled, the
+> differential harness is **on** (no `--force` gate, and it is part of CI), and the port is
+> active under [`plans/zig-port.md`](../zig-port.md). Nothing below should be re-run — in
+> particular, do **not** put the `--force` gate back. It is kept as history, because the
+> reasoning is what a future freeze would have to repeat.
 
 **Depends on:** nothing. **Blocks:** every later step (they all assume the harness is off).
 **Size:** small. One commit.

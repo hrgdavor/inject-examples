@@ -1,18 +1,3 @@
-// ⚠ DISABLED — zig section-matching syntax not settled ⚠
-//
-// The Zig port under `src/` currently tracks the *earlier* revision of the
-// file-section-matching syntax: it knows regions, declarations and scopes
-// (extractCodeRegion / extractDeclaration), but it does NOT know the JSON-key
-// list form, the `-`/`+`/`++` scope trims on `#...`, the new
-// `extractRegion(name, text, scope)` argument order, the `parseMarker`
-// whole-file branch, or any of the changes landing in lib/section.mjs. Running
-// the differential harness against the current JavaScript would therefore only
-// emit false failures.
-//
-// It stays off until `doc/section-matching.md` (the shipped spec) is settled.
-// `--force` overrides the gate so a human can still invoke the old behaviour.
-// See plan/section-matching/01-freeze-porting.md.
-
 // Differential test: run `cli.mjs` and the Zig twin on the same corpus and
 // compare everything a user can see — stdout, stderr, exit code, and every byte
 // of every file the run touched — and report any difference.
@@ -179,8 +164,8 @@ const simpleDoc = (body = 'stale', fence = '```') => [
     '',
 ].join('\n');
 
-const regionDoc = (reference, body = 'stale') => [
-    `[fixtures/big.md](./fixtures/big.md#${reference})`,
+const regionDoc = (reference, body = 'stale', target = 'fixtures/big.md') => [
+    `[${target}](./${target}#${reference})`,
     '',
     '```',
     body,
@@ -210,6 +195,189 @@ const CODE_TS = [
     '',
 ].join('\n');
 
+// --- the languages the per-type lexers exist for -------------------------
+
+/** A nested block comment hides a declaration the default mask would leak. */
+const NESTING_ZIG = [
+    '// a line comment',
+    '/* outer /* inner */ still outer',
+    '   pub fn decoy() void {}',
+    '*/',
+    'pub fn target() void {',
+    '    const s = \\\\a multiline string with a } brace',
+    '    _ = s;',
+    '}',
+    '',
+].join('\n');
+
+/** `impl Cart` is a scope named after the type, beside the `struct Cart`. */
+const CART_RS = [
+    'struct Cart {',
+    '    items: Vec<String>,',
+    '}',
+    '',
+    'impl Cart {',
+    '    fn add(&mut self, x: String) {',
+    '        self.items.push(x);',
+    '    }',
+    '}',
+    '',
+    'impl Cart {',
+    '    fn remove(&mut self) -> Option<String> {',
+    "        // a 'lifetime is not a char literal, and r#\"raw\"# is a string",
+    '        self.items.pop()',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
+/** `def name` with no parentheses, closed by its `end` line. */
+const CART_RB = [
+    'class Cart',
+    '  def add(item)',
+    '    @items << item',
+    '  end',
+    '',
+    '  def self.build',
+    '    new',
+    '  end',
+    'end',
+    '',
+].join('\n');
+
+/** A one-line binding plus its `name ::` signature, and a `data` declaration. */
+const STORE_HS = [
+    'module Store where',
+    '',
+    '{- a {- nested -} comment -}',
+    '',
+    'add :: Int -> Int -> Int',
+    'add x y = x + y',
+    '',
+    'data Cart = Cart { items :: [String] }',
+    '',
+].join('\n');
+
+/** `Class`/`Function` closed by `End …`, and `""` doubling. */
+const FORM_VB = [
+    'Public Class Form',
+    '    Public Function Add(ByVal x As Integer) As Integer',
+    '        Dim s As String = "a ""quoted"" } brace"',
+    '        Return x + 1',
+    '    End Function',
+    'End Class',
+    '',
+].join('\n');
+
+/** A heredoc whose body contains a `}` — shell takes no escape in `'…'`. */
+const RUN_SH = [
+    '#!/bin/sh',
+    "echo 'no escapes here }'",
+    'cat <<EOF',
+    'a } brace and "a quote"',
+    'EOF',
+    'run() {',
+    '  echo done',
+    '}',
+    '',
+].join('\n');
+
+/** `<<<EOT` heredocs and `#[Attribute]`, which is not a `#` comment. */
+const CART_PHP = [
+    '<?php',
+    '#[Attribute]',
+    'class Cart {',
+    '    public function add($item) {',
+    '        $sql = <<<EOT',
+    '        a } brace',
+    'EOT;',
+    '        return $item;',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
+/** A `}` inside a Python triple-quoted string, and an indented body. */
+const CART_PY = [
+    'class Cart:',
+    '    def add(self, item):',
+    '        text = """a } brace"""',
+    '        return item',
+    '',
+    'def build():',
+    '    return Cart()',
+    '',
+].join('\n');
+
+const DATA_YAML = [
+    '# a comment',
+    'server:',
+    '  host: localhost',
+    '  port: 8080',
+    '  options:',
+    '    tls: true',
+    '',
+    'other: value',
+    '',
+].join('\n');
+
+const DATA_TOML = [
+    '# a comment',
+    'title = "acme"',
+    '',
+    '[server]',
+    'host = "localhost"',
+    'port = 8080',
+    'tags = [',
+    '  "a",',
+    '  "b",',
+    ']',
+    '',
+    '[server.tls]',
+    'enabled = true',
+    '',
+].join('\n');
+
+const DATA_INI = [
+    '; a comment',
+    'root = /srv',
+    '',
+    '[server]',
+    'host = localhost',
+    'port: 8080',
+    '',
+    '[other]',
+    'key = value',
+    '',
+].join('\n');
+
+const CODE_GO = [
+    'package cart',
+    '',
+    'type Cart struct {',
+    '\tItems []string',
+    '}',
+    '',
+    '// Add appends an item; `}` in a raw string is not a brace.',
+    'func (c *Cart) Add(x string) {',
+    '\traw := `a } brace`',
+    '\tc.Items = append(c.Items, raw)',
+    '}',
+    '',
+].join('\n');
+
+const CODE_JAVA_TEXT_BLOCK = [
+    'public class Report {',
+    '    /** Render the report. */',
+    '    String render() {',
+    '        return """',
+    '            a } brace',
+    '            """;',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
 const BASE_FILES = {
     'README.md': simpleDoc(),
     'fixtures/one.md': 'real content\nsecond line\n',
@@ -220,7 +388,88 @@ const BASE_FILES = {
     'docs/GUIDE.md': simpleDoc('old guide'),
     'docs/notes.txt': 'not markdown\n',
     'docs/nested/DEEP.md': simpleDoc('deep'),
+    // Reference corpus: one file per construct the port must mask and index.
+    'fixtures/Nesting.zig': NESTING_ZIG,
+    'fixtures/Cart.rs': CART_RS,
+    'fixtures/Cart.rb': CART_RB,
+    'fixtures/Store.hs': STORE_HS,
+    'fixtures/Form.vb': FORM_VB,
+    'fixtures/run.sh': RUN_SH,
+    'fixtures/Cart.php': CART_PHP,
+    'fixtures/Cart.py': CART_PY,
+    'fixtures/Cart.go': CODE_GO,
+    'fixtures/Report.java': CODE_JAVA_TEXT_BLOCK,
+    'fixtures/app.yaml': DATA_YAML,
+    'fixtures/app.toml': DATA_TOML,
+    'fixtures/app.ini': DATA_INI,
 };
+
+/** Every `#<reference>` the reference corpus can be asked for. */
+const REFERENCE_CASES = [
+    // The per-type lexers: what they hide and what they still see.
+    ['fixtures/Nesting.zig', 'target'],
+    ['fixtures/Nesting.zig', 'decoy'],
+    ['fixtures/Cart.rs', 'Cart'],
+    ['fixtures/Cart.rs', 'Cart/add'],
+    ['fixtures/Cart.rs', 'Cart/items'],
+    ['fixtures/Cart.rs', 'Cart/remove'],
+    ['fixtures/Cart.rs', 'Cart/nope'],
+    ['fixtures/Cart.rs', 'add-'],
+    ['fixtures/Cart.rb', 'add'],
+    ['fixtures/Cart.rb', 'Cart/add'],
+    ['fixtures/Cart.rb', 'Cart/add-'],
+    ['fixtures/Cart.rb', 'build'],
+    ['fixtures/Cart.rb', 'missing'],
+    ['fixtures/Store.hs', 'add'],
+    ['fixtures/Store.hs', 'add+'],
+    ['fixtures/Store.hs', 'add-'],
+    ['fixtures/Store.hs', 'Cart'],
+    ['fixtures/Store.hs', 'data'],
+    ['fixtures/Form.vb', 'Form'],
+    ['fixtures/Form.vb', 'Form/Add'],
+    ['fixtures/Form.vb', 'Form/Add-'],
+    ['fixtures/run.sh', 'run'],
+    ['fixtures/run.sh', 'run-'],
+    ['fixtures/Cart.php', 'add'],
+    ['fixtures/Cart.php', 'Cart/add'],
+    ['fixtures/Cart.py', 'add'],
+    ['fixtures/Cart.py', 'add-'],
+    ['fixtures/Cart.py', 'build'],
+    ['fixtures/Cart.go', 'Cart/Add'],
+    ['fixtures/Cart.go', 'Cart/Add-'],
+    ['fixtures/Report.java', 'render'],
+    ['fixtures/Report.java', 'render-'],
+    // The data-format rules.
+    ['fixtures/app.yaml', 'server'],
+    ['fixtures/app.yaml', 'server.port'],
+    ['fixtures/app.yaml', 'server.options.tls'],
+    ['fixtures/app.yaml', 'missing'],
+    ['fixtures/app.yaml', 'server.missing'],
+    ['fixtures/app.toml', 'title'],
+    ['fixtures/app.toml', 'server'],
+    ['fixtures/app.toml', 'server.port'],
+    ['fixtures/app.toml', 'server.tags'],
+    ['fixtures/app.toml', 'server.tls'],
+    ['fixtures/app.toml', 'nope'],
+    ['fixtures/app.toml', 'server.nope'],
+    ['fixtures/app.ini', 'root'],
+    ['fixtures/app.ini', 'server'],
+    ['fixtures/app.ini', 'server.host'],
+    ['fixtures/app.ini', 'server.port'],
+    ['fixtures/app.ini', 'nope'],
+    ['fixtures/app.ini', 'server.nope'],
+    ['fixtures/app.ini', 'a.b.c'],
+    // Multi-key and modifier shapes, and the grammar errors.
+    ['fixtures/data.json', 'name,scripts.test'],
+    ['fixtures/data.json', 'keywords.1,keywords.0'],
+    ['fixtures/code.ts', 'Cart/toString++'],
+    ['fixtures/code.ts', 'add++'],
+    ['fixtures/big.md', 'table+'],
+    ['fixtures/one.md', 'a/b/c/d/e/f/g/h/i'],
+    ['fixtures/one.md', 'a//b'],
+    ['fixtures/one.md', 'add--'],
+];
+
 
 function fixedScenarios() {
     const cases = [];
@@ -557,6 +806,38 @@ function fixedScenarios() {
     });
     scenario('dash-dash-targets', ['--check', '--', 'README.md', 'docs/GUIDE.md']);
 
+    // Every `#<reference>` in the reference corpus: the per-type lexers, the
+    // path and modifier grammar, and the four data-format rules. One scenario
+    // per case, run in `--lenient` (report the failures), update and check
+    // modes (write what resolves, verify it).
+    for (const [target, reference] of REFERENCE_CASES) {
+        const label = `${target.replace(/[^A-Za-z0-9]+/g, '_')}-${reference.replace(/[^A-Za-z0-9]+/g, '_')}`;
+        scenario(`ref-${label}-lenient`, ['--lenient', 'README.md'], {
+            ...BASE_FILES,
+            'README.md': regionDoc(reference, 'stale', `./${target}`),
+        });
+        scenario(`ref-${label}-update`, ['README.md'], {
+            ...BASE_FILES,
+            'README.md': regionDoc(reference, 'stale', `./${target}`),
+        });
+        scenario(`ref-${label}-check`, ['--check', 'README.md'], {
+            ...BASE_FILES,
+            'README.md': regionDoc(reference, 'stale', `./${target}`),
+        });
+    }
+
+    // The contradiction warning: it resolves to the wider reading, is printed
+    // in every mode, and the run ends 1.
+    for (const reference of ['getUsers++-', 'a-+', 'a+-', 'a++-']) {
+        for (const mode of [['README.md'], ['--check', 'README.md'], ['--quiet', 'README.md'], ['--dry-run', 'README.md'], ['--out', 'out.md', 'README.md']]) {
+            const slug = mode[0].replace(/[^A-Za-z0-9]+/g, '_');
+            scenario(`warn-${reference.replace(/[^A-Za-z0-9]+/g, '_')}-${slug}`, mode, {
+                ...BASE_FILES,
+                'README.md': regionDoc(reference),
+            });
+        }
+    }
+
     return cases;
 }
 
@@ -646,16 +927,6 @@ function fuzzScenarios(seed, rounds) {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
-
-// The harness is disabled until the file-section-matching syntax is settled
-// (see plan/section-matching/01-freeze-porting.md). Bail out unless --force.
-if (!process.argv.includes('--force')) {
-    console.error(
-        'compare-zig: disabled — the Zig port does not yet track the current ' +
-        'file-section-matching syntax. Re-run with --force to override.',
-    );
-    process.exit(1);
-}
 
 rmSync(TMP, { recursive: true, force: true });
 mkdirSync(TMP, { recursive: true });

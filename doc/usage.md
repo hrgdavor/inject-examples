@@ -111,8 +111,9 @@ The entire published package, verbatim:
     "access": "public"
   },
   "scripts": {
-    "test": "node --test test.mjs && node tools/section-vectors.mjs --check",
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/zig-vectors.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
+    "zig:vectors": "node tools/zig-vectors.mjs",
     "oracle": "node tools/mask-oracle.mjs",
     "compare:zig": "node tools/compare-zig.mjs",
     "demo": "bun tools/build-demo.mjs",
@@ -445,7 +446,7 @@ Top-level keys and a nested one, from `package.json`:
   "name": "@hrg/inject-examples",
   "version": "1.1.0",
   "scripts": {
-    "test": "node --test test.mjs && node tools/section-vectors.mjs --check"
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/zig-vectors.mjs --check"
   }
 }
 ```

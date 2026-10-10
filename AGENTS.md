@@ -48,3 +48,30 @@
   calls a comment or string must be blank in our mask. `--emit` shows what it
   saw, `--self-test` proves the check can fail, `--no-oracle` needs no
   dependency.
+
+## The Zig port
+
+- **Porting is allowed and the JavaScript implementation is the source of truth.**
+  The goals, the gates and the rules for changing something after the port are in
+  [`plans/zig-port.md`](./plans/zig-port.md) — read it before touching `src/`.
+  The old freeze lives in `plans/section-matching/` and is history.
+- `src/` mirrors the JavaScript file for file, and the port must produce the same
+  bytes: `src/js.zig` (the UTF-16 code-unit runtime), `src/section.zig`
+  (`lib/section.mjs`), `src/scanner/{syntaxes,tokenizer,lexers}.zig`
+  (`src/js/scanner/`), `src/data_rules.zig` (the YAML/TOML/INI rules),
+  `src/root.zig` (`index.mjs`), `src/main.zig` (`cli.mjs`).
+- Three gates, all of which must be green:
+  `node --test test.mjs` (and `node tools/section-vectors.mjs --check`),
+  `zig build test` (which includes `src/section_vectors.zig`), and
+  `node tools/compare-zig.mjs` (JS vs Zig, byte for byte).
+- `src/section_vectors.zig` is **generated** — never edit it by hand.
+  `node tools/zig-vectors.mjs` writes it from
+  `test/vectors/section-vectors.json` plus the fixture text; `--check` fails
+  when it is stale. Regenerate it whenever the vectors change (which
+  `node tools/section-vectors.mjs` does) or a fixture changes.
+- `zig build` and `zig build test` need a writable Zig cache; in a sandbox
+  that blocks the global cache, pass
+  `--global-cache-dir .zig-cache/global --cache-dir .zig-cache/local`.
+- `.github/workflows/ci.yml` runs the three gates on every push and pull
+  request; `.github/workflows/release.yml` builds the tagged binaries.
+

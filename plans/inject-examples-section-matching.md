@@ -9,13 +9,21 @@ gate.
 block by a code anchor inside it (`"getUsers".equals(...)`, `{//getUsers`), and (c) ships
 as a reusable, hosted **JavaScript** matcher other projects can vendor.
 
-> ## Porting is stopped
-> This plan is JavaScript only. The Zig port in `src/` is frozen where it stands,
-> `tools/compare-zig.mjs` is turned **off** in step 1, and no Java/Zig/other-language
-> implementation is written, started or designed here. Porting resumes **in a separate
+> ## Porting was stopped — and is now allowed again
+> This plan is JavaScript only. The Zig port in `src/` was frozen where it stood,
+> `tools/compare-zig.mjs` was turned **off** in step 1, and no Java/Zig/other-language
+> implementation was written, started or designed here. Porting was to resume **in a separate
 > plan, written after this one is implemented and the JavaScript syntax is settled** — see
 > [§6 Porting freeze](#6-porting-freeze-in-force-for-this-whole-plan) and
 > [§9 What "settled" means](#9-what-settled-means-the-trigger-that-ends-the-freeze).
+>
+> **That separate plan is [`plans/zig-port.md`](./zig-port.md), and the freeze is lifted
+> (2026-10-10).** The syntax is settled; the harness is back on; the Zig port has been brought
+> to parity and is held there by gates. Everything in §6 below is history and no longer
+> binding, except where it says the JavaScript is the source of truth — that rule outlives the
+> freeze, and it is goal 1 of the port plan. This document is superseded by
+> [`plans/section-matching/README.md`](./section-matching/README.md); it is kept for history
+> and is not updated further.
 
 **Rule of the house, restated because it governs every decision here:** `index.mjs` +
 `cli.mjs` are the source of truth. Nothing is "fixed" anywhere else; a port that disagrees

@@ -17,407 +17,57 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-/// A JavaScript string, as UTF-16 code units. Indexing, `.length`, `slice` and
-/// the regular expressions all count in code units, so the port works in them
-/// and only transcodes at the edges (files in, files out).
-pub const Str = []const u16;
+const js = @import("js.zig");
+
+const section = @import("section.zig");
+const data_rules = @import("data_rules.zig");
+const lexers = @import("scanner/lexers.zig");
+
+/// The shared JavaScript runtime facts — code-unit strings, `String.prototype`
+/// equivalents, Node's UTF-8 — live in `js.zig` so every module of the port
+/// agrees on them. The names are re-exported here because `root.zig` is the
+/// module's public surface.
+pub const Str = js.Str;
+pub const Failure = js.Failure;
+pub const JsError = js.JsError;
+pub const Buf = js.Buf;
+
+pub const lit = js.lit;
+pub const dupAscii = js.dupAscii;
+pub const format = js.format;
+pub const eql = js.eql;
+pub const startsWith = js.startsWith;
+pub const endsWith = js.endsWith;
+pub const indexOf = js.indexOf;
+pub const indexOfUnit = js.indexOfUnit;
+pub const lastIndexOfUnit = js.lastIndexOfUnit;
+pub const slice = js.slice;
+pub const sliceFrom = js.sliceFrom;
+pub const asciiLower = js.asciiLower;
+pub const isAsciiDigit = js.isAsciiDigit;
+pub const isAsciiWord = js.isAsciiWord;
+pub const isIdentStart = js.isIdentStart;
+pub const isIdentPart = js.isIdentPart;
+pub const isWordBoundary = js.isWordBoundary;
+pub const parseDigitRun = js.parseDigitRun;
+pub const isWhitespace = js.isWhitespace;
+pub const isLineTerminator = js.isLineTerminator;
+pub const isJsonWhitespace = js.isJsonWhitespace;
+pub const trim = js.trim;
+pub const trimStart = js.trimStart;
+pub const trimEnd = js.trimEnd;
+pub const splitLines = js.splitLines;
+pub const joinLines = js.joinLines;
+pub const concat = js.concat;
+pub const crlfToLf = js.crlfToLf;
+pub const normalize = js.normalize;
+pub const stripTrailingCr = js.stripTrailingCr;
+pub const clampSlice = js.clampSlice;
+pub const utf8Decode = js.utf8Decode;
+pub const utf8Encode = js.utf8Encode;
 
 /// A fence is a line starting with this; three backticks, per CommonMark.
-pub const FENCE = "```";
-
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
-/// Where an `Error` would be thrown in JavaScript, the message is carried out
-/// through this.
-///
-/// `include` marks the JS `IncludeError`: the `no code block` and `unclosed
-/// code block` cases, which `lenient` mode turns into a skip. Errors the
-/// *document* itself carries (`marker not found`, `expected a fenced code block
-/// right after …`, a duplicate marker) are plain `Error`s and stay strict in
-/// every mode; a failure from resolving the marker's file or region is
-/// tolerated by `lenient` on its own path (see `updateDocument`).
-pub const Failure = struct {
-    message: Str = &.{},
-    include: bool = false,
-
-    pub fn set(self: *Failure, message: Str) error{Failed} {
-        self.message = message;
-        return error.Failed;
-    }
-};
-
-/// The Zig spelling of a JS `throw`, plus allocation failure.
-pub const JsError = error{Failed} || Allocator.Error;
-
-// ---------------------------------------------------------------------------
-// ASCII literals as code units
-// ---------------------------------------------------------------------------
-
-/// A compile-time ASCII literal as UTF-16 code units.
-pub fn lit(comptime text: []const u8) [text.len]u16 {
-    var out: [text.len]u16 = undefined;
-    for (text, 0..) |c, i| out[i] = c;
-    return out;
-}
-
-pub fn dupAscii(alloc: Allocator, text: []const u8) ![]u16 {
-    const out = try alloc.alloc(u16, text.len);
-    for (text, 0..) |c, i| out[i] = c;
-    return out;
-}
-
-// ---------------------------------------------------------------------------
-// Growable code-unit buffer
-// ---------------------------------------------------------------------------
-
-pub const Buf = struct {
-    list: std.ArrayList(u16) = .empty,
-
-    pub fn init() Buf {
-        return .{};
-    }
-
-    pub fn appendUnit(self: *Buf, alloc: Allocator, unit: u16) !void {
-        try self.list.append(alloc, unit);
-    }
-
-    pub fn appendUnits(self: *Buf, alloc: Allocator, units: Str) !void {
-        try self.list.appendSlice(alloc, units);
-    }
-
-    pub fn appendAscii(self: *Buf, alloc: Allocator, text: []const u8) !void {
-        for (text) |c| try self.list.append(alloc, c);
-    }
-
-    pub fn toOwned(self: *Buf, alloc: Allocator) ![]u16 {
-        return self.list.toOwnedSlice(alloc);
-    }
-
-    /// `String(n)` / `${n}` for a non-negative integer.
-    pub fn appendInt(self: *Buf, alloc: Allocator, value: usize) !void {
-        var digits: [24]u8 = undefined;
-        const text = std.fmt.bufPrint(&digits, "{d}", .{value}) catch unreachable;
-        try self.appendAscii(alloc, text);
-    }
-};
-
-/// `"..." + parts + "..."`: `{s}` takes a `Str`, `{d}` an integer. The template is
-/// ASCII and so is every number, so this is `std.fmt` restricted to what the
-/// messages need.
-pub fn format(alloc: Allocator, comptime template: []const u8, args: anytype) ![]u16 {
-    const specs = comptime blk: {
-        var found: [args.len][]const u8 = undefined;
-        var count: usize = 0;
-        var i: usize = 0;
-        while (i < template.len) : (i += 1) {
-            if (template[i] != '{') continue;
-            const close = std.mem.indexOfScalarPos(u8, template, i, '}') orelse
-                @compileError("unterminated format specifier");
-            found[count] = template[i + 1 .. close];
-            count += 1;
-            i = close;
-        }
-        if (count != args.len) @compileError("format argument count mismatch");
-        break :blk found;
-    };
-
-    var buf = Buf.init();
-    var next: usize = 0;
-    var i: usize = 0;
-    while (i < template.len) {
-        if (template[i] != '{') {
-            try buf.appendUnit(alloc, template[i]);
-            i += 1;
-            continue;
-        }
-        const close = std.mem.indexOfScalarPos(u8, template, i, '}') orelse unreachable;
-        inline for (args, 0..) |arg, index| {
-            if (next == index) {
-                const spec = comptime specs[index];
-                if (comptime std.mem.eql(u8, spec, "s")) {
-                    try buf.appendUnits(alloc, arg);
-                } else if (comptime std.mem.eql(u8, spec, "d")) {
-                    try buf.appendInt(alloc, arg);
-                } else {
-                    @compileError("unsupported format specifier: " ++ spec);
-                }
-            }
-        }
-        next += 1;
-        i = close + 1;
-    }
-    return buf.toOwned(alloc);
-}
-
-// ---------------------------------------------------------------------------
-// Code-unit helpers
-// ---------------------------------------------------------------------------
-
-pub fn eql(a: Str, b: Str) bool {
-    return std.mem.eql(u16, a, b);
-}
-
-pub fn startsWith(text: Str, prefix: Str) bool {
-    return std.mem.startsWith(u16, text, prefix);
-}
-
-pub fn endsWith(text: Str, suffix: Str) bool {
-    return std.mem.endsWith(u16, text, suffix);
-}
-
-pub fn indexOf(text: Str, needle: Str) ?usize {
-    return std.mem.indexOf(u16, text, needle);
-}
-
-pub fn indexOfUnit(text: Str, unit: u16) ?usize {
-    return std.mem.indexOfScalar(u16, text, unit);
-}
-
-pub fn lastIndexOfUnit(text: Str, unit: u16) ?usize {
-    return std.mem.lastIndexOfScalar(u16, text, unit);
-}
-
-pub fn slice(text: Str, from: usize, to: usize) Str {
-    return text[from..to];
-}
-
-/// `str.slice(from)` with `slice`'s clamping.
-pub fn sliceFrom(text: Str, from: usize) Str {
-    return text[@min(from, text.len)..];
-}
-
-/// True for the `/i` flag's folding: JavaScript folds ASCII only without the
-/// `u` flag, and the patterns here are ASCII either side.
-pub fn asciiLower(unit: u16) u16 {
-    return if (unit >= 'A' and unit <= 'Z') unit + 32 else unit;
-}
-
-pub fn isAsciiDigit(unit: u16) bool {
-    return unit >= '0' and unit <= '9';
-}
-
-pub fn isAsciiWord(unit: u16) bool {
-    return (unit >= 'a' and unit <= 'z') or (unit >= 'A' and unit <= 'Z') or
-        (unit >= '0' and unit <= '9') or unit == '_';
-}
-
-/// `\b` at code-unit offset `at`: one side a `\w`, the other not.
-pub fn isWordBoundary(text: Str, at: usize) bool {
-    const before = at > 0 and isAsciiWord(text[at - 1]);
-    const after = at < text.len and isAsciiWord(text[at]);
-    return before != after;
-}
-
-/// `Number(segment)` for a run of ASCII digits, saturated: JavaScript compares
-/// it against `source.length`, so any value past `usize` is "too large" either
-/// way, while a wrapping parse could land back inside the array.
-pub fn parseDigitRun(text: Str) usize {
-    var value: usize = 0;
-    for (text) |unit| {
-        if (!isAsciiDigit(unit)) break;
-        if (value > (std.math.maxInt(usize) - 9) / 10) return std.math.maxInt(usize);
-        value = value * 10 + (unit - '0');
-    }
-    return value;
-}
-
-/// The whitespace `String.prototype.trim` and `/\s/` share, dumped from V8:
-/// tab, LF, VT, FF, CR, space, NBSP, ogham space, U+2000-U+200A, LS, PS,
-/// narrow NBSP, medium mathematical space, ideographic space and U+FEFF.
-pub fn isWhitespace(unit: u16) bool {
-    return switch (unit) {
-        0x0009...0x000D, 0x0020, 0x00A0, 0x1680, 0x2000...0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF => true,
-        else => false,
-    };
-}
-
-/// The four line terminators, which `.` in a regular expression will not match.
-pub fn isLineTerminator(unit: u16) bool {
-    return unit == 0x000A or unit == 0x000D or unit == 0x2028 or unit == 0x2029;
-}
-
-/// What `JSON.parse` skips: the JSON grammar's whitespace, which is narrower
-/// than JavaScript's - U+FEFF, U+00A0 and U+2028 are *not* JSON whitespace, and
-/// V8 reports them as unexpected tokens.
-pub fn isJsonWhitespace(unit: u16) bool {
-    return unit == 0x0009 or unit == 0x000A or unit == 0x000D or unit == 0x0020;
-}
-
-pub fn trim(text: Str) Str {
-    return trimEnd(trimStart(text));
-}
-
-pub fn trimStart(text: Str) Str {
-    var start: usize = 0;
-    while (start < text.len and isWhitespace(text[start])) start += 1;
-    return text[start..];
-}
-
-pub fn trimEnd(text: Str) Str {
-    var end: usize = text.len;
-    while (end > 0 and isWhitespace(text[end - 1])) end -= 1;
-    return text[0..end];
-}
-
-/// `text.split('\n')` - never empty, and a trailing `\n` yields a final `""`.
-pub fn splitLines(alloc: Allocator, text: Str) ![]Str {
-    var lines = std.ArrayList(Str).empty;
-    var start: usize = 0;
-    while (indexOfUnit(text[start..], '\n')) |offset| {
-        try lines.append(alloc, text[start .. start + offset]);
-        start += offset + 1;
-    }
-    try lines.append(alloc, text[start..]);
-    return lines.toOwnedSlice(alloc);
-}
-
-/// `lines.join('\n')`.
-pub fn joinLines(alloc: Allocator, lines: []const Str) ![]u16 {
-    var buf = Buf.init();
-    for (lines, 0..) |line, index| {
-        if (index > 0) try buf.appendUnit(alloc, '\n');
-        try buf.appendUnits(alloc, line);
-    }
-    return buf.toOwned(alloc);
-}
-
-pub fn concat(alloc: Allocator, parts: []const Str) ![]u16 {
-    var buf = Buf.init();
-    for (parts) |part| try buf.appendUnits(alloc, part);
-    return buf.toOwned(alloc);
-}
-
-/// `text.replace(/\r\n/g, '\n')`.
-pub fn crlfToLf(alloc: Allocator, text: Str) ![]u16 {
-    var buf = Buf.init();
-    var i: usize = 0;
-    while (i < text.len) {
-        if (text[i] == '\r' and i + 1 < text.len and text[i + 1] == '\n') {
-            try buf.appendUnit(alloc, '\n');
-            i += 2;
-        } else {
-            try buf.appendUnit(alloc, text[i]);
-            i += 1;
-        }
-    }
-    return buf.toOwned(alloc);
-}
-
-/// `normalize`: LF endings and no trailing newline.
-pub fn normalize(alloc: Allocator, text: Str) ![]u16 {
-    const lf = try crlfToLf(alloc, text);
-    if (lf.len > 0 and lf[lf.len - 1] == '\n') return lf[0 .. lf.len - 1];
-    return lf;
-}
-
-/// `text.replace(/\r$/, '')`.
-pub fn stripTrailingCr(text: Str) Str {
-    if (text.len > 0 and text[text.len - 1] == '\r') return text[0 .. text.len - 1];
-    return text;
-}
-
-// ---------------------------------------------------------------------------
-// UTF-8, exactly as Node decodes and encodes it
-// ---------------------------------------------------------------------------
-
-/// `readFileSync(path, 'utf8')` / `Buffer.from(text, 'utf8')`: the WHATWG
-/// decoder, where every maximal invalid subsequence becomes one U+FFFD.
-pub fn utf8Decode(alloc: Allocator, bytes: []const u8) ![]u16 {
-    var out = std.ArrayList(u16).empty;
-    var i: usize = 0;
-    while (i < bytes.len) {
-        const lead = bytes[i];
-        if (lead < 0x80) {
-            try out.append(alloc, lead);
-            i += 1;
-            continue;
-        }
-        var extra: usize = 0;
-        var code: u32 = 0;
-        var lower: u8 = 0x80;
-        var upper: u8 = 0xBF;
-        if (lead >= 0xC2 and lead <= 0xDF) {
-            extra = 1;
-            code = lead & 0x1F;
-        } else if (lead >= 0xE0 and lead <= 0xEF) {
-            extra = 2;
-            code = lead & 0x0F;
-            if (lead == 0xE0) lower = 0xA0 else if (lead == 0xED) upper = 0x9F;
-        } else if (lead >= 0xF0 and lead <= 0xF4) {
-            extra = 3;
-            code = lead & 0x07;
-            if (lead == 0xF0) lower = 0x90 else if (lead == 0xF4) upper = 0x8F;
-        } else {
-            try out.append(alloc, 0xFFFD);
-            i += 1;
-            continue;
-        }
-
-        var taken: usize = 0;
-        while (taken < extra) : (taken += 1) {
-            const at = i + 1 + taken;
-            if (at >= bytes.len) break;
-            const byte = bytes[at];
-            const lo: u8 = if (taken == 0) lower else 0x80;
-            const hi: u8 = if (taken == 0) upper else 0xBF;
-            if (byte < lo or byte > hi) break;
-            code = (code << 6) | (byte & 0x3F);
-        }
-
-        if (taken == extra) {
-            if (code < 0x10000) {
-                try out.append(alloc, @intCast(code));
-            } else {
-                const rest = code - 0x10000;
-                try out.append(alloc, @intCast(0xD800 + (rest >> 10)));
-                try out.append(alloc, @intCast(0xDC00 + (rest & 0x3FF)));
-            }
-            i += 1 + extra;
-        } else {
-            try out.append(alloc, 0xFFFD);
-            i += 1 + taken;
-        }
-    }
-    return out.toOwnedSlice(alloc);
-}
-
-/// `Buffer.from(text, 'utf8')`: an unpaired surrogate is written as U+FFFD.
-pub fn utf8Encode(alloc: Allocator, text: Str) ![]u8 {
-    var out = std.ArrayList(u8).empty;
-    var i: usize = 0;
-    while (i < text.len) : (i += 1) {
-        var code: u32 = text[i];
-        if (code >= 0xD800 and code <= 0xDBFF) {
-            if (i + 1 < text.len and text[i + 1] >= 0xDC00 and text[i + 1] <= 0xDFFF) {
-                code = 0x10000 + ((code - 0xD800) << 10) + (text[i + 1] - 0xDC00);
-                i += 1;
-            } else {
-                code = 0xFFFD;
-            }
-        } else if (code >= 0xDC00 and code <= 0xDFFF) {
-            code = 0xFFFD;
-        }
-
-        if (code < 0x80) {
-            try out.append(alloc, @intCast(code));
-        } else if (code < 0x800) {
-            try out.append(alloc, @intCast(0xC0 | (code >> 6)));
-            try out.append(alloc, @intCast(0x80 | (code & 0x3F)));
-        } else if (code < 0x10000) {
-            try out.append(alloc, @intCast(0xE0 | (code >> 12)));
-            try out.append(alloc, @intCast(0x80 | ((code >> 6) & 0x3F)));
-            try out.append(alloc, @intCast(0x80 | (code & 0x3F)));
-        } else {
-            try out.append(alloc, @intCast(0xF0 | (code >> 18)));
-            try out.append(alloc, @intCast(0x80 | ((code >> 12) & 0x3F)));
-            try out.append(alloc, @intCast(0x80 | ((code >> 6) & 0x3F)));
-            try out.append(alloc, @intCast(0x80 | (code & 0x3F)));
-        }
-    }
-    return out.toOwnedSlice(alloc);
-}
+pub const FENCE = js.FENCE;
 
 // ---------------------------------------------------------------------------
 // Numbers, exactly as `JSON.stringify` prints them
@@ -1274,18 +924,6 @@ pub fn isAllDigits(text: Str) bool {
     return true;
 }
 
-/// `/^region:(.+)$/` - the name in a `#region:<name>` fragment, or null.
-pub fn regionFragment(fragment: Str) ?Str {
-    const prefix = comptime lit("region:");
-    if (!std.mem.startsWith(u16, fragment, &prefix)) return null;
-    const rest = fragment[prefix.len..];
-    if (rest.len == 0) return null;
-    for (rest) |unit| {
-        if (isLineTerminator(unit)) return null;
-    }
-    return rest;
-}
-
 /// `HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i`.
 pub fn hasScheme(text: Str) bool {
     if (text.len == 0) return false;
@@ -1355,8 +993,9 @@ pub fn parseMarker(line: Str) ?Marker {
     if (relative_path.len == 0) return null;
 
     if (fragment.len == 0) return .{ .raw = trim(line), .path = relative_path, .region = null };
-    const region = regionFragment(fragment) orelse return null;
-    return .{ .raw = trim(line), .path = relative_path, .region = region };
+    // The whole fragment is the reference: markers carry `#<reference>`
+    // directly, with no `region:` keyword in between.
+    return .{ .raw = trim(line), .path = relative_path, .region = fragment };
 }
 
 fn dropDotSlash(text: Str) Str {
@@ -1738,11 +1377,16 @@ fn classMatches(interior: Str, unit: u16) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Regions
+// Regions and code sections
 // ---------------------------------------------------------------------------
+//
+// The region grammar, the block scanner and the section resolver all live in
+// `section.zig` (the twin of `lib/section.mjs`); these functions are the
+// module's public surface for them, kept spelling-for-spelling with the
+// JavaScript exports.
 
 /// `extractRegion`: the lines strictly between `#region <name>` and the next
-/// `#endregion`, or the exact error message.
+/// `#endregion`.
 pub fn extractRegion(alloc: Allocator, text: Str, name: Str, failure: *Failure) JsError![]u16 {
     const lf = try crlfToLf(alloc, text);
     const lines = try splitLines(alloc, lf);
@@ -1750,7 +1394,7 @@ pub fn extractRegion(alloc: Allocator, text: Str, name: Str, failure: *Failure) 
     var starts = std.ArrayList(usize).empty;
     var ends = std.ArrayList(usize).empty;
     for (lines, 0..) |line, index| {
-        const directive = regionDirective(line) orelse continue;
+        const directive = section.regionDirective(line) orelse continue;
         switch (directive.kind) {
             .region => if (eql(directive.name, name)) try starts.append(alloc, index),
             .endregion => try ends.append(alloc, index),
@@ -1782,7 +1426,7 @@ pub fn extractRegion(alloc: Allocator, text: Str, name: Str, failure: *Failure) 
     ));
 
     for (lines[starts.items[0] + 1 .. close]) |line| {
-        const directive = regionDirective(line) orelse continue;
+        const directive = section.regionDirective(line) orelse continue;
         if (directive.kind == .region) {
             return failure.set(try format(
                 alloc,
@@ -1795,29 +1439,29 @@ pub fn extractRegion(alloc: Allocator, text: Str, name: Str, failure: *Failure) 
     return joinLines(alloc, lines[starts.items[0] + 1 .. close]);
 }
 
-/// `hasRegionDirective`: does the file carry an explicit `#region <name>`?
-pub fn hasRegionDirective(alloc: Allocator, text: Str, name: Str) !bool {
-    const lf = try crlfToLf(alloc, text);
-    const lines = try splitLines(alloc, lf);
-    for (lines) |line| {
-        const directive = regionDirective(line) orelse continue;
-        if (directive.kind == .region and eql(directive.name, name)) return true;
-    }
-    return false;
-}
-
+/// The four readings a scope modifier asks for. `section.zig` has its own
+/// spelling of the same enum; the two are kept identical on purpose.
 pub const Scope = enum { declaration, body, annotated, documented };
 
+fn toSectionScope(scope: Scope) section.Scope {
+    return switch (scope) {
+        .declaration => .declaration,
+        .body => .body,
+        .annotated => .annotated,
+        .documented => .documented,
+    };
+}
+
+/// `codeReference`: split `-`, `+` or `++` off the front of a reference. Only
+/// the single-character modifiers name a scope of their own; `++` is the
+/// documented form.
 pub const Reference = struct {
     scope: Scope,
     name: Str,
 };
 
-/// `codeReference`: split `-`, `+` or `++` off the front of a reference. Only
-/// the single-character modifiers name a scope of their own; `++` is the
-/// documented form.
 pub fn codeReference(reference: Str) Reference {
-    if (std.mem.startsWith(u16, reference, &lit("++"))) {
+    if (startsWith(reference, &lit("++"))) {
         return .{ .scope = .documented, .name = reference[2..] };
     }
     if (reference.len > 0 and reference[0] == '-') {
@@ -1829,375 +1473,6 @@ pub fn codeReference(reference: Str) Reference {
     return .{ .scope = .declaration, .name = reference };
 }
 
-// ---------------------------------------------------------------------------
-// Reading code declarations
-// ---------------------------------------------------------------------------
-
-/// The offset of the line `offset` falls on, given each line's start.
-fn lineOf(starts: []const usize, offset: usize) usize {
-    var low: usize = 0;
-    var high: usize = starts.len - 1;
-    while (low < high) {
-        const middle = (low + high + 1) / 2;
-        if (starts[middle] <= offset) low = middle else high = middle - 1;
-    }
-    return low;
-}
-
-/// How far a line is indented.
-fn indentWidth(line: Str) usize {
-    return line.len - trimStart(line).len;
-}
-
-/// The balance of `()`, `[]` and `{}` on one line.
-fn bracketBalance(line: Str) isize {
-    var depth: isize = 0;
-    for (line) |unit| {
-        switch (unit) {
-            '(', '[', '{' => depth += 1,
-            ')', ']', '}' => depth -= 1,
-            else => {},
-        }
-    }
-    return depth;
-}
-
-/// The index of the first non-blank line at or after `from`, or null.
-fn nextNonBlank(lines: []const Str, from: usize) ?usize {
-    var index = from;
-    while (index < lines.len) : (index += 1) {
-        if (trim(lines[index]).len != 0) return index;
-    }
-    return null;
-}
-
-/// The offset at which the line holding `offset` ends.
-fn endOfLine(text: Str, offset: usize) usize {
-    const newline = indexOfUnit(text[offset..], '\n') orelse return text.len;
-    return offset + newline;
-}
-
-/// The offset of the bracket that closes the one at `open`, or null.
-fn matchingBracket(text: Str, open: usize, closer: u16) ?usize {
-    var depth: isize = 0;
-    var index = open;
-    while (index < text.len) : (index += 1) {
-        if (text[index] == text[open]) depth += 1 else if (text[index] == closer) {
-            depth -= 1;
-            if (depth == 0) return index;
-        }
-    }
-    return null;
-}
-
-/// `text` with every comment and string literal blanked to spaces, newlines
-/// kept, so offsets and line structure are untouched.
-fn strippedCode(alloc: Allocator, text: Str) ![]u16 {
-    const out = try alloc.dupe(u16, text);
-
-    const blank = struct {
-        fn run(target: []u16, from: usize, to: usize) void {
-            var i = from;
-            while (i < to and i < target.len) : (i += 1) {
-                if (target[i] != '\n') target[i] = ' ';
-            }
-        }
-    }.run;
-
-    var i: usize = 0;
-    while (i < text.len) {
-        const unit = text[i];
-        const next: u16 = if (i + 1 < text.len) text[i + 1] else 0;
-        if (unit == '/' and next == '/') {
-            const end = endOfLine(text, i);
-            blank(out, i, end);
-            i = end;
-        } else if (unit == '/' and next == '*') {
-            const close = indexOf(text[i + 2 ..], &lit("*/"));
-            const end = if (close) |offset| i + 2 + offset + 2 else text.len;
-            blank(out, i, end);
-            i = end;
-        } else if (unit == '#' and next != '[') {
-            const end = endOfLine(text, i);
-            blank(out, i, end);
-            i = end;
-        } else if (unit == '"' or unit == '\'' or unit == '`') {
-            // A triple quote is a Python or Markdown style fence.
-            const triple = i + 3 <= text.len and text[i + 1] == unit and text[i + 2] == unit;
-            const quote_len: usize = if (triple) 3 else 1;
-            var j = i + quote_len;
-            while (j < text.len) {
-                if (text[j] == '\\') {
-                    j += 2;
-                    continue;
-                }
-                if (j + quote_len <= text.len and matchesAt(text, j, unit, quote_len)) {
-                    j += quote_len;
-                    break;
-                }
-                j += 1;
-            }
-            const end = @min(j, text.len);
-            blank(out, i, end);
-            i = end;
-        } else {
-            i += 1;
-        }
-    }
-    return out;
-}
-
-fn matchesAt(text: Str, at: usize, unit: u16, count: usize) bool {
-    var index: usize = 0;
-    while (index < count) : (index += 1) {
-        if (at + index >= text.len or text[at + index] != unit) return false;
-    }
-    return true;
-}
-
-pub const DeclarationKind = enum { class, method };
-
-pub const Declaration = struct {
-    kind: DeclarationKind,
-    header_from: usize,
-};
-
-/// Whether one stripped line declares something named `name`, and where the
-/// declaration's header ends.
-fn declarationOn(alloc: Allocator, source: Str, start: usize, length: usize, name: Str) !?Declaration {
-    if (name.len == 0 or isNotAName(name)) return null;
-    const line = source[start .. start + length];
-
-    if (matchDeclarationKeyword(line)) |keyword| {
-        if (eql(keyword.name, name)) {
-            return .{ .kind = .class, .header_from = start + keyword.index + keyword.length };
-        }
-    }
-
-    // `name(...)` - a method, function, constructor or object-literal method.
-    var from: usize = 0;
-    while (nextCallMatch(line, name, from)) |match| {
-        const at = start + match.name_at;
-        const before = source[start..at];
-        // A Go receiver, `func (c *Cart) Add(...)`, belongs to the declaration
-        // but not to the name.
-        const prefix = try withFuncReceiver(alloc, before);
-        if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or isStatementBefore(prefix))) {
-            from = match.paren + 1;
-            continue;
-        }
-        const close = matchingBracket(source, start + match.paren, ')') orelse {
-            from = match.paren + 1;
-            continue;
-        };
-        return .{ .kind = .method, .header_from = close + 1 };
-    }
-
-    // `const name = (...) =>`, a class field `name = (...) =>`, `name = function ...`
-    // - an assignment that defines a function.
-    while (nextAssignedMatch(line, name, from)) |match| {
-        const after = start + match.end;
-        const rest = source[after .. start + length];
-        const arrow = indexOf(rest, &lit("=>"));
-        const keyword = functionKeywordEnd(rest);
-        if (arrow != null and (keyword == null or arrow.? < keyword.?)) {
-            return .{ .kind = .method, .header_from = after + arrow.? };
-        }
-        if (keyword) |end| return .{ .kind = .method, .header_from = after + end };
-    }
-    return null;
-}
-
-/// The range a declaration found on `declLine` occupies.
-pub const Range = struct {
-    kind: DeclarationKind,
-    decl_line: usize,
-    end_line: usize,
-    open: ?usize = null,
-    close: ?usize = null,
-    open_line: ?usize = null,
-    expression: ?usize = null,
-    indented: bool = false,
-};
-
-/// The range of a declaration whose body is the braces opened at `open`.
-fn braced(source: Str, starts: []const usize, kind: DeclarationKind, decl_line: usize, open: usize) ?Range {
-    const close = matchingBracket(source, open, '}') orelse return null;
-    return .{
-        .kind = kind,
-        .decl_line = decl_line,
-        .open_line = lineOf(starts, open),
-        .open = open,
-        .close = close,
-        .end_line = lineOf(starts, close),
-    };
-}
-
-fn declarationRange(
-    lines: []const Str,
-    source: Str,
-    starts: []const usize,
-    decl_line: usize,
-    declaration: Declaration,
-) ?Range {
-    const from = declaration.header_from;
-    const line_end = endOfLine(source, starts[decl_line]);
-    const rest = source[from..@max(from, line_end)];
-
-    // The earliest of `{`, `;` and `=>`, in the pattern's own order on a tie.
-    const brace_at = indexOf(rest, &lit("{"));
-    const semi_at = indexOf(rest, &lit(";"));
-    const arrow_at = indexOf(rest, &lit("=>"));
-
-    var kind: enum { brace, none, arrow } = undefined;
-    var at: usize = std.math.maxInt(usize);
-    if (arrow_at) |offset| {
-        if (offset < at) {
-            at = offset;
-            kind = .arrow;
-        }
-    }
-    if (semi_at) |offset| {
-        if (offset < at) {
-            at = offset;
-            kind = .none;
-        }
-    }
-    if (brace_at) |offset| {
-        if (offset < at) {
-            at = offset;
-            kind = .brace;
-        }
-    }
-    if (at == std.math.maxInt(usize)) {
-        // Nothing on the declaration's own line: an Allman brace, or an
-        // indented block on the next non-blank line (Python, Ruby, ...).
-        const next = nextNonBlank(lines, decl_line + 1) orelse return null;
-        if (startsWithBrace(lines[next])) {
-            const brace = indexOfUnit(lines[next], '{').?;
-            return braced(source, starts, declaration.kind, decl_line, starts[next] + brace);
-        }
-        const indent = indentWidth(lines[decl_line]);
-        if (indentWidth(lines[next]) > indent) {
-            var end = next;
-            var index = next + 1;
-            while (index < lines.len) : (index += 1) {
-                if (trim(lines[index]).len == 0) continue; // a blank line inside
-                if (indentWidth(lines[index]) <= indent) break;
-                end = index;
-            }
-            return .{
-                .kind = declaration.kind,
-                .decl_line = decl_line,
-                .end_line = end,
-                .indented = true,
-            };
-        }
-        return null;
-    }
-
-    switch (kind) {
-        .none => return null, // a declaration with no body
-        .arrow => {
-            const body = indexOf(rest[at + 2 ..], &lit("{"));
-            if (body == null) {
-                // An expression-bodied arrow function: the body is the
-                // expression.
-                return .{
-                    .kind = declaration.kind,
-                    .decl_line = decl_line,
-                    .end_line = decl_line,
-                    .expression = from + at + 2,
-                };
-            }
-            return braced(source, starts, declaration.kind, decl_line, from + at + 2 + body.?);
-        },
-        .brace => return braced(source, starts, declaration.kind, decl_line, from + at),
-    }
-}
-
-/// The first line of the annotation block directly above `declLine`, or null.
-fn annotationStart(lines: []const Str, decl_line: usize) ?usize {
-    var found: ?usize = null;
-    var index = decl_line;
-    while (index > 0) {
-        index -= 1;
-        if (trim(lines[index]).len == 0) break;
-        if (isAnnotationLine(lines[index])) {
-            found = index;
-            break;
-        }
-    }
-    const first = found orelse return null;
-
-    var start = first;
-    while (start > 0) {
-        const previous = start - 1;
-        if (trim(lines[previous]).len == 0 or !isAnnotationLine(lines[previous])) break;
-        start = previous;
-    }
-
-    // The block must be annotations all the way: a statement between the
-    // declaration and the annotation means there is no annotation block.
-    var depth: isize = 0;
-    var i = start;
-    while (i < decl_line) : (i += 1) {
-        if (depth == 0 and !isAnnotationLine(lines[i])) return null;
-        depth += bracketBalance(lines[i]);
-    }
-    return if (depth == 0) start else null;
-}
-
-/// The first line of the doc comment directly above `top`, or null.
-fn docCommentStart(lines: []const Str, top: usize) ?usize {
-    if (top == 0) return null;
-    const previous = top - 1;
-    if (trim(lines[previous]).len == 0) return null;
-
-    if (isDocCommentRun(lines[previous])) {
-        var start = previous;
-        while (start > 0 and isDocCommentRun(lines[start - 1])) start -= 1;
-        return start;
-    }
-    if (!endsWithBlockCommentEnd(lines[previous])) return null;
-    var index = previous + 1;
-    while (index > 0) {
-        index -= 1;
-        if (trim(lines[index]).len == 0) return null;
-        if (isDocCommentOpen(lines[index])) return index;
-    }
-    return null;
-}
-
-/// The text one declaration contributes, under one scope.
-fn renderDeclaration(
-    alloc: Allocator,
-    lines: []const Str,
-    source: Str,
-    range: Range,
-    scope: Scope,
-) ![]u16 {
-    if (scope == .body) {
-        if (range.indented) return joinLines(alloc, lines[range.decl_line + 1 .. range.end_line + 1]);
-        if (range.expression) |expression| {
-            return alloc.dupe(u16, trim(source[expression..endOfLine(source, expression)]));
-        }
-        if (range.open_line.? == range.end_line) {
-            return alloc.dupe(u16, trim(source[range.open.? + 1 .. range.close.?]));
-        }
-        return joinLines(alloc, lines[range.open_line.? + 1 .. range.end_line]);
-    }
-
-    var start = range.decl_line;
-    if (scope == .annotated or scope == .documented) {
-        if (annotationStart(lines, range.decl_line)) |annotated| start = annotated;
-        if (scope == .documented) {
-            if (docCommentStart(lines, start)) |documented| start = documented;
-        }
-    }
-    return joinLines(alloc, lines[start .. range.end_line + 1]);
-}
-
 /// `extractDeclaration`: the text a named declaration occupies, or null.
 pub fn extractDeclaration(
     alloc: Allocator,
@@ -2206,62 +1481,34 @@ pub fn extractDeclaration(
     scope: Scope,
     failure: *Failure,
 ) JsError!?[]u16 {
-    const source = try crlfToLf(alloc, text);
-    const lines = try splitLines(alloc, source);
-    const starts = try alloc.alloc(usize, lines.len);
-    var offset: usize = 0;
-    for (lines, 0..) |line, index| {
-        starts[index] = offset;
-        offset += line.len + 1;
-    }
-    const stripped = try strippedCode(alloc, source);
-
-    var found = std.ArrayList(Range).empty;
-    for (lines, 0..) |line, index| {
-        const declaration = (try declarationOn(alloc, stripped, starts[index], line.len, name)) orelse continue;
-        if (declarationRange(lines, stripped, starts, index, declaration)) |range| {
-            try found.append(alloc, range);
-        }
-    }
-    if (found.items.len == 0) return null;
-
-    var classes = std.ArrayList(Range).empty;
-    for (found.items) |range| {
-        if (range.kind == .class) try classes.append(alloc, range);
-    }
-    const chosen = if (classes.items.len > 0) classes.items else found.items;
-    if (chosen.len > 1) {
-        return failure.set(try format(
-            alloc,
-            "\"{s}\" is declared {d} times; names must be unique",
-            .{ name, chosen.len },
-        ));
-    }
-    return try renderDeclaration(alloc, lines, stripped, chosen[0], scope);
+    var section_failure = section.Failure{};
+    const found = section.extractDeclaration(alloc, text, name, toSectionScope(scope), &section_failure) catch |err| switch (err) {
+        error.Failed, error.Grammar => return failure.set(section_failure.message),
+        else => |other| return other,
+    };
+    return found;
 }
 
-/// `extractCodeRegion`: a region directive first, then a named declaration.
-pub fn extractCodeRegion(alloc: Allocator, text: Str, region: Str, failure: *Failure) JsError![]u16 {
-    const reference = codeReference(region);
-    if (reference.name.len == 0) {
-        return failure.set(try format(alloc, "\"#region:{s}\" names nothing", .{region}));
-    }
-
-    if (try hasRegionDirective(alloc, text, region)) return extractRegion(alloc, text, region, failure);
-    if (!eql(reference.name, region) and try hasRegionDirective(alloc, text, reference.name)) {
-        return extractRegion(alloc, text, reference.name, failure);
-    }
-
-    if (try extractDeclaration(alloc, text, reference.name, reference.scope, failure)) |declaration| {
-        return declaration;
-    }
-    return failure.set(try format(
+/// `extractCodeRegion`: the section resolver, with the file type's lexer.
+///
+/// An explicit `#region <name>` directive wins wherever the file has one, and
+/// the reference's scope modifier is ignored for it. Otherwise the reference is
+/// matched by the contract's precedence — declarations, condition literals,
+/// comment anchors — and a reference that matches nothing is an error.
+pub fn extractCodeRegion(alloc: Allocator, text: Str, region: Str, path: Str, failure: *Failure) JsError![]u16 {
+    var section_failure = section.Failure{};
+    const resolved = section.resolveSection(
         alloc,
-        "no \"#region {s}\" found, and no method or inner class named \"{s}\"",
-        .{ reference.name, reference.name },
-    ));
+        text,
+        region,
+        lexers.lexerFor(path),
+        &section_failure,
+    ) catch |err| switch (err) {
+        error.Failed, error.Grammar => return failure.set(section_failure.message),
+        else => |other| return other,
+    };
+    return resolved;
 }
-
 // ---------------------------------------------------------------------------
 // The JSON rule
 // ---------------------------------------------------------------------------
@@ -2352,7 +1599,7 @@ fn mergeSelections(alloc: Allocator, left: *const JsonValue, right: *const JsonV
     return right;
 }
 
-/// `extractJsonRegion`: a `#region:a,b.c` reference is a list of dotted paths.
+/// `extractJsonRegion`: a `#a,b.c` reference is a list of dotted paths.
 pub fn extractJsonRegion(alloc: Allocator, text: Str, region: Str, failure: *Failure) JsError![]u16 {
     var paths = std.ArrayList(Str).empty;
     var from: usize = 0;
@@ -2365,7 +1612,7 @@ pub fn extractJsonRegion(alloc: Allocator, text: Str, region: Str, failure: *Fai
         from += comma.? + 1;
     }
     if (paths.items.len == 0) {
-        return failure.set(try format(alloc, "\"#region:{s}\" names no keys", .{region}));
+        return failure.set(try format(alloc, "\"#{s}\" names no keys", .{region}));
     }
 
     const root = parseJson(alloc, text, failure) catch |err| switch (err) {
@@ -2404,9 +1651,10 @@ pub fn extractJsonRegion(alloc: Allocator, text: Str, region: Str, failure: *Fai
 // The rule registry
 // ---------------------------------------------------------------------------
 
-/// A rule's `resolve`: the text a `#region:<reference>` stands for, or the
-/// exact message of the `Error` JavaScript would throw.
-pub const Resolve = *const fn (Allocator, Str, Str, *Failure) JsError![]u16;
+/// A rule's `resolve`: the text a `#<reference>` stands for, or the exact
+/// message of the `Error` JavaScript would throw. The path comes along so the
+/// code rule can pick the file type's lexer.
+pub const Resolve = *const fn (Allocator, Str, Str, Str, *Failure) JsError![]u16;
 
 pub const Rule = struct {
     name: []const u8,
@@ -2414,15 +1662,65 @@ pub const Rule = struct {
     resolve: Resolve,
 };
 
+/// The code rule's lexer is chosen by path, so the three data-format rules take
+/// the same shape and simply ignore it.
+fn yamlRuleResolve(alloc: Allocator, text: Str, reference: Str, path: Str, failure: *Failure) JsError![]u16 {
+    _ = path;
+    var section_failure = section.Failure{};
+    return data_rules.extractYamlRegion(alloc, text, reference, &section_failure) catch |err| {
+        return relaySectionError(err, section_failure, failure);
+    };
+}
+
+fn tomlRuleResolve(alloc: Allocator, text: Str, reference: Str, path: Str, failure: *Failure) JsError![]u16 {
+    _ = path;
+    var section_failure = section.Failure{};
+    return data_rules.extractTomlRegion(alloc, text, reference, &section_failure) catch |err| {
+        return relaySectionError(err, section_failure, failure);
+    };
+}
+
+fn iniRuleResolve(alloc: Allocator, text: Str, reference: Str, path: Str, failure: *Failure) JsError![]u16 {
+    _ = path;
+    var section_failure = section.Failure{};
+    return data_rules.extractIniRegion(alloc, text, reference, &section_failure) catch |err| {
+        return relaySectionError(err, section_failure, failure);
+    };
+}
+
+/// The data rules report through a `section.Failure`; the registry's callers
+/// read the module's own. The two carry the same message.
+fn relaySectionError(err: section.Error, section_failure: section.Failure, failure: *Failure) JsError {
+    return switch (err) {
+        error.Failed, error.Grammar => failure.set(section_failure.message),
+        else => |other| other,
+    };
+}
+
+/// `extractJsonRegion` as a rule: the JSON rule ignores the path.
+pub fn extractJsonRegionWithPath(alloc: Allocator, text: Str, reference: Str, path: Str, failure: *Failure) JsError![]u16 {
+    _ = path;
+    return extractJsonRegion(alloc, text, reference, failure);
+}
+
 /// The default rule, for source code and for every file type no other rule
-/// claims: region directives and named declarations both resolve here.
+/// claims: region directives and named sections both resolve here.
 pub const CODE_RULE = Rule{ .name = "code", .extensions = &.{}, .resolve = extractCodeRegion };
 
 /// The rule for `.json`: a region is a dotted list of keys.
-pub const JSON_RULE = Rule{ .name = "json", .extensions = &.{"json"}, .resolve = extractJsonRegion };
+pub const JSON_RULE = Rule{ .name = "json", .extensions = &.{"json"}, .resolve = extractJsonRegionWithPath };
+
+/// The rule for YAML: a region is a dotted path to a key.
+pub const YAML_RULE = Rule{ .name = "yaml", .extensions = &.{ "yaml", "yml" }, .resolve = yamlRuleResolve };
+
+/// The rule for TOML: a key, or a `[table]` and its key.
+pub const TOML_RULE = Rule{ .name = "toml", .extensions = &.{"toml"}, .resolve = tomlRuleResolve };
+
+/// The rule for INI: `section.key`, a section, or a leading key.
+pub const INI_RULE = Rule{ .name = "ini", .extensions = &.{ "ini", "cfg", "properties" }, .resolve = iniRuleResolve };
 
 /// The built-in rules, most specific first; `code` is the fallback.
-pub const REGION_RULES = [_]Rule{ JSON_RULE, CODE_RULE };
+pub const REGION_RULES = [_]Rule{ JSON_RULE, YAML_RULE, TOML_RULE, INI_RULE, CODE_RULE };
 
 /// The rule that resolves a reference in `path`.
 pub fn ruleFor(path: Str, rules: []const Rule) Rule {
@@ -2822,10 +2120,48 @@ pub fn resolveMarker(
     rule: Rule,
     failure: *Failure,
 ) JsError![]u16 {
+    return (try planMarker(alloc, marker, read, rule, failure)).text;
+}
+
+/// `planMarker`: the text a marker stands for, plus the section warning the
+/// code rule may carry when a reference contradicts itself (§11).
+pub const MarkerPlan = struct {
+    text: []u16,
+    warning: ?section.Reference.Warning = null,
+};
+
+pub fn planMarker(
+    alloc: Allocator,
+    marker: Marker,
+    read: Reader,
+    rule: Rule,
+    failure: *Failure,
+) JsError!MarkerPlan {
     const bytes = try read.read(alloc, try utf8Encode(alloc, marker.path), failure);
     const text = try utf8Decode(alloc, bytes);
-    if (marker.region) |region| return rule.resolve(alloc, text, region, failure);
-    return normalize(alloc, text);
+    const region = marker.region orelse return .{ .text = try normalize(alloc, text) };
+
+    // The built-in code rule is the one whose reference can contradict itself;
+    // a caller-supplied rule for another type resolves to a plain string.
+    if (isCodeRule(rule)) {
+        var section_failure = section.Failure{};
+        const plan = section.planSection(
+            alloc,
+            text,
+            region,
+            lexers.lexerFor(marker.path),
+            &section_failure,
+        ) catch |err| switch (err) {
+            error.Failed, error.Grammar => return failure.set(section_failure.message),
+            else => |other| return other,
+        };
+        return .{ .text = plan.text, .warning = plan.reference.warning };
+    }
+    return .{ .text = try rule.resolve(alloc, text, region, marker.path, failure) };
+}
+
+fn isCodeRule(rule: Rule) bool {
+    return std.mem.eql(u8, rule.name, CODE_RULE.name);
 }
 
 /// What `updateDocument` reports for one marker.
@@ -2836,6 +2172,8 @@ pub const Entry = struct {
     skipped: bool,
     /// The cause when `lenient` turned a broken include into a skip.
     failure: ?Str = null,
+    /// A contradictory modifier: a finding, reported in every mode.
+    warning: ?Str = null,
 };
 
 pub const DocumentResult = struct {
@@ -2933,7 +2271,7 @@ pub fn updateDocument(
         }
 
         var include_failure = Failure{};
-        const content = resolveMarker(
+        const plan = planMarker(
             alloc,
             marker,
             read,
@@ -2955,6 +2293,8 @@ pub fn updateDocument(
             },
             else => return err,
         };
+        const content = plan.text;
+        const warning: ?Str = if (plan.warning) |found| found.message else null;
 
         var inject_failure = Failure{};
         const injected = injectInto(
@@ -2979,6 +2319,7 @@ pub fn updateDocument(
                     .changed = false,
                     .skipped = true,
                     .failure = inject_failure.message,
+                    .warning = warning,
                 });
                 continue;
             },
@@ -2991,6 +2332,7 @@ pub fn updateDocument(
             .content = content,
             .changed = injected.changed,
             .skipped = false,
+            .warning = warning,
         });
     }
 
@@ -3387,8 +2729,8 @@ test "extractCodeRegion prefers an explicit region directive" {
     var failure = Failure{};
 
     const text = try context.units("// #region add\nthe region body\n// #endregion\n\nvoid add() { body(); }");
-    try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("add"), &failure));
-    try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("-add"), &failure));
+    try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("add"), try context.units("x.java"), &failure));
+    try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("-add"), try context.units("x.java"), &failure));
 }
 
 test "extractCodeRegion reads declarations and fails loudly on nothing" {
@@ -3401,19 +2743,19 @@ test "extractCodeRegion reads declarations and fails loudly on nothing" {
 
     try expectText(
         "    @Override\n    public String toString() {\n        return String.join(\",\", items);\n    }",
-        try extractCodeRegion(alloc, java, try context.units("+toString"), &failure),
+        try extractCodeRegion(alloc, java, try context.units("+toString"), try context.units("x.java"), &failure),
     );
 
     failure = Failure{};
-    try std.testing.expectError(error.Failed, extractCodeRegion(alloc, java, try context.units("missing"), &failure));
+    try std.testing.expectError(error.Failed, extractCodeRegion(alloc, java, try context.units("missing"), try context.units("x.java"), &failure));
     try expectFailure(
-        "no \"#region missing\" found, and no method or inner class named \"missing\"",
+        "no \"#region missing\" found, and no section named \"missing\"",
         failure,
     );
 
     failure = Failure{};
-    try std.testing.expectError(error.Failed, extractCodeRegion(alloc, java, try context.units("+"), &failure));
-    try expectFailure("\"#region:+\" names nothing", failure);
+    try std.testing.expectError(error.Failed, extractCodeRegion(alloc, java, try context.units("+"), try context.units("x.java"), &failure));
+    try expectFailure("\"#+\" names nothing", failure);
 }
 
 test "extractJsonRegion selects top-level keys and forms valid JSON" {
@@ -3456,7 +2798,7 @@ test "extractJsonRegion fails loudly on missing keys and bad documents" {
         .{ .region = "scripts.nope", .message = "\"scripts.nope\": no key \"nope\"" },
         .{ .region = "keywords.x", .message = "\"keywords.x\": \"x\" is not an array index" },
         .{ .region = "keywords.9", .message = "\"keywords.9\": no element 9" },
-        .{ .region = ",", .message = "\"#region:,\" names no keys" },
+        .{ .region = ",", .message = "\"#,\" names no keys" },
         .{ .region = "name.deeper", .message = "\"name.deeper\": cannot read \"deeper\"" },
     };
     for (cases) |case| {
@@ -3490,20 +2832,30 @@ test "extractJsonRegion fails loudly on missing keys and bad documents" {
     try expectFailure("the top-level JSON value is not an object", failure);
 }
 
-test "ruleFor sends .json to the JSON rule and everything else to code" {
+test "ruleFor sends each data format to its own rule and everything else to code" {
     var context: TestContext = undefined;
     context.init();
     defer context.deinit();
 
     try std.testing.expectEqualStrings("json", ruleFor(try context.units("package.json"), &REGION_RULES).name);
     try std.testing.expectEqualStrings("json", ruleFor(try context.units("./a/b.JSON"), &REGION_RULES).name);
+    try std.testing.expectEqualStrings("yaml", ruleFor(try context.units("app.yaml"), &REGION_RULES).name);
+    try std.testing.expectEqualStrings("yaml", ruleFor(try context.units("app.YML"), &REGION_RULES).name);
+    try std.testing.expectEqualStrings("toml", ruleFor(try context.units("app.toml"), &REGION_RULES).name);
+    try std.testing.expectEqualStrings("ini", ruleFor(try context.units("app.ini"), &REGION_RULES).name);
+    try std.testing.expectEqualStrings("ini", ruleFor(try context.units("app.cfg"), &REGION_RULES).name);
+    try std.testing.expectEqualStrings("ini", ruleFor(try context.units("app.properties"), &REGION_RULES).name);
     try std.testing.expectEqualStrings("code", ruleFor(try context.units("index.mjs"), &REGION_RULES).name);
     try std.testing.expectEqualStrings("code", ruleFor(try context.units("README.md"), &REGION_RULES).name);
     try std.testing.expectEqualStrings("code", ruleFor(try context.units(".gitignore"), &REGION_RULES).name);
     try std.testing.expectEqualStrings("code", ruleFor(try context.units("noext"), &REGION_RULES).name);
     try std.testing.expectEqualStrings("code", ruleFor(try context.units("a.json"), &.{}).name);
+    // The built-in order: data formats first, `code` last as the fallback.
     try std.testing.expectEqualStrings("json", REGION_RULES[0].name);
-    try std.testing.expectEqualStrings("code", REGION_RULES[1].name);
+    try std.testing.expectEqualStrings("yaml", REGION_RULES[1].name);
+    try std.testing.expectEqualStrings("toml", REGION_RULES[2].name);
+    try std.testing.expectEqualStrings("ini", REGION_RULES[3].name);
+    try std.testing.expectEqualStrings("code", REGION_RULES[4].name);
 }
 
 test "resolveMarker resolves a region by the file type" {
@@ -3519,13 +2871,13 @@ test "resolveMarker resolves a region by the file type" {
     const read = stub.reader();
     var failure = Failure{};
 
-    const json_marker = parseMarker(try context.units("[data.json](./data.json#region:name)")).?;
+    const json_marker = parseMarker(try context.units("[data.json](./data.json#name)")).?;
     try expectText(
         "{\n  \"name\": \"acme\"\n}",
         try resolveMarker(alloc, json_marker, read, ruleFor(json_marker.path, &REGION_RULES), &failure),
     );
 
-    const code_marker = parseMarker(try context.units("[code.ts](./code.ts#region:add)")).?;
+    const code_marker = parseMarker(try context.units("[code.ts](./code.ts#add)")).?;
     try expectText(
         "const add = (a) => a;",
         try resolveMarker(alloc, code_marker, read, ruleFor(code_marker.path, &REGION_RULES), &failure),
@@ -3551,7 +2903,7 @@ test "parseMarker reads whole-file and region markers" {
     try expectText("fixtures/a.md", parseMarker(try context.units("[fixtures/a.md](fixtures/a.md)")).?.path);
     try expectText("[a.md](./a.md)", parseMarker(try context.units("  [a.md](./a.md)  ")).?.raw);
 
-    const region = parseMarker(try context.units("[src/app.ts](./src/app.ts#region:table)")).?;
+    const region = parseMarker(try context.units("[src/app.ts](./src/app.ts#table)")).?;
     try expectText("src/app.ts", region.path);
     try expectName("table", region.region);
 }
@@ -3562,17 +2914,21 @@ test "parseMarker leaves ordinary links alone" {
     defer context.deinit();
 
     const rejected = [_][]const u8{
-        "[the docs](./docs/README.md)",
-        "[a.md](./a.md#install)",
         "[https://x.dev](https://x.dev)",
         "[a.md](./a.md) and more",
         "plain text",
         "",
-        "[a.md](a.md#region:)",
     };
     for (rejected) |line| {
         try std.testing.expect(parseMarker(try context.units(line)) == null);
     }
+
+    // The fragment is the reference, verbatim: a `#`-fragment link whose label
+    // does not name the same path is ordinary prose, not a marker.
+    try std.testing.expect(parseMarker(try context.units("[the docs](./docs/README.md)")) == null);
+    try std.testing.expect(parseMarker(try context.units("[a.md](./a.md#install)")) != null);
+    const fragment = parseMarker(try context.units("[a.md](a.md#region:)")).?;
+    try expectName("region:", fragment.region);
 }
 
 test "findMarkers keeps document order and skips fences" {
@@ -3673,7 +3029,7 @@ const DOC = "# Title\n" ++
     "\n" ++
     "Some prose.\n" ++
     "\n" ++
-    "[fixtures/big.md](./fixtures/big.md#region:table)\n" ++
+    "[fixtures/big.md](./fixtures/big.md#table)\n" ++
     "\n" ++
     "```markdown\n" ++
     "stale region\n" ++
@@ -3897,7 +3253,7 @@ test "updateDocument takes a custom rule set" {
     const stub = Stub{ .files = &.{.{ .path = "notes.txt", .content = "one\n-- eight --\ntwo\n" }} };
     const options = Options{ .root = "C:\\root", .read_file = stub.reader(), .gitignore = .off };
 
-    const doc = try context.units("[notes.txt](./notes.txt#region:eight)\n```\nstale\n```");
+    const doc = try context.units("[notes.txt](./notes.txt#eight)\n```\nstale\n```");
     // `regionRules` replaces the built-in set.
     const custom = Rule{ .name = "dashes", .extensions = &.{"txt"}, .resolve = dashRule };
     const result = try updateDocument(alloc, doc, .{
@@ -3906,10 +3262,11 @@ test "updateDocument takes a custom rule set" {
         .gitignore = .off,
         .region_rules = &.{custom},
     }, &failure);
-    try expectText("[notes.txt](./notes.txt#region:eight)\n```\ntwo\n```", result.text);
+    try expectText("[notes.txt](./notes.txt#eight)\n```\ntwo\n```", result.text);
 }
 
-fn dashRule(alloc: Allocator, text: Str, region: Str, failure: *Failure) JsError![]u16 {
+fn dashRule(alloc: Allocator, text: Str, region: Str, path: Str, failure: *Failure) JsError![]u16 {
+    _ = path;
     const lines = try splitLines(alloc, text);
     for (lines, 0..) |line, index| {
         var buf = Buf.init();

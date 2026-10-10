@@ -62,9 +62,9 @@ const HELP =
     \\  .json file, which has no comments, takes a comma-separated list of dotted
     \\  key paths, rendered as valid JSON:
     \\
-    \\      [src/app.ts](./src/app.ts#region:table)
-    \\      [src/app.ts](./src/app.ts#region:++table)
-    \\      [package.json](./package.json#region:scripts.test,name)
+    \\      [src/app.ts](./src/app.ts#table)
+    \\      [src/app.ts](./src/app.ts#++table)
+    \\      [package.json](./package.json#scripts.test,name)
     \\
     \\Arguments:
     \\  file|dir             Markdown document(s) to update. A directory expands to
@@ -660,9 +660,11 @@ fn processDocument(
 
     var stale: usize = 0;
     var failed: usize = 0;
+    var warned: usize = 0;
     var skipped_count: usize = 0;
     for (result.results) |entry| {
         if (entry.changed) stale += 1;
+        if (entry.warning != null) warned += 1;
         if (entry.skipped) {
             if (entry.failure != null) failed += 1 else skipped_count += 1;
         }
@@ -676,6 +678,12 @@ fn processDocument(
         try std.fmt.allocPrint(alloc, ", {d} failed", .{failed})
     else
         "";
+    const warn_note = if (warned > 0)
+        try std.fmt.allocPrint(alloc, ", {d} warning(s)", .{warned})
+    else
+        "";
+    // A section warning is a finding, not decoration (§11).
+    const warn_exit: u8 = if (warned > 0) FAILED else OK;
 
     if (!options.quiet) {
         // In --check and --dry-run nothing is written, so a difference is a
@@ -708,6 +716,21 @@ fn processDocument(
         }
     }
 
+    // A section warning is printed in every mode, regardless of --quiet, and it
+    // forces a non-zero exit.
+    for (result.results) |entry| {
+        if (entry.warning) |message| {
+            cli.printErr("inject-examples: warn: {s}:{d}: ", .{
+                try cli.display(file),
+                entry.marker.index + 1,
+            });
+            cli.printErrUnits(entry.marker.raw);
+            cli.printErr(": ", .{});
+            cli.printErrUnits(message);
+            cli.printErr("\n", .{});
+        }
+    }
+
     if (options.out) |out_option| {
         const out = try cli.resolvePath(out_option);
         const current = cli.readOrNull(out);
@@ -727,11 +750,12 @@ fn processDocument(
                 return FAILED;
             }
             if (!changed) {
-                cli.print("\n{s} is up to date with respect to {s}.\n", .{
+                cli.print("\n{s} is up to date with respect to {s}{s}.\n", .{
                     try cli.display(out_option),
                     try cli.display(file),
+                    warn_note,
                 });
-                return OK;
+                return warn_exit;
             }
             cli.printErr("\n{s} is stale with respect to {s}{s}.\n", .{
                 try cli.display(out_option),
@@ -755,27 +779,30 @@ fn processDocument(
                 return FAILED;
             }
             if (!changed) {
-                cli.print("\n{s} is already in sync with {s}{s}.\n", .{
+                cli.print("\n{s} is already in sync with {s}{s}{s}.\n", .{
                     try cli.display(file),
                     try cli.display(out_option),
                     skip_note,
+                    warn_note,
                 });
             } else if (stale > 0) {
-                cli.print("\n{s} would write {s}: {d} of {d} block(s) updated{s}.\n", .{
+                cli.print("\n{s} would write {s}: {d} of {d} block(s) updated{s}{s}.\n", .{
                     try cli.display(file),
                     try cli.display(out_option),
                     stale,
                     checked,
                     skip_note,
+                    warn_note,
                 });
             } else {
-                cli.print("\n{s} would write {s}{s}.\n", .{
+                cli.print("\n{s} would write {s}{s}{s}.\n", .{
                     try cli.display(file),
                     try cli.display(out_option),
                     skip_note,
+                    warn_note,
                 });
             }
-            return OK;
+            return warn_exit;
         }
 
         const out_dir = std.fs.path.dirname(out) orelse out;
@@ -799,13 +826,14 @@ fn processDocument(
             });
             return FAILED;
         }
-        cli.print("\n{s} -> {s} {s}{s}.\n", .{
+        cli.print("\n{s} -> {s} {s}{s}{s}.\n", .{
             try cli.display(file),
             try cli.display(out_option),
             if (changed) "updated" else "already up to date",
             skip_note,
+            warn_note,
         });
-        return OK;
+        return warn_exit;
     }
 
     if (options.check) {
@@ -828,34 +856,37 @@ fn processDocument(
             return FAILED;
         }
         if (skipped_count > 0) {
-            cli.print("\n{s} is up to date: {d} checked, {d} skipped.\n", .{
+            cli.print("\n{s} is up to date: {d} checked, {d} skipped{s}.\n", .{
                 try cli.display(file),
                 checked,
                 skipped_count,
+                warn_note,
             });
         } else {
-            cli.print("\n{s} matches all {d} marker(s).\n", .{ try cli.display(file), total });
+            cli.print("\n{s} matches all {d} marker(s){s}.\n", .{ try cli.display(file), total, warn_note });
         }
-        return OK;
+        return warn_exit;
     }
 
     if (options.dry_run) {
         if (stale > 0) {
-            cli.print("\n{s} would update {d} of {d} block(s){s}{s}.\n", .{
+            cli.print("\n{s} would update {d} of {d} block(s){s}{s}{s}.\n", .{
                 try cli.display(file),
                 stale,
                 checked,
                 skip_note,
                 failed_note,
+                warn_note,
             });
         } else {
-            cli.print("\n{s} already up to date{s}{s}.\n", .{
+            cli.print("\n{s} already up to date{s}{s}{s}.\n", .{
                 try cli.display(file),
                 skip_note,
                 failed_note,
+                warn_note,
             });
         }
-        return if (failed > 0) FAILED else OK;
+        return if (failed > 0 or warned > 0) FAILED else OK;
     }
 
     if (result.changed) {
@@ -874,12 +905,13 @@ fn processDocument(
         });
         return FAILED;
     }
-    cli.print("\n{s} {s}{s}.\n", .{
+    cli.print("\n{s} {s}{s}{s}.\n", .{
         try cli.display(file),
         if (result.changed) "updated" else "already up to date",
         skip_note,
+        warn_note,
     });
-    return OK;
+    return warn_exit;
 }
 
 /// `normalize(current) !== normalize(result.text)`, on the two decoded texts.
