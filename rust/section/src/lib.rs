@@ -23,12 +23,15 @@
 //!   warning. Complete, and pinned by every grammar and warning vector.
 //! - [`mask`] and [`lexer`] — the mask pass (part A) and the language-engine
 //!   seam, with the mask invariant asserted.
+//! - [`tokenizer`], [`syntax`] and [`syntaxes`] — the one-pass tokenizer and the
+//!   eighteen-entry language table, pinned by the lexical corpus.
+//! - [`matchers`], [`span`] and [`block`] — the shape matchers, the body-span
+//!   readers and the block tree, each unit-tested on its own.
+//! - [`scanner`] — `scanBlocks`: the layer that composes them into a [`block::Scan`].
 //!
-//! Still to port, in the order the plan set lists them: the block scanner
-//! (`scanBlocks`, part B), the per-language tokenizer and table, and resolution
-//! (`resolveSection`/`extractDeclaration`, part C) with the line span and the
-//! matcher kind the Java port reports. Until then the resolution vectors are
-//! counted but not asserted — see `tests/vectors.rs`.
+//! Still to port: resolution (`resolveSection`/`extractDeclaration`, part C) with
+//! the line span and the matcher kind the Java port reports. Until then the
+//! resolution vectors are counted but not asserted — see `tests/vectors.rs`.
 
 use std::fmt;
 
@@ -36,6 +39,8 @@ pub mod block;
 pub mod lexer;
 pub mod mask;
 pub mod matchers;
+pub mod resolver;
+pub mod scanner;
 pub mod span;
 pub mod syntax;
 pub mod syntaxes;

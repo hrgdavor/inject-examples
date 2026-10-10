@@ -190,10 +190,16 @@ pub(crate) fn starts_with(haystack: &[u16], needle: &[u16], at: usize) -> bool {
 
 /// The offset of `needle` at or after `from`.
 pub(crate) fn index_of(haystack: &[u16], needle: &[u16], from: usize) -> Option<usize> {
-    if needle.is_empty() || from > haystack.len() {
+    // A needle longer than the haystack has no offset, and subtracting the two would underflow: an
+    // empty slice searched for a one-unit needle is the case every scanner walk eventually reaches.
+    if needle.is_empty() || needle.len() > haystack.len() {
         return None;
     }
-    (from..=haystack.len() - needle.len()).find(|at| starts_with(haystack, needle, *at))
+    let last = haystack.len() - needle.len();
+    if from > last {
+        return None;
+    }
+    (from..=last).find(|at| starts_with(haystack, needle, *at))
 }
 
 /// The offset at which the line holding `offset` ends.

@@ -166,9 +166,13 @@ pub fn keyword_body(lines: &[Vec<u16>], decl_line: usize, word: &str) -> Option<
     None
 }
 
+/// Whether a unit is blank for trimming. `\n` counts: the readers that ask "is there nothing but
+/// whitespace before this comment" look at a slice that spans lines, and both Java's `trim()` and the
+/// JavaScript's `.trim()` remove it — without this, a comment on the line after a brace is not an anchor.
 fn is_blank_unit(unit: u16) -> bool {
     unit == b' ' as u16
         || unit == b'\t' as u16
+        || unit == b'\n' as u16
         || unit == b'\r' as u16
         || unit == 0x0b
         || unit == 0x0c

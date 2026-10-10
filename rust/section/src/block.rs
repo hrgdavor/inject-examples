@@ -118,6 +118,8 @@ pub struct Scan {
     pub blocks: Vec<BlockRef>,
     pub regions: Vec<Region>,
     pub anchors: Vec<Anchor>,
+    /// The lexical facts the scan was built from, so resolution does not re-read the file.
+    pub lex: crate::scanner::Lex,
 }
 
 /// Fill a block in from a span, as `applySpan` does.

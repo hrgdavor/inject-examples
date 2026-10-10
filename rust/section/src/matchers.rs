@@ -53,14 +53,30 @@ const STATEMENT_KEYWORDS: [&str; 10] = [
 ];
 
 /// A word that stands where a type or modifier would, but declares nothing.
-const NOT_A_TYPE: [&str; 10] = [
+pub const NOT_A_TYPE: [&str; 10] = [
     "return", "throw", "new", "else", "do", "case", "await", "yield", "delete", "typeof",
 ];
 
 /// Words that turn a `name(` shape into a statement rather than a declaration.
-const STATEMENT_BEFORE: [&str; 9] = [
-    "return", "throw", "new", "await", "yield", "delete", "typeof", "case", "else",
+pub const STATEMENT_BEFORE: [&str; 10] = [
+    "return", "throw", "new", "await", "yield", "delete", "typeof", "case", "else", "do",
 ];
+
+/// Words that are never a declaration's name, however they are spelled.
+pub const NOT_A_NAME: [&str; 21] = [
+    "if", "for", "while", "switch", "catch", "return", "new", "do", "else", "throw", "await", "yield",
+    "typeof", "delete", "void", "in", "of", "instanceof", "super", "this", "with",
+];
+
+/// Whether `name` is a keyword rather than a declaration's name.
+pub fn is_not_a_name(name: &str) -> bool {
+    NOT_A_NAME.contains(&name)
+}
+
+/// Whether `word` stands where a type would without declaring one.
+pub fn is_not_a_type(word: &str) -> bool {
+    NOT_A_TYPE.contains(&word) || STATEMENT_BEFORE.contains(&word)
+}
 
 /// A class-like declaration on a masked line, and where its header ends.
 #[derive(Clone, PartialEq, Eq, Debug)]
