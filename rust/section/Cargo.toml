@@ -1,0 +1,15 @@
+[package]
+name = "inject-sections"
+version = "0.1.0"
+edition = "2021"
+description = "File-section matching: the Rust implementation of doc/section-matching.md"
+publish = false
+
+# The library itself has no dependencies, deliberately: doc/section-matching.md
+# requires the matcher to be vendorable as one dependency-free unit, the way
+# lib/section.mjs is. `serde_json` is a test-only dependency, used by
+# tests/vectors.rs to read the conformance vectors.
+[dependencies]
+
+[dev-dependencies]
+serde_json = "1"

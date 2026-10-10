@@ -43,12 +43,19 @@ Each case:
   "input": "test/fixtures/Example.java",
   "reference": "Cart/Line/render-",
   "text": "            return name + \" x\" + quantity;",
+  "startLine": 13,
+  "endLine": 13,
+  "kind": "declaration",
   "error": null,
   "warning": null
 }
 ```
 
 - `input` is a **repo-relative path**, so the file is portable and re-generatable.
+- `startLine`/`endLine` are the **1-based inclusive** span the text came from, and `kind` is the matcher that found
+  it (`region`, `declaration`, `property`, `condition` or `anchor`). A consumer that *navigates* needs the span, and
+  one that *explains itself* needs the kind, so both are pinned — otherwise a port could agree about the bytes and
+  drift on the two answers around them. Parse-only rows carry `null` for all three.
 - `error` is the thrown message for an error case, `null` otherwise.
 - `warning` is `null`, or `{ "kind": "contradiction", "kept": "++", "dropped": "-" }`.
 - Exactly one of `text` / `error` is non-null.

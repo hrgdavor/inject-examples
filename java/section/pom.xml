@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>hr.hrg.inject</groupId>
+  <artifactId>inject-examples</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>inject-sections</name>
+  <description>File-section matching: the Java implementation of doc/section-matching.md</description>
+  <url>https://github.com/hrgdavor/inject-examples</url>
+
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>hrgdavor</id>
+      <name>Davor Hrg</name>
+      <email>hrgdavor@gmail.com</email>
+      <url>https://github.com/hrgdavor</url>
+      <organization>inject-examples</organization>
+      <organizationUrl>https://github.com/hrgdavor/inject-examples</organizationUrl>
+    </developer>
+  </developers>
+
+  <scm>
+    <url>https://github.com/hrgdavor/inject-examples</url>
+    <connection>scm:git:https://github.com/hrgdavor/inject-examples.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/hrgdavor/inject-examples.git</developerConnection>
+  </scm>
+
+  <properties>
+    <!--
+      Java 21: the JDK the release build runs on (the real Maven binary — see PUBLISHING.md). Nothing
+      here needs anything newer: no preview features, and no javadoc flags that only exist on a later
+      JDK, so this builds the same way under the newer JDK mvnd runs.
+    -->
+    <maven.compiler.release>21</maven.compiler.release>
+    <maven.compiler.plugin.version>3.14.1</maven.compiler.plugin.version>
+    <maven.enforcer.plugin.version>3.5.0</maven.enforcer.plugin.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <junit.version>5.10.2</junit.version>
+    <jackson.version>3.2.3</jackson.version>
+    <!--
+      Signing is off by default so a local build never stalls on a GPG passphrase; a release passes
+      -Dgpg.skip=false. The same convention the sibling dia-log project publishes with.
+    -->
+    <gpg.skip>true</gpg.skip>
+  </properties>
+
+  <dependencies>
+    <!--
+      The library itself has no dependencies, deliberately: doc/section-matching.md
+      requires the matcher to be vendorable as one dependency-free unit, the way
+      lib/section.mjs is. Both entries below are test-only: JUnit to run the suite,
+      Jackson to read the conformance vectors (test/vectors/section-vectors.json)
+      rather than keeping a generated copy of them. Jackson 3 lives under the
+      tools.jackson groupId and needs Java 17 at minimum, well below this module's 21.
+    -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>tools.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${maven.compiler.plugin.version}</version>
+      </plugin>
+
+      <!-- Fail loudly on the wrong JDK, rather than with a compiler error about an unsupported release. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven.enforcer.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-java</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[21,)</version>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
+
+      <!--
+        Sources and javadoc jars are what Maven Central requires alongside the jar.
+        They are built here so a release is a matter of adding the publishing
+        plugin and the credentials, not of changing the build.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.11.2</version>
+        <configuration>
+          <!--
+            Doclint except the `missing` group: structure, references and HTML are still checked, but
+            the implicit accessors of a record are not "missing comments" when the record's own
+            javadoc documents every component with @param. A release must not fail on that.
+          -->
+          <doclint>all,-missing</doclint>
+          <source>${maven.compiler.release}</source>
+        </configuration>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Sign artifacts for Maven Central; active only for a release (see PUBLISHING.md). -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-gpg-plugin</artifactId>
+        <version>3.2.7</version>
+        <executions>
+          <execution>
+            <id>sign-artifacts</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>sign</goal>
+            </goals>
+            <configuration>
+              <skip>${gpg.skip}</skip>
+              <!--
+                Read the passphrase from a <server> entry in settings.xml (id "gpg") so signing never
+                prompts: on Windows the default pinentry is a GUI dialog that does not render in a
+                non-interactive console, and the build hangs instead of failing.
+              -->
+              <passphraseServerId>gpg</passphraseServerId>
+              <gpgArguments>
+                <arg>--pinentry-mode</arg>
+                <arg>loopback</arg>
+              </gpgArguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!--
+        Take over the deploy phase. With extensions=true this plugin registers the publishing
+        lifecycle and suppresses the default maven-deploy-plugin, which would otherwise push artifacts
+        straight to the legacy maven-releases URL and fail.
+      -->
+      <plugin>
+        <groupId>org.sonatype.central</groupId>
+        <artifactId>central-publishing-maven-plugin</artifactId>
+        <version>0.6.0</version>
+        <extensions>true</extensions>
+        <configuration>
+          <publishingServerId>central</publishingServerId>
+          <!-- true publishes as soon as validation passes; -DautoPublish=false leaves it in the
+               Central Portal for review before release. -->
+          <autoPublish>true</autoPublish>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <distributionManagement>
+    <snapshotRepository>
+      <id>central</id>
+      <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+    </snapshotRepository>
+    <repository>
+      <id>central</id>
+      <url>https://central.sonatype.com/repository/maven-releases/</url>
+    </repository>
+  </distributionManagement>
+</project>

@@ -64,6 +64,15 @@
   `node --test test.mjs` (and `node tools/section-vectors.mjs --check`),
   `zig build test` (which includes `src/section_vectors.zig`), and
   `node tools/compare-zig.mjs` (JS vs Zig, byte for byte).
+- The corpus in `test/vectors/section-vectors.json` gates the **shape layer**
+  too, not only the grammar: property versus call versus statement, a body whose
+  brace opens on the next line, an arrow expression, an anchor that is not the
+  first thing in the braces, a region directive that is never an anchor. The rows
+  whose expected answer is an *error* are the ones that catch an over-eager
+  declaration matcher — a port can pass every resolution row while still
+  over-matching, and those rows are where it fails. Assert every row; when adding
+  one, pick an input that makes a wrong shape answer *differently*, not one that
+  would pass either way.
 - `src/section_vectors.zig` is **generated** — never edit it by hand.
   `node tools/zig-vectors.mjs` writes it from
   `test/vectors/section-vectors.json` plus the fixture text; `--check` fails
@@ -74,4 +83,16 @@
   `--global-cache-dir .zig-cache/global --cache-dir .zig-cache/local`.
 - `.github/workflows/ci.yml` runs the three gates on every push and pull
   request; `.github/workflows/release.yml` builds the tagged binaries.
+
+## Publishing
+
+- Two routes ship from here: `npm publish` for the JavaScript package and the
+  CLI, and Maven Central for the Java matcher in `java/section`. The Zig
+  binaries ride a `v*` tag.
+- The caveats that make a Maven release fail *quietly* — the `mvnd` shim that
+  skips the publishing mojo, the Windows GPG pinentry stall, and the JDK
+  difference between the two Mavens that decides which javadoc flags are legal —
+  are in [`PUBLISHING.md`](./PUBLISHING.md). Read it before touching a POM's
+  build section, and verify a release-shaped build with the real Maven binary
+  rather than `mvn`.
 

@@ -75,7 +75,7 @@ Ported: slash-separated section paths with retried same-named scopes, trailing a
 `-` / `+` / `++` modifiers with the contradiction warning, condition literals, comment
 anchors, `#region` pairing, the per-type lexers for all eighteen languages in the table, and
 the three config-format rules. Markers carry `#<reference>` directly, as the JavaScript does
-since the `region:` keyword was dropped.
+since an older fragment prefix was dropped.
 
 ## 4. The gates
 
@@ -143,7 +143,7 @@ the second of those to the code.
   does not commission it. The Zig port is the only second implementation today, and a *third*
   would need its own decision — including an answer to how it is held at parity, since
   `compare-zig.mjs` compares two tools, not three.
-- **The `region:` fragment keyword is not coming back.** It was dropped in
+- **No older fragment prefix is coming back.** It was dropped in
   `10646fb`; `#<reference>` is the syntax, and neither implementation accepts the old
   spelling.
 - **No version bump or tag here.** `npm publish` ships the JavaScript package and a `v*` tag

@@ -10,6 +10,13 @@
  * masked by the Zig lexer and an unknown type by the built-in default engine.
  * A later port to another language can treat this file as its target.
  *
+ * A resolution row carries three answers, because a consumer needs all three:
+ * `text` (what to inject), `startLine`/`endLine` (the 1-based inclusive span it
+ * came from, which is where a host navigates) and `kind` (which matcher found
+ * it — `region`, `declaration`, `property`, `condition` or `anchor`, which is
+ * what lets a host say how it knew). Every row has the same keys, with `null`
+ * where the answer does not apply.
+ *
  *   node tools/section-vectors.mjs           write/update the vectors file
  *   node tools/section-vectors.mjs --check   compare; exit 1 and diff on drift
  *
@@ -37,6 +44,7 @@ const ZIG = 'test/fixtures/Nesting.zig';
 const RUBY = 'test/fixtures/Cart.rb';
 const HASKELL = 'test/fixtures/Store.hs';
 const RUST = 'test/fixtures/Cart.rs';
+const SHAPES = 'test/fixtures/Shapes.java';
 
 const cases = [
     // Grammar — parse only: canonical form and (lack of) errors.
@@ -73,7 +81,38 @@ const cases = [
     { name: 'ex-line-tostring-error', input: EXAMPLE, reference: 'Line/toString' },
     { name: 'ex-render-extra-error', input: EXAMPLE, reference: 'Cart/Line/render/extra' },
 
-    // Resolution — Anchors.java (condition literals, anchors, walk order).
+    // Resolution — Shapes.java: the shape layer itself, which the fixtures above
+    // only touch incidentally. Every row here is chosen to *discriminate*: a port
+    // whose declaration matcher is too eager, or whose span lands a line off,
+    // answers differently — including the rows whose expected answer is an error,
+    // because over-matching shows up as a resolution that should not exist.
+    { name: 'shapes-property', input: SHAPES, reference: 'getUsers' },
+    { name: 'shapes-property-body', input: SHAPES, reference: 'getUsers-' },
+    { name: 'shapes-label', input: SHAPES, reference: 'label' },
+    // A call is not a declaration: the first thing in `calls` resolves to nothing,
+    // and the method it calls comes from its own line.
+    { name: 'shapes-calls-add-miss', input: SHAPES, reference: 'calls/add' },
+    { name: 'shapes-add', input: SHAPES, reference: 'add' },
+    { name: 'shapes-add-body', input: SHAPES, reference: 'add-' },
+    // The anchor is only the *first* thing in the braces.
+    { name: 'shapes-anchored', input: SHAPES, reference: 'anchored/anchor' },
+    { name: 'shapes-not-anchored-miss', input: SHAPES, reference: 'notAnchored/anchor' },
+    { name: 'shapes-anchored-body', input: SHAPES, reference: 'anchored-' },
+    // A body that opens on the line *after* the header.
+    { name: 'shapes-next-line-brace', input: SHAPES, reference: 'nextLineBrace' },
+    { name: 'shapes-next-line-brace-body', input: SHAPES, reference: 'nextLineBrace-' },
+    // An arrow-assigned member is a declaration with an expression body.
+    { name: 'shapes-arrow', input: SHAPES, reference: 'arrow' },
+    { name: 'shapes-arrow-body', input: SHAPES, reference: 'arrow-' },
+    // An `if` with no literal is not a condition.
+    { name: 'shapes-chains-if-miss', input: SHAPES, reference: 'chains/chain' },
+    { name: 'shapes-chains', input: SHAPES, reference: 'chains' },
+    // A region directive is a span, and never a comment anchor.
+    { name: 'shapes-region', input: SHAPES, reference: 'wiring' },
+    { name: 'shapes-region-miss', input: SHAPES, reference: 'anchored/wiring' },
+    { name: 'shapes-regioned', input: SHAPES, reference: 'regioned' },
+
+
     { name: 'a-getusers-anchor', input: ANCHORS, reference: 'getUsers' },
     { name: 'a-getusers-anchor-body', input: ANCHORS, reference: 'getUsers-' },
     { name: 'a-dispatch-getusers', input: ANCHORS, reference: 'dispatch/getUsers' },
@@ -135,19 +174,23 @@ function buildCase(c) {
         let error = null;
         let warning = null;
         try { warning = warningOf(parseReference(c.reference)); } catch (e) { error = e.message; }
-        return { name: c.name, input: null, reference: c.reference, text: null, error, warning };
+        return {
+            name: c.name, input: null, reference: c.reference, text: null,
+            startLine: null, endLine: null, kind: null, error, warning,
+        };
     }
     const source = readFileSync(join(ROOT, c.input), 'utf8');
     try {
         const plan = planSection(source, c.reference, lexerFor(c.input));
         return {
-            name: c.name, input: c.input, reference: c.reference,
-            text: plan.text, error: null, warning: warningOf(plan.reference),
+            name: c.name, input: c.input, reference: c.reference, text: plan.text,
+            startLine: plan.startLine, endLine: plan.endLine, kind: plan.kind,
+            error: null, warning: warningOf(plan.reference),
         };
     } catch (e) {
         return {
-            name: c.name, input: c.input, reference: c.reference,
-            text: null, error: e.message, warning: null,
+            name: c.name, input: c.input, reference: c.reference, text: null,
+            startLine: null, endLine: null, kind: null, error: e.message, warning: null,
         };
     }
 }

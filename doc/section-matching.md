@@ -29,16 +29,19 @@ authoritative: a port that disagrees with it is wrong by definition.
 
 ## At a glance
 
-A section reference is a `/`-separated path of names. Only the **last** name may
-carry a trailing `+`, `++` or `-`; a modifier on an earlier name has no meaning,
-so it is an error. Three questions fully specify it, and this document keeps each
-in its own section so they do not blur into one another:
+A section reference is a `/`-separated path of names. A `+`, `++` or `-` applies
+to the **last** name only — a modifier written on an earlier name is collected and
+applied to the last one, not an error — and the canonical spelling puts it at the
+very end. A leading spelling is accepted in two cases only, and they are not
+symmetric: see [Where a modifier may appear](#where-a-modifier-may-appear). Three
+questions fully specify it, and this document keeps each in its own section so
+they do not blur into one another:
 
 | Question | In one line | Expanded in |
 | --- | --- | --- |
 | How does a path with one or more `/` resolve? | Every name except the last **narrows the scope** to the block it finds; only the **last** name selects content; a single name searches the whole file. | [Paths and scopes](#paths-and-scopes) |
 | How is one name found inside a scope? | Inside that scope — the whole file, or a block a parent narrowed it to — the six matchers run in order against the scope's own members; the first match wins, and a shallower sibling always beats a deeper block. | [Searching one element in a scope](#searching-one-element-in-a-scope) |
-| Where do `+`, `++` and `-` apply, and what do they do? | A modifier is **trailing** and binds to the **last** segment only; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
+| Where do `+`, `++` and `-` apply, and what do they do? | A modifier binds to the **last** segment, wherever it was written; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
 
 [Grammar](#grammar) gives the syntax and [The six rules](#the-six-rules) is the
 compact normative statement; the three topics expand them, and the tables beneath
@@ -90,9 +93,17 @@ The grammar, as six rules. Each violated below is an error (see
 2. Only the last segment selects content to inject. Earlier segments are
    **scopes**: each must resolve, and each later segment is looked up only
    inside the block the previous segment found.
-3. The modifier is trailing and applies to the final segment. A **leading
-   spelling is accepted too**: `-add`, `+add`, `++add` are normalised to `add-`,
-   `add+`, `add++` (see [Canonicalisation](#canonicalisation)).
+3. The modifier is **trailing** and applies to the final segment, but two leading
+   spellings are normalised to it before parsing and a third case is collected
+   from wherever it was written. Precisely: a prefix of the **whole reference**
+   (`+a/b`, `++a/b`, `-a/b`, `-add` → `a/b+`, `a/b++`, `a/b-`, `add-`) and a
+   single `-` leading the **last segment** (`a/-b` → `a/b-`, `Cart/-Line` →
+   `Cart/Line-`) are accepted; a `+` or `++` leading a *segment* is an error even
+   when that segment is last (`a/+b`); and a trailing run written on a segment
+   that is not the last is collected and applied to the last segment
+   (`a++/b` → `a/b++`). The two leading forms are **not** symmetric, which is the
+   one thing ports get wrong — see
+   [Where a modifier may appear](#where-a-modifier-may-appear).
 4. A bare name is a path of one segment: it searches the whole file, at any
    depth.
 5. First match wins, walking **sibling first**: every scope at one depth is
@@ -281,39 +292,70 @@ only in how much of it is taken.
 
 ### Where a modifier may appear
 
-The canonical spelling is trailing. The parser also accepts a leading modifier
-and normalises it before parsing, so `-add` and `add-` mean the same thing, and
-a `-` on the second segment of a two-segment path is understood as belonging to
-the end (`Cart/-Line` → `Cart/Line-`). After normalisation a `+` or `-` anywhere
-except the very end is an error. The full accepted/rejected lists are in
-[Canonicalisation](#canonicalisation).
+The canonical spelling is trailing: the modifier sits at the very end of the whole
+reference. Four other positions are easy to mistake for one another, and a port
+that conflates them will disagree with `lib/section.mjs` on `a/+b` or on `a++/b`:
+
+| Written | Where it is | Result |
+| --- | --- | --- |
+| `add+`, `Cart/Line/render-` | trailing, at the very end | the modifier, joined to the last segment |
+| `+add`, `++a/b`, `-a/b` | a prefix of the **whole reference** | moved to the end: `add+`, `a/b++`, `a/b-` |
+| `a/-b`, `Cart/Line/-render` | a single `-` leading the **last segment** | moved to the end: `a/b-`, `Cart/Line/render-` |
+| `Cart/-Line` | a single `-` leading the second of **two** segments | moved to the end: `Cart/Line-` |
+| `a/+b`, `a/++b` | a `+` or `++` leading a **segment** — any segment, the last included | **error** |
+| `a++/b`, `a-/b` | a trailing run on a segment that is **not** the last | collected, then applied to the last segment: `a/b++`, `a/b-` |
+| `x/y+z`, `Cart/-Line/render` | anywhere else: a `+` inside a name, or a `-` on a segment that is neither the last nor the second of two | **error** |
+
+**The two leading forms are not symmetric.** A single `-` may lead a segment when
+that segment is the last one, or the second of two; `+` and `++` may appear in
+front only as the detached prefix of the whole reference. So `a/-b` is legal and
+`a/+b` is not, and neither is `a/++b`. The message for the rejected case is
+`"+" may only modify the last path segment of "#a/+b"`, which reads oddly about a
+segment that *is* last — hence the explicit note: the last-segment position is
+checked for `-` only, and a `+` or `++` leading a segment is rejected outright.
+
+**A modifier written mid-path is collected, not rejected.** `a++/b` parses and
+means `a/b++`, because the parser gathers every modifier run it finds and applies
+the collected one to the last segment. That is laxer than the canonical form and
+is **not** pinned by `test/vectors/section-vectors.json`: a port that rejects
+`a++/b` will still pass the vectors, but it will disagree with `lib/section.mjs`,
+which is authoritative.
 
 ### Canonicalisation
 
-The leading spelling reads `-`, `+`, `++` only as a prefix of the whole
-reference. The canonical form is **trailing**, so the parser normalises before
-it parses:
+The canonical form is **trailing**, so the parser normalises before it parses:
 
 1. If the reference begins with `++`, `+` or `-`, detach that prefix and append it
    to the end.
 2. After step 1, if the **second** segment begins with exactly one `-` and
    nothing was detached in step 1, detach that `-` and append it
    (`Cart/-Line` → `Cart/Line-`).
-3. After normalisation, a `+` or `-` anywhere except the very end is an error.
+3. Walk the segments: a leading `-` on the last segment is detached and appended;
+   a leading `+` or `++` on any segment is an error; a trailing run on any segment
+   is detached and collected.
+4. If more than one modifier was collected, they are combined: a `++`/`+` together
+   with a `-` contradict and warn, and the positive one wins; the same modifier
+   twice is an error (see
+   [Contradictory modifiers](#contradictory-modifiers-are-a-warning)).
+5. The result is the segments joined with `/`, followed by the modifier — or
+   nothing when there was none.
 
 | Accepted | Notes |
 | --- | --- |
-| `add`, `-add`, `+add`, `++add` | the last three canonicalise to `add-`, `add+`, `add++` |
-| `Cart/Line`, `Cart/Line-`, `Cart/-Line` | the last two canonicalise to `Cart/Line-` |
+| `add`, `-add`, `+add`, `++add` | canonicalise to `add`, `add-`, `add+`, `add++` |
+| `Cart/Line`, `Cart/Line-`, `Cart/-Line` | canonicalise to `Cart/Line`, `Cart/Line-`, `Cart/Line-` |
 | `toString++`, `++toString` | same result |
 | `Cart/Line/render-`, `Cart/Line/-render` | same result |
+| `+a/b`, `++a/b`, `-a/b` | canonicalise to `a/b+`, `a/b++`, `a/b-` — the prefix belongs to the whole reference, not to the first segment |
+| `a/-b` | canonicalises to `a/b-` |
+| `a++/b`, `a-/b` | canonicalise to `a/b++`, `a/b-` (collected; see above) |
 
-| Rejected (errors) |
-| --- |
-| `Cart/-Line/render` — a `-` is not in the last segment |
-| `Cart/Line/+render` — a `+` is not in the last segment |
-| `a//b`, `a/`, `/a` — an empty path segment |
-| `a+++` — more than one modifier |
+| Rejected (errors) | Message |
+| --- | --- |
+| `a/+b`, `a/++b`, `x/y+z` — a `+` or `++` leading a segment, or a `+` inside a name | `"+" may only modify the last path segment of "#<the reference as written>"` |
+| `Cart/-Line/render` — a `-` leading a segment that is neither last nor the second of two | `"-" may only modify the last path segment of "#<the reference as written>"` |
+| `a//b`, `a/`, `/a` — an empty path segment | `"#<the reference as written>" has an empty path segment` |
+| `a+++`, `a---`, `a--` — more than one modifier | `"#<the reference as written>" carries more than one modifier` |
 
 | Warned (see [Contradictory modifiers](#contradictory-modifiers-are-a-warning)) |
 | --- |
@@ -638,3 +680,25 @@ boundary, so it cannot rot.
 A project adds a rule for another type with `options.regionRules` (see the
 README's "Region rules by file type" section); a custom rule calls
 `extractSection` for its type and otherwise reuses this module's matchers.
+
+### What a resolution answers
+
+A resolution is three answers rather than one, because the three consumers of it
+need different ones — and answering the same question twice is how two answers
+start to disagree:
+
+| Field | What it is | Who needs it |
+| --- | --- | --- |
+| `text` | the bytes the section stands for | an injector, which writes them into a document |
+| `startLine`, `endLine` | the **1-based inclusive** line span the text came from | a host, which navigates to a line rather than to bytes |
+| `kind` | the matcher that found it: `region`, `declaration`, `property`, `condition` or `anchor` | anything that has to explain the answer, which is what makes a heuristic arguable instead of mysterious |
+
+The span is computed from the same slice the text was made from, so it cannot
+disagree with it; a section whose slice is empty still reports the line it would
+start on, rather than a range that runs backwards. `resolveSection` is
+`planSection(...).text` — the one-field shorthand for a caller that only wants the
+bytes.
+
+`test/vectors/section-vectors.json` pins all three for every resolution case, so a
+port that agrees about the bytes but not about the span or the kind fails the
+conformance gate rather than passing it quietly.

@@ -723,6 +723,33 @@ field, so npm links the package page to the GitHub repository.
 `src/js/scanner/`, `doc/languages.md`, `doc/section-matching.md`, `README.md` and
 `LICENSE`; the tests and fixtures stay out.
 
+## The matcher ports: Rust and Java
+
+[`lib/section.mjs`](./lib/section.mjs) is the section matcher on its own — one
+dependency-free ES module another project can import or copy. Two ports of *that
+module* (not of the CLI) live beside it, for consumers that cannot import an ES
+module:
+
+| Port | Where | Gate | State |
+| --- | --- | --- | --- |
+| Rust | [`rust/section`](./rust/section) | `cargo test` | parse layer; mask, scanner and resolution to come |
+| Java | [`java/section`](./java/section) | `mvn test` | complete — all 72 vectors, language table included |
+
+Both read [`test/vectors/section-vectors.json`](./test/vectors/section-vectors.json)
+— the same 72 vectors the JavaScript gate uses — directly, rather than keeping a
+generated copy, and both fail if a vector is neither asserted nor counted, so the
+layers still to come stay visible instead of silently skipped. The rule is the one
+the Zig port follows: **the JavaScript is the source of truth, and a port mirrors
+rather than leads**.
+
+The Java one is a Maven artifact (`hr.hrg.inject:inject-examples`) whose POM
+carries the metadata Maven Central asks for and attaches the sources and javadoc
+jars, so a release is a matter of adding the publishing plugin and the
+credentials; until then, `mvn install` puts it in your local repository. Like the
+ES module it ports, it has no runtime dependencies — that is what makes it
+vendorable, and what keeps a JVM host from taking on a web stack to resolve a
+`#<reference>`.
+
 ## The Zig port
 
 **The JavaScript implementation is the source of truth.** `index.mjs` and

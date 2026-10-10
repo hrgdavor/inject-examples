@@ -62,6 +62,17 @@ pub const Nesting_zig =
     "//! A Zig file whose nested block comment hides a declaration.\nconst std = @import(\"std\");\n\n/* outer /"
         ++ "* inner */ fn decoy() void { x(); } */\n\n/// The real target.\nfn target() void {\n    z();\n}\n";
 
+/// `test/fixtures/Shapes.java`
+pub const Shapes_java =
+    "class Shapes {\n    private int getUsers = 0;\n    private String label = \"not a // comment\";\n\n    /** "
+        ++ "The anchor is the first thing inside the braces. */\n    void anchored() { //anchor\n        work();\n    }"
+        ++ "\n\n    void notAnchored() {\n        work(); //anchor\n    }\n\n    void calls() {\n        add(1, 2);\n  "
+        ++ "      other.add(1, 2);\n        return add(1, 2);\n    }\n\n    void add(int a, int b) {\n        total = a"
+        ++ " + b;\n    }\n\n    void nextLineBrace()\n    {\n        work();\n    }\n\n    Runnable arrow = () -> {\n  "
+        ++ "      work();\n    };\n\n    void chains(int n) {\n        if (n > 0) {\n            work();\n        } els"
+        ++ "e if (n < 0) {\n            other();\n        } else {\n            none();\n        }\n    }\n\n    // #re"
+        ++ "gion wiring\n    void regioned() {\n        work();\n    }\n    // #endregion\n}\n";
+
 /// `test/fixtures/Store.hs`
 pub const Store_hs =
     "module Store where\n\nadd :: Int -> Int -> Int\nadd x y = x + y\n\ndata Cart = Cart { items :: [Int] }\n";
@@ -79,6 +90,7 @@ pub fn sourceOf(input: ?[]const u8) ?[]const u8 {
     if (std.mem.eql(u8, path, "test/fixtures/Cart.rs")) return Cart_rs;
     if (std.mem.eql(u8, path, "test/fixtures/Example.java")) return Example_java;
     if (std.mem.eql(u8, path, "test/fixtures/Nesting.zig")) return Nesting_zig;
+    if (std.mem.eql(u8, path, "test/fixtures/Shapes.java")) return Shapes_java;
     if (std.mem.eql(u8, path, "test/fixtures/Store.hs")) return Store_hs;
     if (std.mem.eql(u8, path, "test/fixtures/example.ts")) return example_ts;
     return null;
@@ -412,6 +424,151 @@ pub const cases = [_]Case{
         .reference = "Cart/Line/render/extra",
         .text = null,
         .error_message = "no section named \"extra\" in \"render\"",
+        .warning = null,
+    },
+    .{
+        .name = "shapes-property",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "getUsers",
+        .text = "    private int getUsers = 0;",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-property-body",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "getUsers-",
+        .text = "0",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-label",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "label",
+        .text = "    private String label = \"not a // comment\";",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-calls-add-miss",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "calls/add",
+        .text = null,
+        .error_message = "no section named \"add\" in \"calls\"",
+        .warning = null,
+    },
+    .{
+        .name = "shapes-add",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "add",
+        .text = "    void add(int a, int b) {\n        total = a + b;\n    }",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-add-body",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "add-",
+        .text = "        total = a + b;",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-anchored",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "anchored/anchor",
+        .text = "    void anchored() { //anchor\n        work();\n    }",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-not-anchored-miss",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "notAnchored/anchor",
+        .text = null,
+        .error_message = "no section named \"anchor\" in \"notAnchored\"",
+        .warning = null,
+    },
+    .{
+        .name = "shapes-anchored-body",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "anchored-",
+        .text = "        work();",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-next-line-brace",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "nextLineBrace",
+        .text = "    void nextLineBrace()\n    {\n        work();\n    }",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-next-line-brace-body",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "nextLineBrace-",
+        .text = "        work();",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-arrow",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "arrow",
+        .text = "    Runnable arrow = () -> {",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-arrow-body",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "arrow-",
+        .text = "() -> {",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-chains-if-miss",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "chains/chain",
+        .text = null,
+        .error_message = "no section named \"chain\" in \"chains\"",
+        .warning = null,
+    },
+    .{
+        .name = "shapes-chains",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "chains",
+        .text = "    void chains(int n) {\n        if (n > 0) {\n            work();\n        } else if (n < 0) {\n         "
+        ++ "   other();\n        } else {\n            none();\n        }\n    }",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-region",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "wiring",
+        .text = "    void regioned() {\n        work();\n    }",
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "shapes-region-miss",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "anchored/wiring",
+        .text = null,
+        .error_message = "no section named \"wiring\" in \"anchored\"",
+        .warning = null,
+    },
+    .{
+        .name = "shapes-regioned",
+        .input = "test/fixtures/Shapes.java",
+        .reference = "regioned",
+        .text = "    void regioned() {\n        work();\n    }",
+        .error_message = null,
         .warning = null,
     },
     .{

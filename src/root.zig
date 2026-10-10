@@ -993,8 +993,8 @@ pub fn parseMarker(line: Str) ?Marker {
     if (relative_path.len == 0) return null;
 
     if (fragment.len == 0) return .{ .raw = trim(line), .path = relative_path, .region = null };
-    // The whole fragment is the reference: markers carry `#<reference>`
-    // directly, with no `region:` keyword in between.
+    // The whole fragment is the reference: a marker carries `#<reference>`
+    // directly, with no keyword in between.
     return .{ .raw = trim(line), .path = relative_path, .region = fragment };
 }
 
@@ -2927,8 +2927,8 @@ test "parseMarker leaves ordinary links alone" {
     // does not name the same path is ordinary prose, not a marker.
     try std.testing.expect(parseMarker(try context.units("[the docs](./docs/README.md)")) == null);
     try std.testing.expect(parseMarker(try context.units("[a.md](./a.md#install)")) != null);
-    const fragment = parseMarker(try context.units("[a.md](a.md#region:)")).?;
-    try expectName("region:", fragment.region);
+    const fragment = parseMarker(try context.units("[a.md](./a.md#Cart/Line/render)")) orelse unreachable;
+    try expectName("Cart/Line/render", fragment.region);
 }
 
 test "findMarkers keeps document order and skips fences" {

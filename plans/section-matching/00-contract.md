@@ -1,7 +1,7 @@
 # 00 — Contract: file-section matching (frozen)
 
 **Binding on every step.** This is the specification of `<section-reference>` in
-`#region:<section-reference>`, and it is **frozen**. Do not change it, extend it, or
+a marker's `#<section-reference>`, and it is **frozen**. Do not change it, extend it, or
 "improve" it in a step. If a step discovers that the contract is wrong or impossible, stop
 and report back with the specific case; the contract changes only by a maintainer decision.
 
@@ -12,7 +12,7 @@ for the requirements, and your own step document for the deliverables.
 
 ## 1. Mission
 
-Today `#region:<name>` resolves one of: an explicit `#region`/`#endregion` directive, or a
+A `<reference>` resolves one of: an explicit `#region`/`#endregion` directive, or a
 single named declaration, matched by a *flat* scan of every line (`index.mjs`,
 `extractDeclaration`). This contract formalises what a reference may say, so that:
 
@@ -26,7 +26,7 @@ single named declaration, matched by a *flat* scan of every line (`index.mjs`,
 
 - **Document** — the Markdown file holding markers.
 - **Target** — the file a marker points at.
-- **Section reference** — the text after `#region:` in a marker's fragment.
+- **Section reference** — the text after `#` in a marker's fragment.
 - **Section** — the text a reference resolves to inside the target.
 - **Block** — a braced (or indented) span in the target: a class-like body, a method body, a
   statement body (`if`/`for`/`while`/`switch`/`try`/`catch`/`synchronized`), or a block
@@ -38,8 +38,8 @@ single named declaration, matched by a *flat* scan of every line (`index.mjs`,
 1. **`index.mjs` + `cli.mjs` are the source of truth.** Nothing is "fixed" anywhere else.
    **The source of truth has since grown:** the syntax these steps specify is now normative in
    [`doc/section-matching.md`](../../doc/section-matching.md), which supersedes §4, §5 and §9
-   of this contract where the two disagree (the `region:` fragment keyword was dropped, and
-   the error catalogue and grammar moved on). Treat this document as the plan set's history and
+   of this contract where the two disagree (the error catalogue and grammar moved on). Treat
+   this document as the plan set's history and
    as the source of the *design* rules in §3 and §10, not as the current grammar.
 2. **~~All porting is frozen.~~ Retired.** No step touched `src/**`, `build.zig`,
    `build.zig.zon`, or wrote a Java/Zig implementation; the Zig differential harness
@@ -63,10 +63,10 @@ single named declaration, matched by a *flat* scan of every line (`index.mjs`,
 ## 4. Marker form (superseded — see the note below)
 
 ```text
-[label](path#region:<section-reference>)
+[label](path#<section-reference>)
 ```
 
-> **Superseded on 2026-10-09.** The `region:` fragment keyword was dropped: a marker carries
+> **Superseded on 2026-10-09.** A marker carries
 > `#<section-reference>` directly, and anything after the `#` is the reference. The normative
 > statement is in [`doc/section-matching.md`](../../doc/section-matching.md). The rest of this
 > section is kept because the reasoning still holds — the fragment names a section, it is not a
@@ -102,14 +102,18 @@ Rules, each an error when violated:
 2. **Only the last segment selects content to inject.** Earlier segments are scopes: each
    must resolve, and each later segment is looked up inside the block the previous segment
    found.
-3. **The modifier is trailing and applies to the final path part.** The **old leading
-   spelling keeps working**: `-add`, `+add`, `++add` are canonicalised to `add-`, `add+`,
-   `add++` (§7).
+3. **The modifier applies to the final path part, and the canonical spelling is trailing.**
+   Two leading spellings are normalised to it (§7): a prefix of the **whole reference**
+   (`+add`, `++add`, `-add` → `add+`, `add++`, `add-`) and a single `-` leading the last
+   segment, or the second of two (`Cart/Line/-render`, `Cart/-Line`). The forms are **not
+   symmetric**: a `+` or `++` leading a *segment* is an error even when that segment is last
+   (`a/+b`), while a trailing run written on a non-last segment is collected and applied to
+   the last one (`a++/b` → `a/b++`).
 4. **A bare name is a path of one segment**, and keeps today's meaning: search the whole
    file, at any depth.
 5. **First match wins**, walking depth-first and left to right. A trailing modifier never
    changes which match is found.
-6. **`region:` is not a name.** The reference `add` matches a `#region add` directive, a
+6. **A reference is a name, not a directive prefix.** The reference `add` matches a `#region add` directive, a
    `void add()` method, a `String add` property, a `class add`, a `//add` anchor, or an
    `if ("add".equals(...))` block — whichever the walk finds first.
 
@@ -140,12 +144,25 @@ form is **trailing**, so the parser normalises before parsing:
 1. If the reference starts with `++`, `+` or `-`, detach it and append it to the end.
 2. If the **second** segment starts with exactly one `-` and nothing was detached in step 1,
    detach that `-` and append it (`Cart/-Line` → `Cart/Line-`).
-3. After normalisation, a `+` or `-` anywhere except the very end is an error (§9).
+3. After normalisation, a `+` or `++` leading a path segment is an error, and so is a `-`
+   leading a segment that is neither the last nor the second of two. A trailing run on a
+   non-last segment is **collected**, not rejected, and is applied to the last segment
+   (`a++/b` → `a/b++`, `a-/b` → `a/b-`) (§9).
 
-Accepted: `add`, `add-`, `-add`, `Cart/Line`, `Cart/Line-`, `Cart/-Line`, `toString++`,
-`++toString`, `Cart/Line/render-`, `Cart/Line/-render`.
-Rejected (errors): `Cart/-Line/render`, `Cart/Line/+render`, `a//b`, `a/`, `/a`, `a+++`.
+Accepted: `add`, `add-`, `-add`, `+add`, `++add`, `Cart/Line`, `Cart/Line-`, `Cart/-Line`,
+`toString++`, `++toString`, `Cart/Line/render-`, `Cart/Line/-render`, `+a/b`, `a/-b`, `a++/b`.
+Rejected (errors): `Cart/-Line/render`, `Cart/Line/+render`, `a/+b`, `a/++b`, `x/y+z`, `a//b`,
+`a/`, `/a`, `a+++`.
 Warned (see §10): `a/b++-`, `a-/b++`, `a+-`.
+
+> **Corrected 2026-10-10.** Rule 3 above and step 3 here previously read *"the modifier is
+> trailing… a `+` or `-` anywhere except the very end is an error"*, which described neither
+> `lib/section.mjs` nor the vectors: a leading `+`/`++` is rejected on a *segment* even when
+> that segment is last (`a/+b` is an error), while a trailing run on a non-last segment is
+> collected rather than rejected (`a++/b` is `a/b++`). `doc/section-matching.md` carries the
+> same correction, and it is the normative document for implementers. The earlier wording is
+> kept here, in the note, rather than in the rules — so a port written against the old text
+> has a record of what changed and why.
 
 ## 8. Modifiers (§8.1 applies to the final section only)
 
@@ -181,12 +198,12 @@ normalisation) so the message points at the document, not at the parser's intern
 
 | Condition | Message shape |
 | --- | --- |
-| empty reference | `"#region:" names nothing` (unchanged from today) |
-| empty segment, leading/trailing `/`, `//` | `"#region:<raw>" has an empty path segment` |
-| `+`/`-` not at the end, after normalisation | `"<char>" may only modify the last path segment of "#region:<raw>"` |
-| the same modifier twice or thrice (`a+++`, `a---`) | `"#region:<raw>" carries more than one modifier` |
-| a detached leading modifier and a trailing one (`-a-`) | `"#region:<raw>" carries more than one modifier` |
-| more than 8 segments | `"#region:<raw>" is deeper than 8 sections` |
+| empty reference | `"#" names nothing` |
+| empty segment, leading/trailing `/`, `//` | `"#<raw>" has an empty path segment` |
+| a `+` or `++` leading a path segment (any segment, the last included), or a `-` leading a segment that is neither the last nor the second of two | `"<char>" may only modify the last path segment of "#<raw>"` |
+| the same modifier twice or thrice (`a+++`, `a---`) | `"#<raw>" carries more than one modifier` |
+| a detached leading modifier and a trailing one (`-a-`) | `"#<raw>" carries more than one modifier` |
+| more than 8 segments | `"#<raw>" is deeper than 8 sections` |
 | segment matches nothing anywhere | `no "#region <name>" found, and no section named "<name>"` |
 | class/block matched but more path remains | `"<name>" is not a container` |
 | a mid-path scope does not exist | `no section named "<name>" in "<previous>"` |
@@ -222,7 +239,7 @@ what a human types while refactoring.
 
 | Case | Kind | Behaviour |
 | --- | --- | --- |
-| Contradictory pair: `++` with `-`, either order (`a++-`, `a-++`, `a-/b++`) | **Warning** | Reported once as `inject-examples: warn: <doc>:<line>: "#region:<ref>": "+/-" contradicts "++"; using "#region:<ref-without-the-minus>"`. The **`++` reading wins**; the block is injected as if the `-` were absent; the run continues; the run **exits 1** |
+| Contradictory pair: `++` with `-`, either order (`a++-`, `a-++`, `a-/b++`) | **Warning** | Reported once as `inject-examples: warn: <doc>:<line>: "#<ref>": "+/-" contradicts "++"; using "#<ref-without-the-minus>"`. The **`++` reading wins**; the block is injected as if the `-` were absent; the run continues; the run **exits 1** |
 | `+` with `-` (`a+-`, `a-+`) | **Warning** | Same shape: contradictory, `+` wins |
 | One modifier named twice (`a+++`, `a---`) | **Error** | Malformed, not contradictory — §9 |
 | A modifier anywhere but the end | **Error** | §7 rule 3, §9 |
