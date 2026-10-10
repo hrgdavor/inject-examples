@@ -201,7 +201,10 @@ pub fn leading_anchor(
     if is_region_line(body) {
         return None;
     }
-    Some(Anchor { name: anchor_name(body)?.to_string(), line: comment_line })
+    Some(Anchor {
+        name: anchor_name(body)?.to_string(),
+        line: comment_line,
+    })
 }
 
 /// The unit lines of a source, for a caller that has the text but not yet the split.
@@ -229,23 +232,53 @@ mod tests {
 
         assert_eq!("root", root.borrow().kind);
         // A class's scope is the file; the method's scope is the class.
-        assert_eq!("root", class.borrow().scope.upgrade().unwrap().borrow().kind);
+        assert_eq!(
+            "root",
+            class.borrow().scope.upgrade().unwrap().borrow().kind
+        );
         let parent = method.borrow().parent.upgrade().unwrap();
         assert_eq!(Some("Cart"), parent.borrow().name.clone().as_deref());
-        assert_eq!("Cart", method.borrow().scope.upgrade().unwrap().borrow().name.clone().unwrap());
+        assert_eq!(
+            "Cart",
+            method
+                .borrow()
+                .scope
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .name
+                .clone()
+                .unwrap()
+        );
         assert_eq!(1, root.borrow().children.len());
     }
 
     #[test]
     fn spans_fill_a_block_in() {
         let block = Block::new("method", Some("add"), 3);
-        apply_span(&block, &Span { open: Some(10), close: Some(30), open_line: Some(3), close_line: Some(5), ..Span::default() });
+        apply_span(
+            &block,
+            &Span {
+                open: Some(10),
+                close: Some(30),
+                open_line: Some(3),
+                close_line: Some(5),
+                ..Span::default()
+            },
+        );
         assert_eq!(Some(5), block.borrow().end_line);
         assert_eq!(Some(10), block.borrow().open);
 
         // An indented body has no braces: the end line is what carries the selection.
         let indented = Block::new("method", Some("add"), 1);
-        apply_span(&indented, &Span { indented: true, body_end_line: Some(4), ..Span::default() });
+        apply_span(
+            &indented,
+            &Span {
+                indented: true,
+                body_end_line: Some(4),
+                ..Span::default()
+            },
+        );
         assert!(indented.borrow().indented);
         assert_eq!(Some(4), indented.borrow().end_line);
         assert_eq!(None, indented.borrow().open);
@@ -253,11 +286,26 @@ mod tests {
 
     #[test]
     fn regions_pair_innermost_with_the_first_unclosed_directive() {
-        let source = "a\n#region outer\nb\n  #endregion\nc\n// #region inner\nd\n// #endregion\ne\n";
+        let source =
+            "a\n#region outer\nb\n  #endregion\nc\n// #region inner\nd\n// #endregion\ne\n";
         let regions = pair_regions(&lines_of(source));
         assert_eq!(2, regions.len());
-        assert_eq!(("outer".to_string(), 1, 3), (regions[0].name.clone(), regions[0].start_line, regions[0].end_line));
-        assert_eq!(("inner".to_string(), 5, 7), (regions[1].name.clone(), regions[1].start_line, regions[1].end_line));
+        assert_eq!(
+            ("outer".to_string(), 1, 3),
+            (
+                regions[0].name.clone(),
+                regions[0].start_line,
+                regions[0].end_line
+            )
+        );
+        assert_eq!(
+            ("inner".to_string(), 5, 7),
+            (
+                regions[1].name.clone(),
+                regions[1].start_line,
+                regions[1].end_line
+            )
+        );
 
         // An unclosed directive is not a region at all: the library pairs them.
         assert!(pair_regions(&lines_of("#region lonely\ncontent\n")).is_empty());
@@ -272,7 +320,10 @@ mod tests {
         let comments = comments_in(source);
         let open = source.find('{').unwrap();
         let anchor = leading_anchor(&comments, &source_units, &lines, &starts, open).unwrap();
-        assert_eq!(("getUsers".to_string(), 0), (anchor.name.clone(), anchor.line));
+        assert_eq!(
+            ("getUsers".to_string(), 0),
+            (anchor.name.clone(), anchor.line)
+        );
 
         // A comment that is not the first thing inside the braces is not an anchor.
         let later = "    public void handler() {\n        work(); //getUsers\n    }\n";
@@ -281,7 +332,14 @@ mod tests {
         let later_units = units(later);
         let later_comments = comments_in(later);
         let later_open = later.find('{').unwrap();
-        assert!(leading_anchor(&later_comments, &later_units, &later_lines, &later_starts, later_open).is_none());
+        assert!(leading_anchor(
+            &later_comments,
+            &later_units,
+            &later_lines,
+            &later_starts,
+            later_open
+        )
+        .is_none());
     }
 
     #[test]

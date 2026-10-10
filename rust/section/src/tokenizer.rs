@@ -15,7 +15,9 @@
 use std::cell::RefCell;
 
 use crate::lexer::{annotation_line, Declared, Lexer};
-use crate::mask::{blank, end_of_line, from_units, index_of, starts_with, units, Comment, StringSpan};
+use crate::mask::{
+    blank, end_of_line, from_units, index_of, starts_with, units, Comment, StringSpan,
+};
 use crate::syntax::{Annotation, Content, Escape, Heredoc, Shape, StringKind, Syntax};
 use crate::SectionError;
 
@@ -27,10 +29,11 @@ pub struct Facts {
     pub strings: Vec<StringSpan>,
 }
 
-/// A boundary-prefixed opener may not follow an identifier character.
+/// A boundary-prefixed opener may not follow an identifier character, where an identifier character is
+/// exactly JavaScript's `[A-Za-z0-9_$]` — tested over the code unit, never over its low byte, because
+/// `unit as u8` maps U+0141 to `A` and would hide the raw string in `Łr"x"`.
 fn is_identifier_unit(unit: u16) -> bool {
-    let character = unit as u8 as char;
-    character.is_ascii_alphanumeric() || character == '_' || character == '$'
+    matches!(unit, 0x30..=0x39 | 0x41..=0x5a | 0x61..=0x7a | 0x5f | 0x24)
 }
 /// One lexical pass: blanks comments and strings to spaces, collects the comment spans, and reports the
 /// string spans. Length and every newline offset are preserved.
@@ -71,7 +74,11 @@ pub fn tokenize(source: &str, syntax: &Syntax) -> Result<Facts, SectionError> {
                 continue;
             }
             let end = end_of_line(&text, i);
-            comments.push(Comment { text: from_units(&text[i + needle.len()..end]), from: i, to: end });
+            comments.push(Comment {
+                text: from_units(&text[i + needle.len()..end]),
+                from: i,
+                to: end,
+            });
             blank(&mut out, i, end);
             i = end;
             matched = true;
@@ -95,7 +102,11 @@ pub fn tokenize(source: &str, syntax: &Syntax) -> Result<Facts, SectionError> {
         }
         if let Some(block) = block {
             let read = read_block_comment(&text, i, block);
-            comments.push(Comment { text: read.body, from: i, to: read.to });
+            comments.push(Comment {
+                text: read.body,
+                from: i,
+                to: read.to,
+            });
             blank(&mut out, i, read.to);
             i = read.to;
             continue;
@@ -118,7 +129,11 @@ pub fn tokenize(source: &str, syntax: &Syntax) -> Result<Facts, SectionError> {
         i += 1;
     }
 
-    Ok(Facts { masked: from_units(&out), comments, strings })
+    Ok(Facts {
+        masked: from_units(&out),
+        comments,
+        strings,
+    })
 }
 
 /// A lexer adapter for the resolver: the [`Lexer`] shape the scanner wants, memoised on the last source
@@ -131,7 +146,10 @@ pub struct SyntaxLexer {
 
 /// The lexer for `syntax`, ready to hand to the scanner.
 pub fn lexer(syntax: Syntax) -> SyntaxLexer {
-    SyntaxLexer { syntax: syntax.normalised(), cache: RefCell::new(None) }
+    SyntaxLexer {
+        syntax: syntax.normalised(),
+        cache: RefCell::new(None),
+    }
 }
 
 impl SyntaxLexer {
@@ -140,7 +158,11 @@ impl SyntaxLexer {
         &self.syntax
     }
 
-    fn with_facts<T>(&self, text: &str, use_facts: impl FnOnce(&Facts) -> T) -> Result<T, SectionError> {
+    fn with_facts<T>(
+        &self,
+        text: &str,
+        use_facts: impl FnOnce(&Facts) -> T,
+    ) -> Result<T, SectionError> {
         if let Some((cached_source, facts)) = self.cache.borrow().as_ref() {
             if cached_source == text {
                 return Ok(use_facts(facts));
@@ -163,7 +185,8 @@ impl Lexer for SyntaxLexer {
     }
 
     fn comments(&self, text: &str) -> Vec<Comment> {
-        self.with_facts(text, |facts| facts.comments.clone()).unwrap_or_else(|_| Vec::new())
+        self.with_facts(text, |facts| facts.comments.clone())
+            .unwrap_or_else(|_| Vec::new())
     }
 
     fn declarations(&self, masked_line: &str) -> Vec<Declared> {
@@ -201,7 +224,10 @@ fn read_block_comment(text: &[u16], i: usize, block: &crate::syntax::BlockCommen
             Some(at) => (at + close.len(), at),
             None => (text.len(), text.len()),
         };
-        return BlockRead { to, body: from_units(&text[i + open.len()..body_end]) };
+        return BlockRead {
+            to,
+            body: from_units(&text[i + open.len()..body_end]),
+        };
     }
 
     let mut depth = 0i32;
@@ -224,7 +250,10 @@ fn read_block_comment(text: &[u16], i: usize, block: &crate::syntax::BlockCommen
         j += 1;
     }
     let body_end = j.saturating_sub(close.len()).max(body_start);
-    BlockRead { to: j, body: from_units(&text[body_start..body_end]) }
+    BlockRead {
+        to: j,
+        body: from_units(&text[body_start..body_end]),
+    }
 }
 
 struct HeredocHit {
@@ -233,18 +262,14 @@ struct HeredocHit {
     length: usize,
 }
 
+/// `[A-Za-z_]` over a code unit, as [`is_identifier_unit`] is `\w`: no `unit as u8` truncation.
 fn is_tag_start(unit: Option<u16>) -> bool {
-    unit.is_some_and(|u| {
-        let c = u as u8 as char;
-        c.is_ascii_alphabetic() || c == '_'
-    })
+    unit.is_some_and(|u| matches!(u, 0x41..=0x5a | 0x61..=0x7a | 0x5f))
 }
 
+/// `[A-Za-z0-9_]` over a code unit.
 fn is_tag_char(unit: Option<u16>) -> bool {
-    unit.is_some_and(|u| {
-        let c = u as u8 as char;
-        c.is_ascii_alphanumeric() || c == '_'
-    })
+    unit.is_some_and(|u| matches!(u, 0x30..=0x39 | 0x41..=0x5a | 0x61..=0x7a | 0x5f))
 }
 
 /// `<<TAG`, `<<-TAG`, `<<~TAG`, `<<"TAG"` and PHP's `<<<TAG`, matched by hand.
@@ -341,11 +366,19 @@ fn match_string<'a>(text: &[u16], i: usize, kinds: &'a [StringKind]) -> Option<S
             }
             let mut close = vec![b'"' as u16];
             close.extend(std::iter::repeat(b'#' as u16).take(hashes));
-            return Some(StringHit { kind, body_from: j + 1, close });
+            return Some(StringHit {
+                kind,
+                body_from: j + 1,
+                close,
+            });
         }
         let opener = units(&kind.open);
         if starts_with(text, &opener, i) {
-            return Some(StringHit { kind, body_from: i + opener.len(), close: units(&kind.close) });
+            return Some(StringHit {
+                kind,
+                body_from: i + opener.len(),
+                close: units(&kind.close),
+            });
         }
     }
     None
@@ -386,8 +419,7 @@ fn read_string(text: &[u16], hit: &StringHit<'_>) -> Option<usize> {
                     return None;
                 }
             }
-            if kind.content == Content::SingleChar
-                && !is_single_char_body(&text[hit.body_from..j])
+            if kind.content == Content::SingleChar && !is_single_char_body(&text[hit.body_from..j])
             {
                 return None;
             }
@@ -395,19 +427,38 @@ fn read_string(text: &[u16], hit: &StringHit<'_>) -> Option<usize> {
         }
         j += 1;
     }
-    if must_close { None } else { Some(text.len()) }
+    if must_close {
+        None
+    } else {
+        Some(text.len())
+    }
 }
 
-/// The body of a Rust char literal: one escape (a backslash and up to ten more units), or one or two
-/// units that are neither a newline nor a backslash. Everything else is a lifetime, not a string.
+/// The characters JavaScript's `.` refuses to match: a `.` without the `s` flag excludes every line
+/// terminator, and a char literal may not contain one.
+fn is_line_terminator(unit: u16) -> bool {
+    matches!(unit, 0x0a | 0x0d | 0x2028 | 0x2029)
+}
+
+/// The body of a Rust char literal: `/^(?:\\.{1,10}|[^\n\\]{1,2})$/` — one escape (a backslash and one
+/// to ten units that are not line terminators), or one or two units that are neither a newline nor a
+/// backslash. Everything else is a lifetime, not a string.
 fn is_single_char_body(body: &[u16]) -> bool {
     if body.is_empty() {
         return false;
     }
     if body[0] == b'\\' as u16 {
-        return body.len() <= 11;
+        let escaped = &body[1..];
+        // `\\.{1,10}` — a backslash before a line terminator is not an escape, so `'\<newline>'` is a
+        // lifetime-shaped candidate that never closes, not a char literal.
+        return !escaped.is_empty()
+            && escaped.len() <= 10
+            && !escaped.iter().any(|unit| is_line_terminator(*unit));
     }
-    body.len() <= 2 && !body.iter().any(|unit| *unit == b'\n' as u16 || *unit == b'\\' as u16)
+    body.len() <= 2
+        && !body
+            .iter()
+            .any(|unit| *unit == b'\n' as u16 || *unit == b'\\' as u16)
 }
 
 // ---------------------------------------------------------------------------
@@ -415,11 +466,15 @@ fn is_single_char_body(body: &[u16]) -> bool {
 // ---------------------------------------------------------------------------
 
 /// `@Decorator`-style is the default; Haskell supplies `name ::` instead.
+///
+/// `/^\s*[\w']+\s*::/` — `\w` is ASCII in JavaScript, so a non-ASCII letter does not make a signature.
 fn is_name_signature(line: &str) -> bool {
     let trimmed = line.trim_start();
     let name_len: usize = trimmed
         .chars()
-        .take_while(|character| character.is_alphanumeric() || *character == '_' || *character == '\'')
+        .take_while(|character| {
+            character.is_ascii_alphanumeric() || *character == '_' || *character == '\''
+        })
         .map(char::len_utf8)
         .sum();
     name_len > 0 && trimmed[name_len..].trim_start().starts_with("::")
@@ -476,31 +531,71 @@ fn take_name(text: &str, ruby_suffix: bool) -> Option<String> {
 }
 
 const HASKELL_KEYWORDS: [&str; 10] = [
-    "data", "newtype", "type", "class", "instance", "module", "import", "infix", "foreign", "deriving",
+    "data", "newtype", "type", "class", "instance", "module", "import", "infix", "foreign",
+    "deriving",
 ];
 
 /// `^(?!(?:data|newtype|…)\b)([a-z_][\w']*)\b[^=\n]*=`, a one-line binding.
+///
+/// The `^` is column 0 with no `\s*`, so an indented line is never a top-level binding — a `where`
+/// clause's local bindings stay invisible, as they are to the JavaScript.
 fn haskell_binding(line: &str) -> Option<Declared> {
-    let text = line.trim_start();
+    let mut characters = line.char_indices();
+    let (_, first) = characters.next()?;
+    if !(first.is_ascii_lowercase() || first == '_') {
+        return None;
+    }
+    // `([a-z_][\w']*)` — greedy over word characters and apostrophes.
+    let mut end = first.len_utf8();
+    for (index, character) in characters {
+        if character.is_ascii_alphanumeric() || character == '_' || character == '\'' {
+            end = index + character.len_utf8();
+        } else {
+            break;
+        }
+    }
+    // The `\b` after the group gives a trailing `'` back: `'` is not a word character, so `add'` binds
+    // the name `add` and `foldl'` the name `foldl`, exactly as the regex backtracks.
+    while end > first.len_utf8() && line[..end].ends_with('\'') {
+        end -= 1;
+    }
+    let name = &line[..end];
+
     // The lookahead is a *word* boundary, so `datax` is a binding while `data` is the keyword: compare
     // the whole identifier, not a prefix of it.
-    let head: String = text
-        .chars()
-        .take_while(|character| {
-            character.is_ascii_alphanumeric() || *character == '_' || *character == '\''
-        })
-        .collect();
-    let is_keyword = HASKELL_KEYWORDS.contains(&head.as_str())
-        || head == "default"
-        || head == "infix"
-        || head == "infixl"
-        || head == "infixr";
+    let is_keyword = HASKELL_KEYWORDS.contains(&name)
+        || name == "default"
+        || name == "infix"
+        || name == "infixl"
+        || name == "infixr";
     if is_keyword {
         return None;
     }
-    let mut characters = text.char_indices();
+
+    // `[^=\n]*=` — the binding's `=` must follow before the line ends, and no `=` may come first.
+    let rest = &line[end..];
+    let equals = rest.find('=')?;
+    Some(Declared::new("method", name, end + equals + 1).single_line())
+}
+
+/// `^(?:data|newtype|type|class)\s+(?:\([^)]*\)\s*=>\s*)?([A-Z][\w']*)`.
+///
+/// `^` is column 0 here too, and the name class keeps apostrophes: `data Foo' = Foo` declares `Foo'`.
+fn haskell_type(line: &str) -> Option<Declared> {
+    let keyword = ["newtype", "class", "data", "type"].iter().find(|word| {
+        line.strip_prefix(**word)
+            .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+    })?;
+    let mut rest = line[keyword.len()..].trim_start();
+    if rest.starts_with('(') {
+        let close = rest.find(')')?;
+        let after = rest[close + 1..].trim_start();
+        rest = after.strip_prefix("=>")?.trim_start();
+    }
+    // `[A-Z][\w']*` — no trailing `\b`, so the apostrophe is part of the name.
+    let mut characters = rest.char_indices();
     let (_, first) = characters.next()?;
-    if !(first.is_ascii_lowercase() || first == '_') {
+    if !first.is_ascii_uppercase() {
         return None;
     }
     let mut end = first.len_utf8();
@@ -511,128 +606,182 @@ fn haskell_binding(line: &str) -> Option<Declared> {
             break;
         }
     }
-    let name = &text[..end];
-    let rest = &text[end..];
-    // `[^=\n]*=` — the binding's `=` must follow before the line ends, and no `=` may come first.
-    let equals = rest.find('=')?;
-    if rest[..equals].contains('=') {
-        return None;
-    }
-    Some(Declared::new("method", name, end + equals + 1).single_line())
-}
-
-/// `^(?:data|newtype|type|class)\s+(?:\([^)]*\)\s*=>\s*)?([A-Z][\w']*)`.
-fn haskell_type(line: &str) -> Option<Declared> {
-    let text = line.trim_start();
-    let keyword = ["newtype", "class", "data", "type"].iter().find(|word| {
-        text.strip_prefix(**word).is_some_and(|rest| rest.starts_with(char::is_whitespace))
-    })?;
-    let mut rest = text[keyword.len()..].trim_start();
-    if rest.starts_with('(') {
-        let close = rest.find(')')?;
-        let after = rest[close + 1..].trim_start();
-        rest = after.strip_prefix("=>")?.trim_start();
-    }
-    let name = take_name(rest, false)?;
-    if !name.starts_with(|c: char| c.is_ascii_uppercase()) {
-        return None;
-    }
+    let name = &rest[..end];
     let header_from = line.len() - rest.len() + name.len();
     Some(Declared::new("class", name, header_from))
 }
 
 /// `^\s*impl\b[^{]*?\b([A-Za-z_][\w:]*)\s*(?:<[^>]*>)?\s*(?:where\b[^{]*)?\{` — the identifier that
 /// ends the header, so `impl Display for Cart<T> where T: Clone` is a scope called `Cart`.
+///
+/// The header is lazy (`[^{]*?`), so the regex tries each identifier from the left and takes the first
+/// one whose tail — optional generics, an optional `where` clause — reaches the `{`. That is what makes
+/// `impl<T: Clone> Display for Cart<T> {` a scope named `Cart` rather than no declaration at all, while
+/// `impl Foo<Bar<Baz>> {` (whose tail after no candidate is the empty `where`-less remainder) declares
+/// nothing.
 fn rust_impl(line: &str) -> Option<Declared> {
     let text = line.trim_start();
     let rest = text.strip_prefix("impl")?;
-    if !rest.starts_with(char::is_whitespace) {
+    // `\b` after `impl`: `implement` is not an `impl`.
+    if rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
         return None;
     }
-    let header = &rest[..rest.find('{')?];
-    let mut header = header.trim_end();
-    // Drop a trailing `where …` clause, then a trailing generic parameter list.
-    if let Some(at) = header.rfind("where") {
-        if at > 0 && header[..at].ends_with(char::is_whitespace) {
-            header = header[..at].trim_end();
+    // `[^{]*?` cannot cross the opening brace, so the header ends at the first one.
+    let brace = rest.find('{')?;
+    let header = &rest[..brace];
+
+    for (start, character) in header.char_indices() {
+        if !(character.is_ascii_alphabetic() || character == '_') {
+            continue;
+        }
+        // `\b([A-Za-z_]` — the previous character must not be a word character.
+        if start > 0
+            && header[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|before| before.is_ascii_alphanumeric() || before == '_')
+        {
+            continue;
+        }
+        let name_end = rust_name_end(header, start);
+        if rust_impl_tail_matches(&header[name_end..]) {
+            let name = header[start..name_end].trim_matches(':');
+            if name.is_empty() || !name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+                return None;
+            }
+            // `match[0]` ends with the `{`, so `header_from` is just past it.
+            let header_from = line.len() - rest.len() + brace + 1;
+            return Some(Declared::new("class", name, header_from));
         }
     }
-    if header.ends_with('>') {
-        let open = header.rfind('<')?;
-        header = header[..open].trim_end();
+    None
+}
+
+/// `[\w:]*` after the identifier's first character.
+fn rust_name_end(header: &str, start: usize) -> usize {
+    let mut end = start;
+    for (index, character) in header.char_indices().skip_while(|(i, _)| *i < start) {
+        if index == start {
+            end = index + character.len_utf8();
+            continue;
+        }
+        if character.is_ascii_alphanumeric() || character == '_' || character == ':' {
+            end = index + character.len_utf8();
+        } else {
+            break;
+        }
     }
-    let start = header
-        .char_indices()
-        .rev()
-        .take_while(|(_, character)| {
-            character.is_ascii_alphanumeric() || *character == '_' || *character == ':'
-        })
-        .last()
-        .map(|(index, _)| index)?;
-    let name = header[start..].trim_matches(':');
-    if name.is_empty() || !name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
-        return None;
+    end
+}
+
+/// Whether the tail `\s*(?:<[^>]*>)?\s*(?:where\b[^{]*)?$` matches the rest of an `impl` header.
+fn rust_impl_tail_matches(tail: &str) -> bool {
+    let tail = tail.trim_start();
+    let tail = if let Some(after) = tail.strip_prefix('<') {
+        // `[^>]*>` — the closer is the first `>`.
+        match after.find('>') {
+            Some(at) => after[at + 1..].trim_start(),
+            None => return false,
+        }
+    } else {
+        tail
+    };
+    if tail.is_empty() {
+        return true;
     }
-    let header_from = line.len() - rest.len() + rest.find('{')?;
-    Some(Declared::new("class", name, header_from))
+    // `where\b[^{]*` — the boundary after `where`, then anything up to the brace.
+    match tail.strip_prefix("where") {
+        Some(after) => {
+            after.is_empty() || !after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+        }
+        None => false,
+    }
 }
 
 /// `^\s*(?:pub\s+)?([A-Za-z_]\w*)\s*:` — a field, which Rust never writes as `name = …`.
+///
+/// `pub` counts only when whitespace follows it, so `publisher:` is the field `publisher` and
+/// `pub_key:` the field `pub_key`, as in the JavaScript.
 fn rust_field(line: &str) -> Option<Declared> {
     let text = line.trim_start();
-    let text = text.strip_prefix("pub").map_or(text, |rest| rest.trim_start());
-    let name = take_name(text, false)?;
-    let rest = &text[name.len()..];
-    if !rest.trim_start().starts_with(':') {
-        return None;
-    }
-    let header_from = line.len() - rest.len() + name.len();
+    let after_pub = match text.strip_prefix("pub") {
+        Some(rest) if rest.starts_with(char::is_whitespace) => rest.trim_start(),
+        _ => text,
+    };
+    let name = take_name(after_pub, false)?;
+    let rest = &after_pub[name.len()..];
+    let after_colon = rest.trim_start().strip_prefix(':')?;
+    // `match[0]` ends just past the `:`.
+    let header_from = line.len() - after_colon.len();
     Some(Declared::new("property", name, header_from).single_line())
 }
 
+/// `\w+` — VB's name class, which unlike Ruby's may start with a digit (`Class 2Thing`).
+fn take_word(text: &str) -> Option<&str> {
+    let end = text
+        .char_indices()
+        .take_while(|(_, character)| character.is_ascii_alphanumeric() || *character == '_')
+        .map(|(index, character)| index + character.len_utf8())
+        .last()?;
+    Some(&text[..end])
+}
+
 /// `^\s*(?:Public|Private|Friend|Protected)?\s*(?:NotInheritable\s+|MustInherit\s+)?(?:Class|Module|Structure)\s+(\w+)`.
+///
+/// `\s*` after the first modifier group is zero-or-more, so `PublicClass Form` declares `Form` too.
 fn vb_class(line: &str) -> Option<Declared> {
     let mut text = line.trim_start();
     for modifier in ["Public", "Private", "Friend", "Protected"] {
         if let Some(rest) = text.strip_prefix(modifier) {
-            if rest.starts_with(char::is_whitespace) {
-                text = rest.trim_start();
-                break;
-            }
+            text = rest.trim_start();
+            break;
         }
     }
     for modifier in ["NotInheritable", "MustInherit"] {
         if let Some(rest) = text.strip_prefix(modifier) {
+            // This group needs `\s+`, so without whitespace the modifier is not one.
             if rest.starts_with(char::is_whitespace) {
                 text = rest.trim_start();
-                break;
             }
+            break;
         }
     }
-    let keyword = ["Class", "Module", "Structure"]
-        .iter()
-        .find(|word| text.strip_prefix(**word).is_some_and(|r| r.starts_with(char::is_whitespace)))?;
+    let keyword = ["Class", "Module", "Structure"].iter().find(|word| {
+        text.strip_prefix(**word)
+            .is_some_and(|r| r.starts_with(char::is_whitespace))
+    })?;
     let rest = text[keyword.len()..].trim_start();
-    let name = take_name(rest, false)?;
+    let name = take_word(rest)?;
     let header_from = line.len() - rest.len() + name.len();
     Some(Declared::new("class", name, header_from).closed_by("End"))
 }
 
 /// `^\s*[\w\s]*?\b(?:Sub|Function)\s+(\w+)`.
+///
+/// The lazy `[\w\s]*?` means the keyword must begin inside the leading run of word and space
+/// characters, and the `\b` means it begins at the line's start or after whitespace. So
+/// `Submarine Function Add(x)` declares `Add` — the `Sub` inside `Submarine` has no boundary after it —
+/// and `MySub Foo` declares nothing, because the `Sub` it contains is preceded by a word character.
 fn vb_method(line: &str) -> Option<Declared> {
     let text = line.trim_start();
-    let at = ["Sub", "Function"]
-        .iter()
-        .filter_map(|word| text.find(*word).map(|index| (index, *word)))
-        .min_by_key(|(index, _)| *index)?;
-    let (index, word) = at;
-    if text[..index].chars().any(|character| {
-        !character.is_whitespace() && !character.is_alphanumeric() && character != '_'
-    }) {
-        return None;
+    let mut inside_prefix = true;
+    for (index, character) in text.char_indices() {
+        let after_space = index == 0 || text[..index].ends_with(char::is_whitespace);
+        if inside_prefix && after_space {
+            for word in ["Sub", "Function"] {
+                if let Some(rest) = text[index..].strip_prefix(word) {
+                    if rest.starts_with(char::is_whitespace) {
+                        let rest = rest.trim_start();
+                        let name = take_word(rest)?;
+                        let header_from = line.len() - rest.len() + name.len();
+                        return Some(Declared::new("method", name, header_from).closed_by("End"));
+                    }
+                }
+            }
+        }
+        if !(character.is_ascii_alphanumeric() || character == '_' || character.is_whitespace()) {
+            inside_prefix = false;
+        }
     }
-    let rest = text[index + word.len()..].trim_start();
-    let name = take_name(rest, false)?;
-    let header_from = line.len() - rest.len() + name.len();
-    Some(Declared::new("method", name, header_from).closed_by("End"))
+    None
 }

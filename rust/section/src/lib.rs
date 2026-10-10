@@ -53,7 +53,9 @@ pub struct SectionError {
 
 impl SectionError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 
     pub fn message(&self) -> &str {

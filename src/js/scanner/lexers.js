@@ -1,3 +1,4 @@
+// @ts-check
 // ============================================================================
 // LEXER REGISTRY
 // Maps a file extension to the language lexer that masks it for
@@ -62,7 +63,7 @@ LEXERS.zig = lexerZig;
  * The lexer for `path`'s extension, or `undefined` when the type is unknown
  * (no extension, or one with no entry) and the default engine applies.
  * @param {string} path
- * @returns {import('../../lib/section.mjs').Lexer | undefined}
+ * @returns {import('../../../lib/section.mjs').Lexer | undefined}
  */
 export function lexerFor(path) {
   const dot = path.lastIndexOf('.');

@@ -1,3 +1,4 @@
+// @ts-check
 // Differential test: run `cli.mjs` and the Zig twin on the same corpus and
 // compare everything a user can see — stdout, stderr, exit code, and every byte
 // of every file the run touched — and report any difference.
@@ -378,6 +379,95 @@ const CODE_JAVA_TEXT_BLOCK = [
     '',
 ].join('\n');
 
+// --- the hard spellings, which the plain fixtures above cannot catch --------
+//
+// Every construct below is one a port only gets right if it mirrors the
+// JavaScript matcher character for character: a generic `impl`, a field whose
+// name begins with `pub`, a Haskell binding whose source name carries a prime,
+// an indented `where` binding, a VB modifier without a space, and a region in
+// `--` comments. The plain corpus passes with any of those wrong.
+
+const GENERICS_RS = [
+    'use std::fmt::Display;',
+    '',
+    'pub struct Cart<T> {',
+    '    publisher: String,',
+    '    pub_key: String,',
+    '    items: Vec<T>,',
+    '}',
+    '',
+    'impl<T: Clone> Display for Cart<T> {',
+    '    fn render(&self) -> String {',
+    '        String::new()',
+    '    }',
+    '}',
+    '',
+    'impl Cart<String> {',
+    '    fn add(&mut self, x: String) {',
+    '        self.items.push(x);',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
+const PRIME_HS = [
+    'module Prime where',
+    '',
+    "add' :: Int -> Int",
+    "add' x = x + 1",
+    '',
+    "data Foo' = Foo' Int",
+    '',
+    'double :: Int -> Int',
+    'double x = go x',
+    '  where',
+    '    go y = y * 2',
+    '',
+    'class Store s where',
+    '  get :: s -> Int',
+    '',
+].join('\n');
+
+const WIDGET_CS = [
+    'namespace Demo;',
+    '',
+    'public class Widget',
+    '{',
+    '    public string Name { get; set; }',
+    '',
+    '    public int Add(int a, int b)',
+    '    {',
+    '        return a + b;',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
+const REPO_KT = [
+    'class Repo {',
+    '    fun find(id: Int): String {',
+    '        return "item " + id',
+    '    }',
+    '',
+    '    fun save(item: String) {',
+    '        println(item)',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
+const ORDERS_SQL = [
+    '-- #region totals',
+    'SELECT count(*) AS orders, sum(total) AS revenue FROM orders;',
+    '-- #endregion',
+    '',
+    'CREATE TABLE orders (',
+    '    id INT,',
+    '    total INT',
+    ');',
+    '',
+].join('\n');
+
 const BASE_FILES = {
     'README.md': simpleDoc(),
     'fixtures/one.md': 'real content\nsecond line\n',
@@ -402,6 +492,12 @@ const BASE_FILES = {
     'fixtures/app.yaml': DATA_YAML,
     'fixtures/app.toml': DATA_TOML,
     'fixtures/app.ini': DATA_INI,
+    // The hard spellings.
+    'fixtures/Generics.rs': GENERICS_RS,
+    'fixtures/Prime.hs': PRIME_HS,
+    'fixtures/Widget.cs': WIDGET_CS,
+    'fixtures/Repo.kt': REPO_KT,
+    'fixtures/Orders.sql': ORDERS_SQL,
 };
 
 /** Every `#<reference>` the reference corpus can be asked for. */
@@ -468,6 +564,37 @@ const REFERENCE_CASES = [
     ['fixtures/one.md', 'a/b/c/d/e/f/g/h/i'],
     ['fixtures/one.md', 'a//b'],
     ['fixtures/one.md', 'add--'],
+
+    // The hard spellings, one reference per misspelling a matcher can make: a
+    // generic impl, a `pub`-prefixed field name, a primed or indented Haskell
+    // binding, a VB modifier, and a region in SQL line comments.
+    ['fixtures/Generics.rs', 'Cart'],
+    ['fixtures/Generics.rs', 'Cart/items'],
+    ['fixtures/Generics.rs', 'items'],
+    ['fixtures/Generics.rs', 'publisher'],
+    ['fixtures/Generics.rs', 'pub_key'],
+    ['fixtures/Generics.rs', 'render'],
+    ['fixtures/Generics.rs', 'Cart/render'],
+    ['fixtures/Generics.rs', 'Cart/add'],
+    ['fixtures/Generics.rs', 'Display'],
+    ['fixtures/Prime.hs', 'add'],
+    ['fixtures/Prime.hs', 'double'],
+    ['fixtures/Prime.hs', 'go'],
+    ['fixtures/Prime.hs', 'Store'],
+    ['fixtures/Prime.hs', 'get'],
+    ['fixtures/Prime.hs', 'data'],
+    ['fixtures/Widget.cs', 'Widget'],
+    ['fixtures/Widget.cs', 'Widget/Add'],
+    ['fixtures/Widget.cs', 'Add'],
+    ['fixtures/Widget.cs', 'Name'],
+    ['fixtures/Repo.kt', 'Repo'],
+    ['fixtures/Repo.kt', 'Repo/find'],
+    ['fixtures/Repo.kt', 'find'],
+    ['fixtures/Repo.kt', 'Repo/save'],
+    ['fixtures/Orders.sql', 'totals'],
+    ['fixtures/Orders.sql', 'orders'],
+    ['fixtures/Form.vb', 'Form/Add-'],
+    ['fixtures/Form.vb', 'Form/Run'],
 ];
 
 

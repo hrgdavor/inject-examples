@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+// @ts-check
 
 /**
- * Turn the section-matching golden vectors into a Zig test's data.
+ * Turn the golden vectors into a Zig test's data.
  *
  * `test/vectors/section-vectors.json` is generated from the JavaScript
  * implementation by `tools/section-vectors.mjs`, and `test.mjs` already holds
@@ -11,12 +12,18 @@
  * resolve against — into `src/section_vectors.zig`, which `zig build test`
  * compiles and runs.
  *
+ * The lexical corpus (`test/vectors/lexical-vectors.json`, written by
+ * `tools/lexical-vectors.mjs`) rides along in the same file: the mask and
+ * declaration-shape rows the other ports assert.
+ *
  *   node tools/zig-vectors.mjs           write src/section_vectors.zig
  *   node tools/zig-vectors.mjs --check   exit 1 when the file is stale
  *
  * `--check` is a build gate: it fails when the committed file and the current
  * vectors disagree, so the Zig conformance set cannot silently fall behind the
- * JavaScript one.
+ * JavaScript one. The output is `zig fmt`-clean — `zig fmt` joins a `"…" ++ "…"`
+ * chain, so every literal is written on one line — which is why this file can be
+ * held to the same formatting gate as the hand-written sources.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -25,9 +32,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VECTORS = join(ROOT, 'test', 'vectors', 'section-vectors.json');
+const LEXICAL = join(ROOT, 'test', 'vectors', 'lexical-vectors.json');
 const OUT = join(ROOT, 'src', 'section_vectors.zig');
 
 const vectors = JSON.parse(readFileSync(VECTORS, 'utf8'));
+const lexical = JSON.parse(readFileSync(LEXICAL, 'utf8'));
 
 /** The fixture files the vectors resolve against, as UTF-8 text. */
 const inputs = [...new Set(vectors.map((c) => c.input).filter((p) => p !== null))].sort();
@@ -39,31 +48,23 @@ function fixtureName(path) {
 }
 
 /**
- * A Zig string literal holding `text` byte for byte.
+ * A Zig string literal holding `text` byte for byte, on one line.
  *
- * Everything above ASCII is written as a `\xNN` escape onto the following
- * line, because a Zig source line may not carry a raw non-ASCII byte; the
- * escapes join, so the literal is still one unbroken string.
+ * Everything above ASCII is written as a `\xNN` escape, because a Zig source
+ * line may not carry a raw non-ASCII byte. One line, however long, because
+ * `zig fmt` collapses a `"…" ++ "…"` chain back into one line and would
+ * otherwise make this generated file its own formatting failure.
  */
 function zigLiteral(text) {
     let out = '"';
-    let column = 1;
     for (const byte of Buffer.from(text, 'utf8')) {
-        let piece;
-        if (byte === 0x22) piece = '\\"';
-        else if (byte === 0x5c) piece = '\\\\';
-        else if (byte === 0x0a) piece = '\\n';
-        else if (byte === 0x0d) piece = '\\r';
-        else if (byte === 0x09) piece = '\\t';
-        else if (byte >= 0x20 && byte < 0x7f) piece = String.fromCharCode(byte);
-        else piece = `\\x${byte.toString(16).padStart(2, '0')}`;
-
-        if (column + piece.length > 108) {
-            out += '"\n        ++ "';
-            column = 1;
-        }
-        out += piece;
-        column += piece.length;
+        if (byte === 0x22) out += '\\"';
+        else if (byte === 0x5c) out += '\\\\';
+        else if (byte === 0x0a) out += '\\n';
+        else if (byte === 0x0d) out += '\\r';
+        else if (byte === 0x09) out += '\\t';
+        else if (byte >= 0x20 && byte < 0x7f) out += String.fromCharCode(byte);
+        else out += `\\x${byte.toString(16).padStart(2, '0')}`;
     }
     return `${out}"`;
 }
@@ -94,15 +95,47 @@ const cases = vectors.map((c) => {
     return `    .{\n${parts.join('\n')}\n    },`;
 });
 
-const rendered = `//! The section-matching conformance corpus, generated from the JavaScript
-//! implementation's golden vectors.
+/** One `ExpectedDeclared`, as a struct literal `zig fmt` leaves alone. */
+function declaredLiteral(entry) {
+    const body = entry.body === null ? 'null' : zigLiteral(entry.body);
+    const end = entry.end === null ? 'null' : zigLiteral(entry.end);
+    return `.{ .kind = .${entry.kind}, .name = ${zigLiteral(entry.name)}, `
+        + `.header_from = ${entry.headerFrom}, .body = ${body}, .end = ${end}, `
+        + `.line = ${entry.line} }`;
+}
+
+const maskCases = lexical.masks.map((c) => {
+    const parts = [
+        `        .name = ${zigString(c.name)},`,
+        `        .path = ${zigString(c.path)},`,
+        `        .source = ${zigLiteral(c.source)},`,
+        `        .masked = ${zigLiteral(c.masked)},`,
+    ];
+    return `    .{\n${parts.join('\n')}\n    },`;
+});
+
+const shapeCases = lexical.shapes.map((c) => {
+    const declared = c.declared.length === 0
+        ? '&.{}'
+        : `&.{\n${c.declared.map((d) => `            ${declaredLiteral(d)},`).join('\n')}\n        }`;
+    const parts = [
+        `        .name = ${zigString(c.name)},`,
+        `        .path = ${zigString(c.path)},`,
+        `        .line = ${zigLiteral(c.line)},`,
+        `        .declared = ${declared},`,
+    ];
+    return `    .{\n${parts.join('\n')}\n    },`;
+});
+
+const rendered = `//! The conformance corpora, generated from the JavaScript implementation.
 //!
 //! **Generated - do not edit.** \`node tools/zig-vectors.mjs\` writes this file
-//! from \`test/vectors/section-vectors.json\` (see \`tools/section-vectors.mjs\`)
-//! and the fixture files that corpus resolves against; \`--check\` fails when
-//! the committed file is stale. Every case here is one assertion in
-//! \`section.zig\`'s conformance test, so the port cannot drift from the
-//! JavaScript it mirrors without the build failing.
+//! from \`test/vectors/section-vectors.json\` and \`test/vectors/lexical-vectors.json\`
+//! (see \`tools/section-vectors.mjs\` and \`tools/lexical-vectors.mjs\`) and the
+//! fixture files the first of those resolves against; \`--check\` fails when the
+//! committed file is stale. Every case here is one assertion in \`section.zig\`'s
+//! conformance tests, so the port cannot drift from the JavaScript it mirrors
+//! without the build failing.
 
 const std = @import("std");
 
@@ -122,6 +155,35 @@ pub const Case = struct {
     warning: ?Warning,
 };
 
+/// One mask row: a source unit and the mask the JavaScript produces for it.
+pub const MaskCase = struct {
+    name: []const u8,
+    /// null when the type has no entry, so the built-in default engine applies.
+    path: ?[]const u8,
+    source: []const u8,
+    masked: []const u8,
+};
+
+pub const DeclaredKind = enum { class, method, property };
+
+/// One declaration a language reports for a masked line, as \`declarations(maskedLine)\` does.
+pub const ExpectedDeclared = struct {
+    kind: DeclaredKind,
+    name: []const u8,
+    header_from: i64,
+    body: ?[]const u8,
+    end: ?[]const u8,
+    line: bool,
+};
+
+/// One shape row: a masked line, and every declaration the language reports for it.
+pub const ShapeCase = struct {
+    name: []const u8,
+    path: []const u8,
+    line: []const u8,
+    declared: []const ExpectedDeclared,
+};
+
 ${fixtures.join('\n')}
 /// The fixture text for a vector's \`input\` path, or null when it names none.
 pub fn sourceOf(input: ?[]const u8) ?[]const u8 {
@@ -132,6 +194,14 @@ ${inputs.map((path) => `    if (std.mem.eql(u8, path, ${zigString(path)})) retur
 
 pub const cases = [_]Case{
 ${cases.join('\n')}
+};
+
+pub const mask_cases = [_]MaskCase{
+${maskCases.join('\n')}
+};
+
+pub const shape_cases = [_]ShapeCase{
+${shapeCases.join('\n')}
 };
 `;
 
@@ -162,4 +232,4 @@ if (process.argv.includes('--check')) {
 }
 
 writeFileSync(OUT, rendered, 'utf8');
-console.log(`wrote ${vectors.length} zig vectors to src/section_vectors.zig`);
+console.log(`wrote ${vectors.length} section, ${lexical.masks.length} mask and ${lexical.shapes.length} shape vectors to src/section_vectors.zig`);

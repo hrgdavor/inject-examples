@@ -21,7 +21,7 @@ import the ES module, and it is the sibling of the Rust implementation in
 | Resolution (`resolveSection`, `extractDeclaration`) | **ported** |
 | Per-language lexers (the language table) | **ported** — all eighteen entries and the extension registry |
 
-All 72 conformance vectors pass.
+All 124 conformance vectors pass, and so does the lexical corpus beside them.
 
 ```sh
 mvn test        # the gate
@@ -30,13 +30,23 @@ mvn package     # jar + sources + javadoc, as Maven Central wants them
 
 `SectionVectorsTest` reads
 [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json) —
-the same 72 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
+the same 124 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
 to — and asserts all of them: the grammar, the exact error text, the
 contradiction warning, and resolution against the fixtures, each through the
 language its file extension selects. It fails if a vector is unaccounted for, so
-nothing can quietly leave the gate. The Zig port keeps a *generated* copy because
-it has no JSON reader; reading the corpus directly is deliberately better here,
-since a file that cannot drift needs no drift gate.
+nothing can quietly leave the gate.
+
+`LexicalVectorsTest` reads
+[`test/vectors/lexical-vectors.json`](../../test/vectors/lexical-vectors.json),
+generated from the JavaScript by `tools/lexical-vectors.mjs`: one **mask** row
+per lexer entry — all eighteen, plus the built-in engine for an unknown type —
+and one **shape** row per discriminating declaration spelling (`impl<T>` beside
+`impl`, `publish…` beside `pub name`, a primed or indented Haskell binding, a VB
+modifier). Resolution vectors can only exercise the six lexer entries their
+fixtures name, so without this corpus a mistranslated matcher for any of the
+other twelve would pass every gate. The Zig port keeps a *generated* copy of both
+corpora because it has no JSON reader; reading them directly is deliberately
+better here, since a file that cannot drift needs no drift gate.
 
 ## Boundary
 

@@ -63,7 +63,10 @@ pub fn body_span(
     for (at, kind) in [
         (index_of(rest, &[b'{' as u16], 0), Terminator::Brace),
         (index_of(rest, &[b';' as u16], 0), Terminator::Statement),
-        (index_of(rest, &[b'=' as u16, b'>' as u16], 0), Terminator::Arrow),
+        (
+            index_of(rest, &[b'=' as u16, b'>' as u16], 0),
+            Terminator::Arrow,
+        ),
     ] {
         if let Some(at) = at {
             if first.is_none_or(|(best, _)| at < best) {
@@ -78,7 +81,10 @@ pub fn body_span(
             let after_arrow = at + 2;
             return match index_of(&rest[after_arrow..], &[b'{' as u16], 0) {
                 // A one-expression body: the span is that expression, on the header's own line.
-                None => Some(Span { expression: Some(from + after_arrow), ..Span::default() }),
+                None => Some(Span {
+                    expression: Some(from + after_arrow),
+                    ..Span::default()
+                }),
                 Some(brace) => brace_body(mask, starts, from + after_arrow + brace),
             };
         }
@@ -89,7 +95,10 @@ pub fn body_span(
     // No terminator on the header line: the body may still open on the next line, or be an indented run.
     let next = next_non_blank_units(mask_lines, decl_line + 1)?;
     if let Some(brace) = index_of(&mask_lines[next], &[b'{' as u16], 0) {
-        if mask_lines[next][..brace].iter().all(|unit| is_blank_unit(*unit)) {
+        if mask_lines[next][..brace]
+            .iter()
+            .all(|unit| is_blank_unit(*unit))
+        {
             return brace_body(mask, starts, starts[next] + brace);
         }
     }
@@ -105,7 +114,11 @@ pub fn body_span(
             }
             end = i;
         }
-        return Some(Span { indented: true, body_end_line: Some(end), ..Span::default() });
+        return Some(Span {
+            indented: true,
+            body_end_line: Some(end),
+            ..Span::default()
+        });
     }
     None
 }
@@ -154,7 +167,11 @@ pub fn keyword_body(lines: &[Vec<u16>], decl_line: usize, word: &str) -> Option<
 }
 
 fn is_blank_unit(unit: u16) -> bool {
-    unit == b' ' as u16 || unit == b'\t' as u16 || unit == b'\r' as u16 || unit == 0x0b || unit == 0x0c
+    unit == b' ' as u16
+        || unit == b'\t' as u16
+        || unit == b'\r' as u16
+        || unit == 0x0b
+        || unit == 0x0c
 }
 
 /// How far a unit line is indented.
@@ -164,7 +181,11 @@ pub fn indent_width_units(line: &[u16]) -> usize {
 
 pub(crate) fn trim_units(line: &[u16]) -> &[u16] {
     let start = line.iter().take_while(|unit| is_blank_unit(**unit)).count();
-    let end = line.iter().rev().take_while(|unit| is_blank_unit(**unit)).count();
+    let end = line
+        .iter()
+        .rev()
+        .take_while(|unit| is_blank_unit(**unit))
+        .count();
     &line[start..line.len().saturating_sub(end).max(start)]
 }
 
@@ -201,7 +222,10 @@ mod tests {
         let source = "void add();\n";
         let (mask, lines, starts) = scan(source);
         let header_from = mask.len() - units("();\n").len();
-        assert!(body_span(&mask, &lines, &starts, 0, header_from).is_none(), "a `;` is no body");
+        assert!(
+            body_span(&mask, &lines, &starts, 0, header_from).is_none(),
+            "a `;` is no body"
+        );
     }
 
     #[test]
@@ -241,8 +265,15 @@ mod tests {
         let (_, lines, _) = scan(source);
         let span = keyword_body(&lines, 1, "end").unwrap();
         assert_eq!(Some(1), span.open_line);
-        assert_eq!(Some(3), span.close_line, "the first `end` at or left of the indent");
+        assert_eq!(
+            Some(3),
+            span.close_line,
+            "the first `end` at or left of the indent"
+        );
 
-        assert!(keyword_body(&lines, 1, "stop").is_none(), "no terminator, no block");
+        assert!(
+            keyword_body(&lines, 1, "stop").is_none(),
+            "no terminator, no block"
+        );
     }
 }

@@ -23,7 +23,11 @@ const SAMPLE: &str = "line // comment\n\
 fn the_mask_invariant_holds() {
     let mask = masked(SAMPLE).expect("the default engine keeps the invariant");
 
-    assert_eq!(SAMPLE.encode_utf16().count(), mask.encode_utf16().count(), "length is preserved");
+    assert_eq!(
+        SAMPLE.encode_utf16().count(),
+        mask.encode_utf16().count(),
+        "length is preserved"
+    );
     for (i, unit) in SAMPLE.encode_utf16().enumerate() {
         if unit == b'\n' as u16 {
             assert_eq!(
@@ -42,16 +46,31 @@ fn a_nested_comment_is_where_the_default_engine_stops() {
     // needs its own table entry — the mask alone cannot recover it.
     let zig = "/* outer /* inner */ fn decoy() void { x(); } */\n";
     let mask = masked(zig).unwrap();
-    assert!(mask.contains("decoy"), "the default engine leaks the inner tail: {mask:?}");
-    assert!(!mask.contains("outer"), "the outer comment is blanked: {mask:?}");
+    assert!(
+        mask.contains("decoy"),
+        "the default engine leaks the inner tail: {mask:?}"
+    );
+    assert!(
+        !mask.contains("outer"),
+        "the outer comment is blanked: {mask:?}"
+    );
 }
 
 #[test]
 fn a_hash_attribute_survives_but_a_hash_comment_does_not() {
     let mask = masked(SAMPLE).unwrap();
-    assert!(mask.contains("#[derive(Debug)]"), "an attribute is code, not a comment: {mask:?}");
-    assert!(!mask.contains("shell comment"), "a `#` comment is blanked: {mask:?}");
-    assert!(mask.contains("attribute"), "the line before the attribute is untouched: {mask:?}");
+    assert!(
+        mask.contains("#[derive(Debug)]"),
+        "an attribute is code, not a comment: {mask:?}"
+    );
+    assert!(
+        !mask.contains("shell comment"),
+        "a `#` comment is blanked: {mask:?}"
+    );
+    assert!(
+        mask.contains("attribute"),
+        "the line before the attribute is untouched: {mask:?}"
+    );
 }
 
 #[test]
@@ -60,7 +79,10 @@ fn strings_are_blanked_from_the_outside_in() {
     // The assertions name the literal *spellings*: a bare letter would match the code that survives
     // around the blanked literals, which says nothing about the mask.
     for blanked in ["not a comment", "\"x\"", "'x'", "`t`", "text block"] {
-        assert!(!mask.contains(blanked), "{blanked:?} is inside a literal, so it is blanked: {mask:?}");
+        assert!(
+            !mask.contains(blanked),
+            "{blanked:?} is inside a literal, so it is blanked: {mask:?}"
+        );
     }
 }
 
@@ -68,13 +90,23 @@ fn strings_are_blanked_from_the_outside_in() {
 fn comments_are_recovered_from_the_original_text() {
     let comments = comments_in(SAMPLE);
     let bodies: Vec<&str> = comments.iter().map(|c| c.text.as_str()).collect();
-    assert!(bodies.contains(&" comment"), "a line comment's body, delimiter stripped: {bodies:?}");
+    assert!(
+        bodies.contains(&" comment"),
+        "a line comment's body, delimiter stripped: {bodies:?}"
+    );
     assert!(
         bodies.iter().any(|body| body.starts_with(" one /* two ")),
         "a block comment's body, delimiters stripped: {bodies:?}"
     );
-    assert_eq!(1, bodies.iter().filter(|body| body.contains(" comment")).count(), "the `//` inside a \
-        string is not a comment: {bodies:?}");
+    assert_eq!(
+        1,
+        bodies
+            .iter()
+            .filter(|body| body.contains(" comment"))
+            .count(),
+        "the `//` inside a \
+        string is not a comment: {bodies:?}"
+    );
 }
 
 #[test]
@@ -91,7 +123,10 @@ fn condition_literals_read_both_forms() {
 
     // A literal inside a comment on the same line is not reported.
     let commented = condition_literals("if (x) { // \"getUsers\"", 0);
-    assert!(commented.pasted.is_empty(), "a commented literal is not a condition: {commented:?}");
+    assert!(
+        commented.pasted.is_empty(),
+        "a commented literal is not a condition: {commented:?}"
+    );
 }
 
 #[test]
@@ -109,5 +144,8 @@ fn the_default_lexer_reports_its_name_and_facts() {
     assert_eq!(masked(SAMPLE).unwrap(), lexer.mask(SAMPLE).unwrap());
     assert_eq!(comments_in(SAMPLE).len(), lexer.comments(SAMPLE).len());
     assert_eq!(1, lexer.condition_literals("if (\"a\") {", 0).exact.len());
-    assert!(lexer.declarations("def add").is_empty(), "the default engine adds no shapes");
+    assert!(
+        lexer.declarations("def add").is_empty(),
+        "the default engine adds no shapes"
+    );
 }

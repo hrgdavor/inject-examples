@@ -1,3 +1,4 @@
+// @ts-check
 // ============================================================================
 // 1. JAVASCRIPT / TYPESCRIPT SCANNER
 // Thin language-specific shell over the shared tokenizer (./tokenizer.js).

@@ -23,19 +23,26 @@ const SAMPLE: &str = "line // comment\n\
 #[test]
 fn every_entry_keeps_the_mask_invariant() {
     for (extension, name) in extensions() {
-        let syntax = syntax_by_name(name)
-            .unwrap_or_else(|| panic!("{extension} maps to a missing entry"));
-        assert_eq!(*name, syntax.name, "{extension} maps to a differently named entry");
+        let syntax =
+            syntax_by_name(name).unwrap_or_else(|| panic!("{extension} maps to a missing entry"));
+        assert_eq!(
+            *name, syntax.name,
+            "{extension} maps to a differently named entry"
+        );
 
         let facts = tokenize(SAMPLE, &syntax).expect("every entry keeps the invariant");
         let source: Vec<u16> = SAMPLE.encode_utf16().collect();
         let masked: Vec<u16> = facts.masked.encode_utf16().collect();
-        assert_eq!(source.len(), masked.len(), "{} must preserve length", syntax.name);
+        assert_eq!(
+            source.len(),
+            masked.len(),
+            "{} must preserve length",
+            syntax.name
+        );
         for (i, unit) in source.iter().enumerate() {
             if *unit == b'\n' as u16 {
                 assert_eq!(
-                    b'\n' as u16,
-                    masked[i],
+                    b'\n' as u16, masked[i],
                     "{} must preserve every newline offset (broken at {i})",
                     syntax.name
                 );
@@ -49,36 +56,68 @@ fn zig_blanks_a_whole_nested_comment() {
     // The construct the Zig entry exists for: the default mask is non-nesting, so it would stop at the
     // inner `*/` and leak `fn decoy` out as a real declaration.
     let zig = "/* outer /* inner */ fn decoy() void { x(); } */\n";
-    let masked = tokenize(zig, &syntax_by_name("zig").unwrap()).unwrap().masked;
-    assert!(!masked.contains("decoy"), "a nested comment is blanked whole: {masked:?}");
+    let masked = tokenize(zig, &syntax_by_name("zig").unwrap())
+        .unwrap()
+        .masked;
+    assert!(
+        !masked.contains("decoy"),
+        "a nested comment is blanked whole: {masked:?}"
+    );
 }
 
 #[test]
 fn rust_tells_a_char_literal_from_a_lifetime() {
     let rust = "fn f<'a>(x: &'static str) -> char { 'x' }\n";
-    let masked = tokenize(rust, &syntax_by_name("rust").unwrap()).unwrap().masked;
-    assert!(masked.contains("'a>"), "a lifetime is code, not a string: {masked:?}");
+    let masked = tokenize(rust, &syntax_by_name("rust").unwrap())
+        .unwrap()
+        .masked;
+    assert!(
+        masked.contains("'a>"),
+        "a lifetime is code, not a string: {masked:?}"
+    );
     assert!(masked.contains("'static"), "so is 'static: {masked:?}");
-    assert!(!masked.contains("'x'"), "a char literal is blanked: {masked:?}");
+    assert!(
+        !masked.contains("'x'"),
+        "a char literal is blanked: {masked:?}"
+    );
 }
 
 #[test]
 fn ruby_takes_a_strict_heredoc_but_not_a_shift() {
     let ruby = "items = array << x\nbody = <<~TAG\ncontent\nTAG\n";
-    let masked = tokenize(ruby, &syntax_by_name("ruby").unwrap()).unwrap().masked;
-    assert!(masked.contains("array << x"), "a shift is not a heredoc: {masked:?}");
-    assert!(!masked.contains("content"), "a heredoc body is blanked: {masked:?}");
+    let masked = tokenize(ruby, &syntax_by_name("ruby").unwrap())
+        .unwrap()
+        .masked;
+    assert!(
+        masked.contains("array << x"),
+        "a shift is not a heredoc: {masked:?}"
+    );
+    assert!(
+        !masked.contains("content"),
+        "a heredoc body is blanked: {masked:?}"
+    );
 }
 
 #[test]
 fn csharp_doubles_its_verbatim_quote() {
     let csharp = "var s = @\"a \"\" b\";\n";
-    let masked = tokenize(csharp, &syntax_by_name("csharp").unwrap()).unwrap().masked;
+    let masked = tokenize(csharp, &syntax_by_name("csharp").unwrap())
+        .unwrap()
+        .masked;
     let masked = masked.trim();
-    assert!(masked.starts_with("var s ="), "the code before the string is untouched: {masked:?}");
-    assert!(masked.ends_with(';'), "the doubled quote must not end the string: {masked:?}");
+    assert!(
+        masked.starts_with("var s ="),
+        "the code before the string is untouched: {masked:?}"
+    );
+    assert!(
+        masked.ends_with(';'),
+        "the doubled quote must not end the string: {masked:?}"
+    );
     assert!(!masked.contains('"'), "the quotes are blanked: {masked:?}");
-    assert!(!masked.contains('b'), "the verbatim body is blanked: {masked:?}");
+    assert!(
+        !masked.contains('b'),
+        "the verbatim body is blanked: {masked:?}"
+    );
 }
 
 #[test]

@@ -168,6 +168,30 @@ public class Inventory {
 }
 ```
 
+## JavaScript and TypeScript — a template hides its braces
+
+A backtick template spans lines and hides braces, so the `}` inside one is text.
+The whole template is blanked before anything is counted, which is why
+`Cart/render` is found *through* it rather than ending inside it, and why the
+`{` of the nested `` `{${item}}` `` never opens a body. TypeScript uses the same
+entry, so a `.ts` file masks exactly as a `.js` one does.
+
+[samples/cart.js](./samples/cart.js#Cart/render)
+
+```js
+    render() {
+        return `cart (${this.items.length}): ${this.items.map((item) => `{${item}}`).join(', ')}`;
+    }
+```
+
+[samples/cart.js](./samples/cart.js#Cart/add)
+
+```js
+    add(item) {
+        this.items.push(item);
+    }
+```
+
 ## Go — a raw string is not code
 
 `Add` is found through the braces, while the backtick raw string below it — which

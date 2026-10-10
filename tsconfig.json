@@ -1,0 +1,31 @@
+{
+  "//": [
+    "Type checking for the JavaScript sources. They carry JSDoc types but were never checked, and `npm run typecheck` (and CI) holds the language table, the tokenizer and the vector tools to them.",
+    "`checkJs` is false on purpose: a file is checked because it opens with `// @ts-check`, not because a list here says so, so the scope cannot drift away from the file. The files that are checked are the scanner (the language table, the tokenizer, the lexer registry) and the vector tools.",
+    "`index.mjs`, `cli.mjs`, `lib/section.mjs` and `tools/{mask-oracle,build-demo}.mjs` are not marked yet: their JSDoc annotates the option objects, the block tree, the span unions and the lex context as bare `{object}`, which makes every property access on them an error. Writing those shapes out is its own change.",
+    "`test.mjs` is unmarked too: it is the suite, not shipped code."
+  ],
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": false,
+    "noImplicitAny": false,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "index.mjs",
+    "cli.mjs",
+    "test.mjs",
+    "lib/**/*.mjs",
+    "src/js/**/*.js",
+    "tools/**/*.mjs"
+  ]
+}

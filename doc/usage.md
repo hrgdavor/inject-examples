@@ -111,16 +111,20 @@ The entire published package, verbatim:
     "access": "public"
   },
   "scripts": {
-    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/zig-vectors.mjs --check",
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
+    "lexical:vectors": "node tools/lexical-vectors.mjs",
     "zig:vectors": "node tools/zig-vectors.mjs",
     "oracle": "node tools/mask-oracle.mjs",
     "compare:zig": "node tools/compare-zig.mjs",
+    "typecheck": "tsc --noEmit",
     "demo": "bun tools/build-demo.mjs",
     "demo:check": "bun tools/build-demo.mjs --check"
   },
   "devDependencies": {
-    "highlight.js": "^11.12.0"
+    "@types/node": "^26.6.5",
+    "highlight.js": "^11.12.0",
+    "typescript": "^7.0.2"
   }
 }
 ```
@@ -446,7 +450,7 @@ Top-level keys and a nested one, from `package.json`:
   "name": "@hrg/inject-examples",
   "version": "1.1.0",
   "scripts": {
-    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/zig-vectors.mjs --check"
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check"
   }
 }
 ```

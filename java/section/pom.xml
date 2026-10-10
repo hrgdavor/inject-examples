@@ -118,8 +118,9 @@
 
       <!--
         Sources and javadoc jars are what Maven Central requires alongside the jar.
-        They are built here so a release is a matter of adding the publishing
-        plugin and the credentials, not of changing the build.
+        They are built here — with the GPG signing and the Central Portal plugin
+        below — so a release is a matter of the credentials and a tagged commit,
+        not of changing the build.
       -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

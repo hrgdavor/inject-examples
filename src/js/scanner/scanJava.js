@@ -1,3 +1,4 @@
+// @ts-check
 // ============================================================================
 // 2. JAVA SCANNER
 // Shell over the shared tokenizer (./tokenizer.js). Java adds text blocks

@@ -1,3 +1,4 @@
+// @ts-check
 // ============================================================================
 // 3. ZIG SCANNER
 // Shell over the shared tokenizer (./tokenizer.js). Zig is where a per-language

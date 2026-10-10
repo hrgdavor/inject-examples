@@ -218,16 +218,30 @@ fn readString(source: Str, hit: *const Hit, trace: *const Trace, close: usize) ?
 /// The `content` pattern of a Rust char literal:
 /// `/^(?:\\.{1,10}|[^\n\\]{1,2})$/` — one escape of up to ten characters, or
 /// one or two characters neither of which is a newline or a backslash.
+///
+/// `.` without the `s` flag refuses every line terminator, so a backslash
+/// followed by a newline is not an escape and `'` + `\` + LF + `'` is not a
+/// string at all — it is a lifetime-shaped candidate that never closes.
 fn looksLikeOneChar(body: Str) bool {
     if (body.len == 0) return false;
     if (body[0] == '\\') {
-        const rest = body.len - 1;
-        return rest >= 1 and rest <= 10;
+        const rest = body[1..];
+        if (rest.len < 1 or rest.len > 10) return false;
+        for (rest) |unit| {
+            if (isLineTerminator(unit)) return false;
+        }
+        return true;
     }
     if (body[0] == '\n' or body[0] == '\\') return false;
     if (body.len > 2) return false;
     if (body.len == 2 and (body[1] == '\n' or body[1] == '\\')) return false;
     return true;
+}
+
+/// The characters JavaScript's `.` refuses to match: without the `s` flag it
+/// excludes every line terminator.
+fn isLineTerminator(unit: u16) bool {
+    return unit == '\n' or unit == '\r' or unit == 0x2028 or unit == 0x2029;
 }
 
 /// `<<TAG`, `<<-TAG`, `<<~TAG`, `<<"TAG"` and PHP's `<<<TAG`.
@@ -384,8 +398,11 @@ pub fn tokenize(alloc: Allocator, source: Str, syntax: *const Syntax) !Lexed {
                     continue;
                 }
             } else if (!(hit.kind.max_span != 0 or hit.kind.single_char)) {
-                // An unterminated unconstrained literal runs to the end.
-                const to = source.len;
+                // An unterminated unconstrained literal runs to the end of its *line*, not to the end
+                // of the input: a kind that may not span lines stops at the newline that refused it, so
+                // a stray quote on one line cannot blank every line after it. A kind that may span
+                // lines runs to the end of the input.
+                const to = trace.offending orelse source.len;
                 try strings.append(alloc, .{
                     .from = i,
                     .to = to,

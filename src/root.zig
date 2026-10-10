@@ -1282,12 +1282,12 @@ pub fn withFuncReceiver(alloc: Allocator, before: Str) ![]u16 {
 /// not, `[...]` / `[!...]` are character classes and `\c` is a literal `c`.
 /// The generated pattern is anchored at both ends, so this is a full match.
 ///
-/// This is the one place where the port is deliberately not byte-identical: a
-/// glob whose generated pattern is not a legal regular expression (`[?-!*]`,
-/// whose `?-!` is a reversed range, or `[a\]x`, whose class never closes) makes
-/// JavaScript's `new RegExp` throw out of `parseIgnoreFile` and kill the tool
-/// with a stack trace, while this matches it as written and carries on. A
-/// `.gitignore` rule like that is broken either way.
+/// This is the one place where the port is deliberately not byte-identical, and
+/// only for a glob that is broken anyway: a pattern JavaScript's `new RegExp`
+/// refuses (`[?-!*]`, whose `?-!` is a reversed range, or `[a\]x`, whose class
+/// never closes) is dropped by `index.mjs` — the rule cannot be honoured, so
+/// nothing is excluded by it — while this matches it as written and carries on.
+/// Neither side fails the run.
 pub fn globMatch(pattern: Str, subject: Str) bool {
     return globMatchFrom(pattern, 0, subject, 0);
 }

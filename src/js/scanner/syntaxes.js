@@ -1,3 +1,4 @@
+// @ts-check
 // ============================================================================
 // LANGUAGE TABLE
 // One entry per language. `tokenizer.js` walks them; nothing here executes, so
@@ -22,6 +23,7 @@ const C_BLOCK = [{ open: '/*', close: '*/', nested: false }];
  * closed within a few characters. Rejecting everything else is what keeps a
  * lifetime (`'a`, `'static`) out of the mask.
  */
+/** @type {import('./tokenizer.js').StringKind} */
 const SINGLE_CHAR = {
     open: "'", close: "'", escape: 'backslash', maxSpan: 12,
     content: /^(?:\\.{1,10}|[^\n\\]{1,2})$/,
@@ -32,6 +34,7 @@ const SINGLE_CHAR = {
  * `def add`. `self.` is stripped; `?`, `!` and `=` are part of the name. The
  * body is the `end`-delimited block (see `keywordBody` in lib/section.mjs).
  */
+/** @type {import('./tokenizer.js').Declaration[]} */
 const RUBY_DECLARATIONS = [
     { kind: 'method', re: /^\s*def\s+(?:self\.)?([A-Za-z_]\w*[?!=]?)/, body: 'end', end: 'end' },
 ];
@@ -42,6 +45,7 @@ const RUBY_DECLARATIONS = [
  * type/class declaration (`data Cart = …`, `class Store s where`). A binding's
  * `name ::` signature line is its annotation, so `#+add` brings it along.
  */
+/** @type {import('./tokenizer.js').Declaration[]} */
 const HASKELL_DECLARATIONS = [
     // The lookahead keeps the words that *open* a declaration (`data Cart = …`)
     // from being read as a binding named `data`.
@@ -64,6 +68,7 @@ const HASKELL_ANNOTATIONS = [/^\s*[\w']+\s*::/];
  * same-named scopes, so `Cart/add` reaches the method and `Cart/items` the
  * field. A trait's body-less methods have nothing to inject and stay invisible.
  */
+/** @type {import('./tokenizer.js').Declaration[]} */
 const RUST_DECLARATIONS = [
     { kind: 'class', re: /^\s*impl\b[^{]*?\b([A-Za-z_][\w:]*)\s*(?:<[^>]*>)?\s*(?:where\b[^{]*)?\{/ },
     // A field is `name: Type,` — the generic property shape wants `name = …`,
@@ -77,6 +82,7 @@ const RUST_DECLARATIONS = [
  * so both the generic lowercase `class` shape and the brace/indent body rules
  * miss it. The terminator is matched as VB writes it, `End` capitalised.
  */
+/** @type {import('./tokenizer.js').Declaration[]} */
 const VB_DECLARATIONS = [
     {
         kind: 'class',
@@ -95,6 +101,7 @@ const VB_DECLARATIONS = [
 // --- the three originals, unchanged in behaviour ---------------------------
 
 /** JavaScript / TypeScript: `//`, `/* *\/`, `'` `"` and backtick templates. */
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const JS_SYNTAX = {
     name: 'javascript',
     lineComments: C_LINE,
@@ -107,6 +114,7 @@ export const JS_SYNTAX = {
 };
 
 /** Java: `//`, `/* *\/`, `'` `"` and text blocks `"""`. */
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const JAVA_SYNTAX = {
     name: 'java',
     lineComments: C_LINE,
@@ -119,6 +127,7 @@ export const JAVA_SYNTAX = {
 };
 
 /** Zig: `//`, NESTED `/* *\/`, `"` and multiline strings `\\` (to end of line). */
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const ZIG_SYNTAX = {
     name: 'zig',
     lineComments: C_LINE,
@@ -131,6 +140,7 @@ export const ZIG_SYNTAX = {
 
 // --- the rest of the table -------------------------------------------------
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const GO_SYNTAX = {
     name: 'go',
     lineComments: C_LINE,
@@ -143,6 +153,7 @@ export const GO_SYNTAX = {
     ],
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const RUST_SYNTAX = {
     name: 'rust',
     lineComments: C_LINE,
@@ -160,6 +171,7 @@ export const RUST_SYNTAX = {
     declarations: RUST_DECLARATIONS,
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const PYTHON_SYNTAX = {
     name: 'python',
     lineComments: ['#'],
@@ -181,6 +193,7 @@ export const PYTHON_SYNTAX = {
     ],
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const CSHARP_SYNTAX = {
     name: 'csharp',
     lineComments: C_LINE,
@@ -197,6 +210,7 @@ export const CSHARP_SYNTAX = {
     ],
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const KOTLIN_SYNTAX = {
     name: 'kotlin',
     lineComments: C_LINE,
@@ -209,6 +223,7 @@ export const KOTLIN_SYNTAX = {
     ],
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const PHP_SYNTAX = {
     name: 'php',
     // Both spellings; `#[Attribute]` stays readable (see tokenizer.js).
@@ -222,6 +237,7 @@ export const PHP_SYNTAX = {
     heredoc: true,
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const RUBY_SYNTAX = {
     name: 'ruby',
     lineComments: ['#'],
@@ -237,6 +253,7 @@ export const RUBY_SYNTAX = {
     declarations: RUBY_DECLARATIONS,
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const SQL_SYNTAX = {
     name: 'sql',
     lineComments: ['--'],
@@ -251,6 +268,7 @@ export const SQL_SYNTAX = {
     ],
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const SHELL_SYNTAX = {
     name: 'shell',
     lineComments: ['#'],
@@ -264,6 +282,7 @@ export const SHELL_SYNTAX = {
     heredoc: true,
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const VB_SYNTAX = {
     name: 'vb',
     lineComments: ["'"],
@@ -272,6 +291,7 @@ export const VB_SYNTAX = {
     declarations: VB_DECLARATIONS,
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const HASKELL_SYNTAX = {
     name: 'haskell',
     lineComments: ['--'],
@@ -291,6 +311,7 @@ export const HASKELL_SYNTAX = {
 // be masked so a `#`/`;` inside a quoted value is never read as one (and so the
 // key-based region rules read the right lines).
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const YAML_SYNTAX = {
     name: 'yaml',
     lineComments: ['#'],
@@ -302,6 +323,7 @@ export const YAML_SYNTAX = {
     ],
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const TOML_SYNTAX = {
     name: 'toml',
     lineComments: ['#'],
@@ -315,6 +337,7 @@ export const TOML_SYNTAX = {
     ],
 };
 
+/** @type {import('./tokenizer.js').SyntaxInput} */
 export const INI_SYNTAX = {
     name: 'ini',
     // `;` is the classic form; `#` is common too.

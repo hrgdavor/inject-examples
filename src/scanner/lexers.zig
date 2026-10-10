@@ -24,6 +24,19 @@ const Syntax = syntaxes.Syntax;
 /// The JavaScript adapter memoises `mask` and `comments` on the last source so
 /// one scan pays for both; here the resolver builds both in a single call, so
 /// the seam is one method: mask and comments together, in one pass.
+/// One declaration shape a language reports for a masked line: the `declarations(maskedLine)` seam
+/// the JavaScript adapter exposes, in the same order and with the same answers.
+pub const Declared = struct {
+    kind: syntaxes.Declaration.Kind,
+    name: Str,
+    /// The offset in the line the declaration's body starts at, as `match[0].length` is in JavaScript.
+    header_from: usize,
+    /// `end_kw` rides along so the body rule travels with the hit, as the resolver's does.
+    end_kw: ?Str,
+    /// The declaration line is itself a complete selection when no body follows.
+    line: bool,
+};
+
 pub const Lexer = struct {
     name: []const u8,
     syntax: *const Syntax,
@@ -34,6 +47,25 @@ pub const Lexer = struct {
 
     pub fn comments(self: Lexer, alloc: Allocator, source: Str) ![]tokenizer.Comment {
         return (try tokenizer.tokenize(alloc, source, self.syntax)).comments;
+    }
+
+    /// The language's own declaration shapes for one *masked* line, in table order — the answers
+    /// `lib/section.mjs` gets from its lexer. The generic `name(` heuristics are not here: they live in
+    /// the scanner, and this is only what a language adds to them.
+    pub fn declarations(self: Lexer, alloc: Allocator, line: Str) ![]Declared {
+        var out = std.ArrayList(Declared).empty;
+        errdefer out.deinit(alloc);
+        for (self.syntax.declarations) |entry| {
+            const hit = entry.match(line) orelse continue;
+            try out.append(alloc, .{
+                .kind = entry.kind,
+                .name = hit.name,
+                .header_from = hit.header_from,
+                .end_kw = entry.end_kw,
+                .line = entry.line,
+            });
+        }
+        return out.toOwnedSlice(alloc);
     }
 };
 

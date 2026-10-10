@@ -25,12 +25,15 @@ jobs:
         run: npm ci
 
       - name: Test
-        # `node --test`, the section vectors' drift gate, and the Zig
-        # conformance corpus' drift gate.
+        # `node --test`, the section vectors' drift gate, the lexical vectors'
+        # drift gate, and the Zig conformance corpus' drift gate.
         run: npm test
 
       - name: Tokenizer oracle (highlight.js cross-check)
         run: npm run oracle
+
+      - name: Typecheck (JSDoc types, `checkJs` per file)
+        run: npm run typecheck
 
   zig:
     name: Zig port
@@ -48,8 +51,8 @@ jobs:
         run: zig build --summary all
 
       - name: Test
-        # The ported suite, plus the golden section vectors generated from the
-        # JavaScript implementation.
+        # The ported suite, plus the golden section vectors and the lexical
+        # vectors generated from the JavaScript implementation.
         run: zig build test --summary all
 
   differential:
@@ -77,3 +80,68 @@ jobs:
         # both implementations over the edge-case corpus plus a seeded fuzzer
         # and compares stdout, stderr, exit code and every rewritten file.
         run: node tools/compare-zig.mjs
+
+  java:
+    name: Java port
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Test
+        # The conformance vectors read directly, plus the lexical corpus: the
+        # masks and the declaration shapes, per language.
+        run: mvn -B test
+        working-directory: java/section
+
+  rust:
+    name: Rust port
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Test
+        # The ported layers, the grammar vectors it can answer, and the lexical
+        # corpus: the masks and the declaration shapes, per language.
+        run: cargo test
+        working-directory: rust/section
+
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: zig fmt
+        # `src/section_vectors.zig` is generated, and generated `zig fmt`-clean
+        # by `tools/zig-vectors.mjs`, so it is held to the same gate as the
+        # hand-written sources.
+        run: zig fmt --check build.zig src
+
+      - name: cargo fmt
+        run: cargo fmt --check
+        working-directory: rust/section

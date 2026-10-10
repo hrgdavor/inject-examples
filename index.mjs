@@ -948,7 +948,19 @@ export function parseIgnoreFile(text) {
         if (line === '') continue;
         if (line.includes('/')) anchored = true;
 
-        const re = new RegExp(`^(?:${globToRegex(line)})$`);
+        // A glob whose generated pattern JavaScript will not accept — `[?-!*]`
+        // has a reversed range, `[a\]x` never closes its class — is a broken
+        // rule either way. Drop it rather than let `new RegExp` throw an
+        // uncaught `SyntaxError` out of a document run: an unusable ignore rule
+        // must not take the tool with it. (The Zig port matches such a glob as
+        // written instead of dropping it; a rule this broken is broken either
+        // way, and this is the conservative side of it — nothing is excluded.)
+        let re;
+        try {
+            re = new RegExp(`^(?:${globToRegex(line)})$`);
+        } catch {
+            continue;
+        }
         rules.push({ negated, anchored, re });
     }
     return rules;

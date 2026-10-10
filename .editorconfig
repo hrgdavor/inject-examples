@@ -1,0 +1,28 @@
+# One style for every editor, for the sources this repository writes by hand.
+# Generated files (`docs/index.html`, `src/section_vectors.zig`,
+# `test/vectors/*.json`) are written by their generators and are not edited.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{md,markdown}]
+# Prose wraps at the column the surrounding text uses; leave it alone.
+trim_trailing_whitespace = false
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.{cs,java,xml}]
+indent_size = 4
+
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
+
+[Makefile]
+indent_style = tab

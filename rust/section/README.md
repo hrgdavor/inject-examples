@@ -12,9 +12,10 @@ disagreement here is a bug here.
 | Layer | State |
 | --- | --- |
 | Reference parsing, canonicalisation, errors, the contradiction warning | **ported** — pinned by every grammar and warning vector |
-| Mask pass (`masked`, `comments_in`) and the lexer seam | **ported** — the mask invariant is asserted over a source carrying every construct |
+| Mask pass (`masked`, `comments_in`) and the lexer seam | **ported** — pinned by the mask rows of the lexical corpus, over every entry |
 | Per-language tokenizer and table | **ported** — all eighteen entries, and the extension registry |
-| Block scanner (`scan_blocks`) | not started |
+| Declaration shapes (`declarations`) | **ported** — pinned by the shape rows of the lexical corpus |
+| Block scanner (`scan_blocks`) | **partial** — the `Block` model, the span readers, the region and anchor helpers and every generic matcher are written and unit-tested, but nothing composes them: there is no `scan_blocks` driver, so the `Scan` struct has no producer |
 | Resolution (`resolve_section`, `extract_declaration`) | not started |
 
 Parity means matching the JavaScript's *answers*, not only its text: `plan_section` must return the
@@ -30,7 +31,7 @@ not a code unit, so indexing a `&str` by characters would drift from the JavaScr
 astral-plane character.
 
 A third implementation needs its own answer to how it is held at parity
-(`plans/zig-port.md` §6). This one's answer is the golden vectors, read directly:
+(`plans/zig-port.md` §6). This one's answer is the generated corpora, read directly:
 
 ```sh
 cargo test                 # the gate
@@ -39,12 +40,23 @@ cargo test -- --nocapture  # also prints what is asserted and what is pending
 
 `tests/vectors.rs` reads
 [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json) —
-the same 72 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
+the same 124 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
 to — and asserts every vector the ported layers can answer. It fails if a vector
 is neither asserted nor counted, so the remaining work is visible rather than
-silently skipped. The Zig port keeps a *generated* copy because it has no JSON
-reader; reading the corpus directly is deliberately better here, since a file
-that cannot drift needs no drift gate.
+silently skipped.
+
+`tests/lexical.rs` reads
+[`test/vectors/lexical-vectors.json`](../../test/vectors/lexical-vectors.json),
+generated from the JavaScript by `tools/lexical-vectors.mjs`: one **mask** row
+per lexer entry — all eighteen, plus the built-in engine for an unknown type —
+and one **shape** row per discriminating declaration spelling. This is the gate
+that holds the two ported lexical layers: the resolution vectors only exercise
+the six lexer entries their fixtures name, so a mistranslated matcher for any of
+the other twelve — `publisher: String,` read as the field `lisher`, no
+declaration found in `impl<T: Clone> Display for Cart<T> {` — would otherwise
+pass every gate. The Zig port keeps a *generated* copy of both corpora because it
+has no JSON reader; reading them directly is deliberately better here, since a
+file that cannot drift needs no drift gate.
 
 ## Boundary
 

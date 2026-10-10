@@ -146,8 +146,8 @@ pub const RUBY_DECLARATIONS = [_]Declaration{
 /// (`data Cart = …`) from being read as a binding named `data`.
 pub fn matchHaskellBinding(line: Str) ?Declaration.DeclMatch {
     const keywords = [_][]const u8{
-        "data",    "newtype", "type",    "class",  "instance", "module",
-        "import",  "infix",   "infixl",  "infixr", "foreign",  "deriving",
+        "data",    "newtype", "type",   "class",  "instance", "module",
+        "import",  "infix",   "infixl", "infixr", "foreign",  "deriving",
         "default",
     };
     for (keywords) |keyword| {
@@ -163,6 +163,9 @@ pub fn matchHaskellBinding(line: Str) ?Declaration.DeclMatch {
 
     var at: usize = 1;
     while (at < line.len and (js.isAsciiWord(line[at]) or line[at] == '\'')) at += 1;
+    // The `\b` after the group gives a trailing `'` back: `'` is not a word character, so `add'`
+    // binds the name `add` and `foldl'` the name `foldl`, exactly as the regex backtracks.
+    while (at > 1 and line[at - 1] == '\'') at -= 1;
     const name = line[0..at];
 
     // `[^=\n]*=`: everything that is not `=` and not a newline, then an `=`
@@ -235,48 +238,70 @@ pub fn matchRustImpl(line: Str) ?Declaration.DeclMatch {
     while (at < line.len and js.isWhitespace(line[at])) at += 1;
     if (!js.startsWithBytes(line[at..], "impl")) return null;
     at += 4;
+    // `\b` after `impl`: `implement` is not an `impl`.
     if (at < line.len and js.isAsciiWord(line[at])) return null;
 
-    // `\b([A-Za-z_][\w:]*)\s*(?:<[^>]*>)?\s*(?:where\b[^{]*)?\{`: the header is
-    // anchored at the `{`, then walked back over an optional generic list, an
-    // optional `where` clause and the identifier's own `[\w:]*` tail — which is
-    // why the identifier that *ends* the header is the one that names the scope.
+    // `[^{]*?` cannot cross the opening brace, so the header ends at the first one.
     const brace = js.indexOfUnit(line[at..], '{') orelse return null;
-    var header = js.trimEnd(line[at .. at + brace]);
-    if (js.indexOfBytes(header, "where")) |found| header = js.trimEnd(header[0..found]);
+    const header = line[at .. at + brace];
 
-    if (header.len > 0 and header[header.len - 1] == '>') {
-        const open = js.lastIndexOfUnit(header, '<') orelse return null;
-        header = js.trimEnd(header[0..open]);
+    // The header is lazy, so the regex tries each identifier from the left and takes the first one
+    // whose tail — optional generics, an optional `where` clause — reaches the `{`. That is what makes
+    // `impl<T: Clone> Display for Cart<T> {` a scope called `Cart`, while the tail of every candidate in
+    // `impl Foo<Bar<Baz>> {` runs into a second `>`, so nothing is declared.
+    var start: usize = 0;
+    while (start < header.len) : (start += 1) {
+        if (!js.isIdentStart(header[start])) continue;
+        // `\b([A-Za-z_]` — the previous character must not be a word character.
+        if (start > 0 and js.isAsciiWord(header[start - 1])) continue;
+        var end = start + 1;
+        while (end < header.len and (js.isAsciiWord(header[end]) or header[end] == ':')) end += 1;
+        if (rustImplTailMatches(header[end..])) {
+            return .{ .name = header[start..end], .header_from = at + brace + 1 };
+        }
     }
-    var end = header.len;
-    while (end > 0 and (js.isAsciiWord(header[end - 1]) or header[end - 1] == ':')) end -= 1;
-    if (end == header.len) return null;
-    if (!js.isIdentStart(header[end])) return null;
-    return .{ .name = header[end..], .header_from = at + brace + 1 };
+    return null;
+}
+
+/// Whether the tail `\s*(?:<[^>]*>)?\s*(?:where\b[^{]*)?$` matches the rest of an `impl` header.
+fn rustImplTailMatches(tail_in: Str) bool {
+    var tail = js.trimStart(tail_in);
+    if (tail.len > 0 and tail[0] == '<') {
+        // `[^>]*>` — the closer is the first `>`.
+        const close = js.indexOfUnit(tail[1..], '>') orelse return false;
+        tail = js.trimStart(tail[1 + close + 1 ..]);
+    }
+    if (tail.len == 0) return true;
+    // `where\b[^{]*` — the boundary after `where`, then anything up to the brace.
+    if (!js.startsWithBytes(tail, "where")) return false;
+    const after = tail[5..];
+    return after.len == 0 or !js.isAsciiWord(after[0]);
 }
 
 /// `^\s*(?:pub\s+)?([A-Za-z_]\w*)\s*:` — a Rust field is `name: Type,`, where
 /// the generic property shape wants `name = …`, which Rust never writes.
+///
+/// `pub` counts only when whitespace follows it, so `publisher:` is the field
+/// `publisher` and `pub_key:` the field `pub_key`, exactly as in JavaScript.
 pub fn matchRustField(line: Str) ?Declaration.DeclMatch {
     var at: usize = 0;
     while (at < line.len and js.isWhitespace(line[at])) at += 1;
-    if (js.startsWithBytes(line[at..], "pub ")) at += 4;
+    if (js.startsWithBytes(line[at..], "pub")) {
+        var after = at + 3;
+        if (after < line.len and js.isWhitespace(line[after])) {
+            while (after < line.len and js.isWhitespace(line[after])) after += 1;
+            at = after;
+        }
+    }
     const start = at;
     if (at >= line.len or !js.isIdentStart(line[at])) return null;
     at += 1;
     while (at < line.len and js.isAsciiWord(line[at])) at += 1;
-    if (at == start) return null;
-    while (at < line.len and js.isWhitespace(line[at])) at += 1;
-    if (at >= line.len or line[at] != ':') return null;
-    return .{ .name = line[start..][0 .. at - start - countTrailingSpace(line[start..at])], .header_from = start };
-}
-
-fn countTrailingSpace(text: Str) usize {
-    var count: usize = 0;
-    var end = text.len;
-    while (end > 0 and js.isWhitespace(text[end - 1])) : (end -= 1) count += 1;
-    return count;
+    // `\s*:` — `match[0]` ends just past the colon.
+    var colon = at;
+    while (colon < line.len and js.isWhitespace(line[colon])) colon += 1;
+    if (colon >= line.len or line[colon] != ':') return null;
+    return .{ .name = line[start..at], .header_from = colon + 1 };
 }
 
 pub const RUST_DECLARATIONS = [_]Declaration{
@@ -285,17 +310,26 @@ pub const RUST_DECLARATIONS = [_]Declaration{
 };
 
 /// `^\s*(?:Public|Private|Friend|Protected)?\s*(?:NotInheritable\s+|MustInherit\s+)?(?:Class|Module|Structure)\s+(\w+)`.
+///
+/// The `\s*` after the access modifier is why `Public Class Form` declares `Form`, and why
+/// `PublicClass Form` does too; the second group needs `\s+`, so `NotInheritable` without whitespace is
+/// not a modifier.
 pub fn matchVbClass(line: Str) ?Declaration.DeclMatch {
     var at: usize = 0;
     while (at < line.len and js.isWhitespace(line[at])) at += 1;
-    const access = [_][]const u8{ "Public", "Private", "Friend", "Protected" };
-    for (access) |word| {
+    for ([_][]const u8{ "Public", "Private", "Friend", "Protected" }) |word| {
         if (!js.startsWithBytes(line[at..], word)) continue;
         at += word.len;
         break;
     }
-    for ([_][]const u8{ "NotInheritable ", "MustInherit " }) |word| {
-        if (js.startsWithBytes(line[at..], word)) at += word.len;
+    while (at < line.len and js.isWhitespace(line[at])) at += 1;
+    for ([_][]const u8{ "NotInheritable", "MustInherit" }) |word| {
+        if (!js.startsWithBytes(line[at..], word)) continue;
+        const after = at + word.len;
+        if (after >= line.len or !js.isWhitespace(line[after])) break;
+        at = after;
+        while (at < line.len and js.isWhitespace(line[at])) at += 1;
+        break;
     }
     var matched = false;
     for ([_][]const u8{ "Class", "Module", "Structure" }) |word| {
@@ -314,33 +348,36 @@ pub fn matchVbClass(line: Str) ?Declaration.DeclMatch {
 }
 
 /// `^\s*[\w\s]*?\b(?:Sub|Function)\s+(\w+)`.
+///
+/// The lazy `[\w\s]*?` means the keyword must begin inside the leading run of word and space
+/// characters, and the `\b` means it begins at the line's start or after whitespace. A candidate whose
+/// `\s+` or name does not follow is not a match — the regex backtracks and tries the next one — so
+/// `Submarine Function Add(x)` declares `Add` rather than stopping at the `Sub` inside `Submarine`.
 pub fn matchVbMember(line: Str) ?Declaration.DeclMatch {
     var at: usize = 0;
     while (at < line.len and js.isWhitespace(line[at])) at += 1;
-    var matched: ?usize = null;
+
+    var inside_prefix = true;
     var scan = at;
     while (scan < line.len) : (scan += 1) {
-        if (!js.isAsciiWord(line[scan]) and !js.isWhitespace(line[scan])) break;
-        for ([_][]const u8{ "Sub", "Function" }) |word| {
-            if (!js.startsWithBytes(line[scan..], word)) continue;
-            if (!js.isWordBoundary(line, scan)) continue;
-            if (matched == null or scan < matched.?) matched = scan;
+        const after_space = scan == at or js.isWhitespace(line[scan - 1]);
+        if (inside_prefix and after_space) {
+            for ([_][]const u8{ "Sub", "Function" }) |word| {
+                if (!js.startsWithBytes(line[scan..], word)) continue;
+                var after = scan + word.len;
+                if (after >= line.len or !js.isWhitespace(line[after])) continue;
+                while (after < line.len and js.isWhitespace(line[after])) after += 1;
+                const start = after;
+                while (after < line.len and js.isAsciiWord(line[after])) after += 1;
+                if (after == start) continue;
+                return .{ .name = line[start..after], .header_from = after };
+            }
+        }
+        if (!js.isAsciiWord(line[scan]) and !js.isWhitespace(line[scan])) {
+            inside_prefix = false;
         }
     }
-    const keyword_at = matched orelse return null;
-    // The matched word itself, so the name starts after it.
-    var after = keyword_at;
-    if (js.startsWithBytes(line[after..], "Function")) {
-        after += "Function".len;
-    } else {
-        after += "Sub".len;
-    }
-    if (after >= line.len or !js.isWhitespace(line[after])) return null;
-    while (after < line.len and js.isWhitespace(line[after])) after += 1;
-    const start = after;
-    while (after < line.len and js.isAsciiWord(line[after])) after += 1;
-    if (after == start) return null;
-    return .{ .name = line[start..after], .header_from = after };
+    return null;
 }
 
 pub const VB_DECLARATIONS = [_]Declaration{

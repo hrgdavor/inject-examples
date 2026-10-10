@@ -76,10 +76,14 @@ pub fn masked(text: &str) -> Result<String, SectionError> {
             let end = end_of_line(&source, i);
             blank(&mut out, i, end);
             i = end;
-        } else if character == b'"' as u16 || character == b'\'' as u16 || character == b'`' as u16 {
+        } else if character == b'"' as u16 || character == b'\'' as u16 || character == b'`' as u16
+        {
             let triple = [character, character, character];
-            let quote: Vec<u16> =
-                if starts_with(&source, &triple, i) { triple.to_vec() } else { vec![character] };
+            let quote: Vec<u16> = if starts_with(&source, &triple, i) {
+                triple.to_vec()
+            } else {
+                vec![character]
+            };
             let mut j = i + quote.len();
             while j < length {
                 if source[j] == b'\\' as u16 {
@@ -125,18 +129,30 @@ pub fn comments_in(text: &str) -> Vec<Comment> {
 
         if character == b'/' as u16 && next == b'/' as u16 {
             let end = end_of_line(&source, i);
-            result.push(Comment { text: from_units(&source[i + 2..end]), from: i, to: end });
+            result.push(Comment {
+                text: from_units(&source[i + 2..end]),
+                from: i,
+                to: end,
+            });
             i = end;
         } else if character == b'/' as u16 && next == b'*' as u16 {
             let close = index_of(&source, &[b'*' as u16, b'/' as u16], i + 2);
             let end = close.map_or(length, |at| at + 2);
             let body_end = close.unwrap_or(end);
-            result.push(Comment { text: from_units(&source[i + 2..body_end]), from: i, to: end });
+            result.push(Comment {
+                text: from_units(&source[i + 2..body_end]),
+                from: i,
+                to: end,
+            });
             i = end;
-        } else if character == b'"' as u16 || character == b'\'' as u16 || character == b'`' as u16 {
+        } else if character == b'"' as u16 || character == b'\'' as u16 || character == b'`' as u16
+        {
             let triple = [character, character, character];
-            let quote: Vec<u16> =
-                if starts_with(&source, &triple, i) { triple.to_vec() } else { vec![character] };
+            let quote: Vec<u16> = if starts_with(&source, &triple, i) {
+                triple.to_vec()
+            } else {
+                vec![character]
+            };
             let mut j = i + quote.len();
             while j < length {
                 if source[j] == b'\\' as u16 {

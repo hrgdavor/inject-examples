@@ -56,7 +56,12 @@ pub fn rust() -> Syntax {
     Syntax::new("rust")
         .line_comments(&["//"])
         .nested_block("/*", "*/")
-        .string(StringKind::raw("br\"", "\"").multiline().boundary().hashes())
+        .string(
+            StringKind::raw("br\"", "\"")
+                .multiline()
+                .boundary()
+                .hashes(),
+        )
         .string(StringKind::raw("r\"", "\"").multiline().boundary().hashes())
         .string(StringKind::new("b\"", "\"").boundary())
         .string(StringKind::new("\"", "\""))
@@ -226,24 +231,43 @@ pub fn syntax_by_name(name: &str) -> Option<Syntax> {
 /// Extension to language name: one line per extension, exactly as `lexers.js` has it.
 pub fn extensions() -> &'static [(&'static str, &'static str)] {
     &[
-        ("js", "javascript"), ("mjs", "javascript"), ("cjs", "javascript"), ("jsx", "javascript"),
-        ("ts", "typescript"), ("tsx", "typescript"), ("mts", "typescript"), ("cts", "typescript"),
+        ("js", "javascript"),
+        ("mjs", "javascript"),
+        ("cjs", "javascript"),
+        ("jsx", "javascript"),
+        ("ts", "typescript"),
+        ("tsx", "typescript"),
+        ("mts", "typescript"),
+        ("cts", "typescript"),
         ("java", "java"),
         ("zig", "zig"),
         ("go", "go"),
         ("rs", "rust"),
-        ("py", "python"), ("pyi", "python"),
+        ("py", "python"),
+        ("pyi", "python"),
         ("cs", "csharp"),
-        ("kt", "kotlin"), ("kts", "kotlin"),
-        ("php", "php"), ("phtml", "php"),
-        ("rb", "ruby"), ("rake", "ruby"), ("gemspec", "ruby"),
+        ("kt", "kotlin"),
+        ("kts", "kotlin"),
+        ("php", "php"),
+        ("phtml", "php"),
+        ("rb", "ruby"),
+        ("rake", "ruby"),
+        ("gemspec", "ruby"),
         ("sql", "sql"),
-        ("sh", "shell"), ("bash", "shell"), ("zsh", "shell"),
-        ("vb", "vb"), ("bas", "vb"), ("vbs", "vb"),
-        ("hs", "haskell"), ("lhs", "haskell"),
-        ("yaml", "yaml"), ("yml", "yaml"),
+        ("sh", "shell"),
+        ("bash", "shell"),
+        ("zsh", "shell"),
+        ("vb", "vb"),
+        ("bas", "vb"),
+        ("vbs", "vb"),
+        ("hs", "haskell"),
+        ("lhs", "haskell"),
+        ("yaml", "yaml"),
+        ("yml", "yaml"),
         ("toml", "toml"),
-        ("ini", "ini"), ("cfg", "ini"), ("properties", "ini"),
+        ("ini", "ini"),
+        ("cfg", "ini"),
+        ("properties", "ini"),
     ]
 }
 
@@ -254,7 +278,10 @@ pub fn syntax_for_path(path: &str) -> Option<Syntax> {
         return None;
     }
     let extension = path[dot + 1..].to_ascii_lowercase();
-    let name = extensions().iter().find(|(ext, _)| *ext == extension).map(|(_, name)| *name)?;
+    let name = extensions()
+        .iter()
+        .find(|(ext, _)| *ext == extension)
+        .map(|(_, name)| *name)?;
     syntax_by_name(name)
 }
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 
 /**
  * Golden vectors for the section-matching contract (plans/section-matching).
@@ -45,6 +46,17 @@ const RUBY = 'test/fixtures/Cart.rb';
 const HASKELL = 'test/fixtures/Store.hs';
 const RUST = 'test/fixtures/Cart.rs';
 const SHAPES = 'test/fixtures/Shapes.java';
+// The hard spellings: the shapes a matcher only gets right if it mirrors the
+// JavaScript regex character for character. The fixtures above use the plain
+// spellings, so a port can pass every one of them while reading
+// `publisher: String,` as the field `lisher` and finding nothing in
+// `impl<T: Clone> Display for Cart<T> {`.
+const GENERICS = 'test/fixtures/Generics.rs';
+const PRIME = 'test/fixtures/Prime.hs';
+const WIDGET = 'test/fixtures/Widget.cs';
+const REPO = 'test/fixtures/Repo.kt';
+const ORDERS = 'test/fixtures/Orders.sql';
+const VB_FORM = 'test/fixtures/Form.vb';
 
 const cases = [
     // Grammar — parse only: canonical form and (lack of) errors.
@@ -162,6 +174,66 @@ const cases = [
     { name: 'rs-field-of-the-struct', input: RUST, reference: 'Cart/items' },
     { name: 'rs-retry-past-the-first-impl', input: RUST, reference: 'Cart/remove' },
     { name: 'rs-missing-in-every-cart', input: RUST, reference: 'Cart/nope' },
+
+    // Resolution — the hard spellings, one fixture per shape that a matcher can
+    // mistranslate. Every row here answers differently for a port whose matcher
+    // is even slightly off, which is exactly what the plain fixtures cannot do.
+
+    // Generics.rs: a generic impl, fields whose names begin with `pub`, and a
+    // field type that is itself generic. A port that keeps the `pub` prefix, or
+    // that reads `publisher` as `lisher`, or that cannot name the scope in
+    // `impl<T: Clone> Display for Cart<T>`, fails at least one of these.
+    { name: 'gneric-struct-is-the-first-cart', input: GENERICS, reference: 'Cart' },
+    { name: 'generic-field-plain', input: GENERICS, reference: 'items' },
+    { name: 'generic-field-in-scope', input: GENERICS, reference: 'Cart/items' },
+    { name: 'generic-field-name-begins-with-pub', input: GENERICS, reference: 'publisher' },
+    { name: 'generic-field-name-is-pub-underscore', input: GENERICS, reference: 'pub_key' },
+    { name: 'generic-impl-method', input: GENERICS, reference: 'render' },
+    { name: 'generic-impl-method-in-scope', input: GENERICS, reference: 'Cart/render' },
+    { name: 'generic-plain-impl-method', input: GENERICS, reference: 'Cart/add' },
+    // The impl's *type* names the scope, so its trait does not.
+    { name: 'generic-trait-is-not-the-scope', input: GENERICS, reference: 'Display' },
+
+    // Prime.hs: a binding whose source name carries a prime. The Haskell `'`
+    // opens a char literal, so the masker blanks the rest of the line and the
+    // binding is invisible — which is why `#add` misses while `#double` resolves.
+    // A port that masks `'` differently answers these the other way round.
+    { name: 'hs-primed-name-is-masked-away', input: PRIME, reference: 'add' },
+    { name: 'hs-primed-name-is-not-a-section', input: PRIME, reference: "add'" },
+    { name: 'hs-binding-with-where-clause', input: PRIME, reference: 'double' },
+    // An indented `where` binding is not a top-level one.
+    { name: 'hs-indented-where-binding-is-invisible', input: PRIME, reference: 'go' },
+    { name: 'hs-primed-type-name-is-not-a-section', input: PRIME, reference: 'Foo' },
+    { name: 'hs-class-with-a-primed-neighbour', input: PRIME, reference: 'Store' },
+    { name: 'hs-indented-class-method-is-invisible', input: PRIME, reference: 'get' },
+    { name: 'hs-keyword-is-not-a-binding', input: PRIME, reference: 'data' },
+
+    // Widget.cs and Repo.kt: the two most-used languages after JavaScript had no
+    // resolution vector at all, so their lexer entries were held only by their
+    // own unit tests.
+    { name: 'cs-class', input: WIDGET, reference: 'Widget' },
+    { name: 'cs-method-in-scope', input: WIDGET, reference: 'Widget/Add' },
+    { name: 'cs-method', input: WIDGET, reference: 'Add' },
+    { name: 'cs-auto-property-is-not-a-section', input: WIDGET, reference: 'Name' },
+    { name: 'kt-class', input: REPO, reference: 'Repo' },
+    { name: 'kt-method-in-scope', input: REPO, reference: 'Repo/find' },
+    { name: 'kt-method', input: REPO, reference: 'find' },
+    { name: 'kt-second-method-in-scope', input: REPO, reference: 'Repo/save' },
+    { name: 'kt-report-is-not-a-section', input: REPO, reference: 'report' },
+
+    // Orders.sql: the SQL entry had no resolution vector either. A region in
+    // `--` comments is the shape it exists for; `CREATE TABLE` is not a member.
+    { name: 'sql-region-in-line-comments', input: ORDERS, reference: 'totals' },
+    { name: 'sql-table-is-not-a-section', input: ORDERS, reference: 'orders' },
+
+    // Form.vb: the VB entry, with its `End`-terminated bodies and its modifier
+    // spellings (`Public Class`, `Private Sub`).
+    { name: 'vb-class', input: VB_FORM, reference: 'Form' },
+    { name: 'vb-function-in-scope', input: VB_FORM, reference: 'Form/Add' },
+    { name: 'vb-function', input: VB_FORM, reference: 'Add' },
+    { name: 'vb-function-body', input: VB_FORM, reference: 'Form/Add-' },
+    { name: 'vb-sub-in-scope', input: VB_FORM, reference: 'Form/Run' },
+    { name: 'vb-missing-member', input: VB_FORM, reference: 'Form/nope' },
 ];
 
 function warningOf(ref) {

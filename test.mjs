@@ -74,6 +74,10 @@ const reader = (files) => (path) => {
 // regionDirective
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Region directives and region extraction
+// ---------------------------------------------------------------------------
+
 test('regionDirective accepts the common comment spellings', () => {
     const cases = [
         ['#region table', 'region', 'table'],
@@ -149,6 +153,10 @@ const JAVA = [
     '    }',
     '}',
 ].join('\n');
+
+// ---------------------------------------------------------------------------
+// Scope modifiers, declarations and code regions
+// ---------------------------------------------------------------------------
 
 test('codeReference reads the scope modifiers', () => {
     assert.deepEqual(codeReference('add'), { scope: 'declaration', name: 'add' });
@@ -279,6 +287,10 @@ const ANCHORS = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtur
 const EXAMPLE = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Example.java');
 
 // --- 2a: existing Example.java modifiers must stay byte-identical ---
+// ---------------------------------------------------------------------------
+// The section-matching spec, against the shared fixtures
+// ---------------------------------------------------------------------------
+
 test('section-matching: existing Example.java modifiers are unchanged', () => {
     assert.equal(extractCodeRegion(EXAMPLE, 'toString'),
         '    public String toString() {\n        return String.join(",", items);\n    }');
@@ -440,6 +452,10 @@ import { parseReference, isSingleSegment, finalSegment, SectionReferenceError, m
 import { resolveSection, planSection } from './lib/section.mjs';
 
 // Group 1: canonicalisation of single-segment references
+// ---------------------------------------------------------------------------
+// The reference grammar: canonicalisation, errors, warnings
+// ---------------------------------------------------------------------------
+
 test('parseReference: single-segment canonicalisation', () => {
     const cases = [
         ['add', 'add', ['add'], 'declaration'],
@@ -577,6 +593,10 @@ test('parseReference: error messages quote raw reference', () => {
 
 // The mask blanks comments and string literals to spaces but preserves
 // length and every newline offset.
+// ---------------------------------------------------------------------------
+// The mask and the comment reader
+// ---------------------------------------------------------------------------
+
 test('masked preserves length and newline offsets', () => {
     const tricky = [
         'class X {',           // 0
@@ -625,6 +645,10 @@ test('commentsIn finds real comments, not those in strings', () => {
 
 // The block scanner, on a fixture with a nested class and a constructor and
 // a method: children are the blocks inside each body, in source order.
+// ---------------------------------------------------------------------------
+// The block scanner
+// ---------------------------------------------------------------------------
+
 test('scanBlocks: nested class and its members', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
     const s = scanBlocks(read('test/fixtures/Example.java'));
@@ -757,6 +781,10 @@ test('scanBlocks: region directives on example.ts', () => {
 // the step 3 tests (which call it) stay red until then.
 
 // --- §12 Example.java: today's bytes are reproduced byte-for-byte ---
+// ---------------------------------------------------------------------------
+// Resolution: scopes, walk order, ambiguity
+// ---------------------------------------------------------------------------
+
 test('resolveSection: Example.java modifiers unchanged', () => {
     assert.equal(resolveSection(EXAMPLE, 'toString'),
         '    public String toString() {\n        return String.join(",", items);\n    }');
@@ -977,6 +1005,10 @@ const lexRead = fileReader(dirname(fileURLToPath(import.meta.url)));
 const NESTING_ZIG = lexRead('test/fixtures/Nesting.zig');
 
 // Contract §10: the vendorable module imports nothing. Codified here so it cannot rot.
+// ---------------------------------------------------------------------------
+// The lexer hook and the language table
+// ---------------------------------------------------------------------------
+
 test('lexer hook: lib/section.mjs is dependency-free (vendorable boundary)', () => {
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'lib', 'section.mjs'), 'utf8');
     assert.doesNotMatch(src, /^\s*import\s/m, 'no ESM imports');
@@ -1265,6 +1297,10 @@ test('language table: the shapes a language adds are members, not text', () => {
 // and the CLI (exit code + stderr line), and the delegation is byte-identical
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Warnings through the marker layer
+// ---------------------------------------------------------------------------
+
 test('planMarker carries the section warning for a contradiction', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
     const plan = planMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers++-)'), read);
@@ -1372,6 +1408,10 @@ const JSON_DOC = [
     '  "keywords": ["docs", "examples", "sync"]',
     '}',
 ].join('\n');
+
+// ---------------------------------------------------------------------------
+// The config-format rules: JSON, YAML, TOML, INI
+// ---------------------------------------------------------------------------
 
 test('extractJsonRegion selects top-level keys and forms valid JSON', () => {
     const selected = extractJsonRegion(JSON_DOC, 'name,version');
@@ -1584,6 +1624,10 @@ test('updateDocument takes a custom rule set', () => {
 
 // ---------------------------------------------------------------------------
 // parseMarker
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Markers, fences and the document updater
 // ---------------------------------------------------------------------------
 
 test('parseMarker reads a whole-file marker', () => {
@@ -1913,6 +1957,10 @@ test('updateDocument stays stable when file content contains marker-like lines',
 // .gitignore
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// .gitignore rules
+// ---------------------------------------------------------------------------
+
 test('parseIgnoreFile parses comments, negation, anchors and globs', () => {
     const rules = parseIgnoreFile(' # comment\n\n!lib\n/dist/\n*.min.js\n**/cache\n');
     assert.equal(rules.length, 4);
@@ -1920,6 +1968,24 @@ test('parseIgnoreFile parses comments, negation, anchors and globs', () => {
         rules.map((r) => [r.negated, r.anchored]),
         [[true, false], [false, true], [false, false], [false, true]],
     );
+});
+
+test('a glob that cannot be a regular expression is dropped, not thrown', () => {
+    // `[?-!*]` is a reversed range and `[a\]x` never closes its class, so
+    // `new RegExp` refuses both. A broken ignore rule must cost the rule, not
+    // the run — the tool reads .gitignore files it did not write.
+    const root = process.cwd();
+    for (const broken of ['[?-!*]', '[a\\]x']) {
+        const rules = parseIgnoreFile(`${broken}\n*.md\n`);
+        assert.equal(rules.length, 1, `${broken} leaves the usable rule behind`);
+        assert.ok(!isIgnoredPath(root, 'anything', [{ dir: root, rules }]),
+            `${broken} excludes nothing`);
+    }
+
+    // The usable rules on either side of it still apply.
+    const rules = parseIgnoreFile('[?-!*]\n*.md\n!keep.md\n');
+    assert.ok(isIgnoredPath(root, 'notes.md', [{ dir: root, rules }]));
+    assert.ok(!isIgnoredPath(root, 'keep.md', [{ dir: root, rules }]));
 });
 
 test('isIgnoredPath applies gitignore semantics', () => {
@@ -2021,6 +2087,10 @@ test('updateDocument honours gitignore: false and an explicit ignore file', () =
 
 // ---------------------------------------------------------------------------
 // updateDocument — lenient
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// --lenient: what it tolerates and what it does not
 // ---------------------------------------------------------------------------
 
 test('updateDocument with lenient skips a dead marker and keeps the rest', () => {
@@ -2141,6 +2211,10 @@ test('lenient keeps gitignored skips distinct from failures', () => {
 
 // ---------------------------------------------------------------------------
 // CLI
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// The CLI: arguments, exit codes, directories
 // ---------------------------------------------------------------------------
 
 test('parseArgs reads the gitignore flags and rejects conflicts', () => {
@@ -2423,6 +2497,10 @@ test('several targets run in one pass and the worst code wins', (t) => {
 // read them through the real fileReader. The overlap is deliberate: an
 // example shown in the docs is test data, not prose, so it cannot drift
 // from what the tests prove.
+
+// ---------------------------------------------------------------------------
+// The docs, the fixtures and the demo page
+// ---------------------------------------------------------------------------
 
 test('the fixtures that back the docs are real files with stable content', () => {
     const root = dirname(fileURLToPath(import.meta.url));
@@ -2956,6 +3034,10 @@ test('doc/languages.md lists exactly the languages and extensions the table has'
     assert.ok(page.includes('## Config formats'), 'the formats have their own section');
 });
 
+// ---------------------------------------------------------------------------
+// The conformance corpora
+// ---------------------------------------------------------------------------
+
 test('section vectors match a live implementation call', () => {
     const root = dirname(fileURLToPath(import.meta.url));
     const vectors = JSON.parse(readFileSync(join(root, 'test/vectors/section-vectors.json'), 'utf8'));
@@ -2989,4 +3071,70 @@ test('section vectors match a live implementation call', () => {
                 (e) => { assert.equal(e.message, c.error, `${c.name}: error message`); return true; });
         }
     }
+});
+
+/** The language an extension selects, as `index.mjs` selects it. */
+const languageOfPath = (path) => {
+    if (path === null) return null;
+    const dot = path.lastIndexOf('.');
+    if (dot <= 0) return null;
+    return EXTENSIONS[path.slice(dot + 1).toLowerCase()] ?? null;
+};
+
+test('lexical vectors match a live implementation call', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const corpus = JSON.parse(readFileSync(join(root, 'test/vectors/lexical-vectors.json'), 'utf8'));
+    assert.ok(Array.isArray(corpus.masks) && corpus.masks.length >= 40, 'a substantial mask set');
+    assert.ok(Array.isArray(corpus.shapes) && corpus.shapes.length >= 40, 'a substantial shape set');
+
+    for (const c of corpus.masks) {
+        const lexer = c.path === null ? null : lexerFor(c.path);
+        assert.equal(lexer?.name ?? null, c.lexer, `${c.name}: the lexer the case names`);
+        const live = lexer ? lexer.mask(c.source) : masked(c.source);
+        assert.equal(live, c.masked, `${c.name}: mask`);
+
+        // A mask is only useful if it *is* a mask: same length, and every
+        // newline still at its own offset, so a body cannot end early or late.
+        assert.equal(live.length, c.source.length, `${c.name}: the mask keeps the length`);
+        for (let i = 0; i < c.source.length; i++) {
+            if (c.source[i] === '\n') assert.equal(live[i], '\n', `${c.name}: newline at ${i}`);
+        }
+    }
+
+    for (const c of corpus.shapes) {
+        const lexer = lexerFor(c.path);
+        const live = (lexer?.declarations ? lexer.declarations(c.line) : []).map((d) => ({
+            kind: d.kind,
+            name: d.name,
+            headerFrom: d.headerFrom,
+            body: d.body ?? null,
+            end: d.end ?? null,
+            line: !!d.line,
+        }));
+        assert.deepEqual(live, c.declared, `${c.name}: declarations`);
+    }
+});
+
+test('the lexical corpus covers every lexer entry', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const corpus = JSON.parse(readFileSync(join(root, 'test/vectors/lexical-vectors.json'), 'utf8'));
+
+    // Every entry gets a mask case, including the unknown type that falls back
+    // to the built-in engine — otherwise a new language could be added without
+    // ever being held to a port.
+    const maskedLanguages = new Set(corpus.masks.map((c) => languageOfPath(c.path)));
+    for (const name of Object.keys(SYNTAXES)) {
+        assert.ok(maskedLanguages.has(name), `the mask corpus covers the ${name} entry`);
+    }
+    assert.ok(corpus.masks.some((c) => c.path === null), 'and the default engine for an unknown type');
+
+    // Every language that adds declaration shapes gets shape cases.
+    const shaped = Object.entries(SYNTAXES)
+        .filter(([, syntax]) => (syntax.declarations ?? []).length > 0)
+        .map(([name]) => name);
+    const shapeLanguages = new Set(corpus.shapes.map((c) => languageOfPath(c.path)));
+    for (const name of shaped) {
+        assert.ok(shapeLanguages.has(name), `the shape corpus covers the ${name} entry`);
+    }
+    assert.ok(shaped.length >= 4, 'the table has the shape languages it is supposed to have');
 });

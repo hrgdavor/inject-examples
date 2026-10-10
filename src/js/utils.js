@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Shared helper to verify word boundaries (avoids matching "gift" for "if").
  */

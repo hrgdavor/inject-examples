@@ -21,15 +21,30 @@ pub struct BlockComment {
 
 impl BlockComment {
     pub fn new(open: &str, close: &str) -> Self {
-        Self { open: open.into(), close: close.into(), nested: false, line_start: false }
+        Self {
+            open: open.into(),
+            close: close.into(),
+            nested: false,
+            line_start: false,
+        }
     }
 
     pub fn nested(open: &str, close: &str) -> Self {
-        Self { open: open.into(), close: close.into(), nested: true, line_start: false }
+        Self {
+            open: open.into(),
+            close: close.into(),
+            nested: true,
+            line_start: false,
+        }
     }
 
     pub fn at_line_start(open: &str, close: &str) -> Self {
-        Self { open: open.into(), close: close.into(), nested: false, line_start: true }
+        Self {
+            open: open.into(),
+            close: close.into(),
+            nested: false,
+            line_start: true,
+        }
     }
 }
 
@@ -92,22 +107,37 @@ impl StringKind {
 
     /// A form that takes no escapes at all.
     pub fn raw(open: &str, close: &str) -> Self {
-        Self { escape: Escape::None, ..Self::new(open, close) }
+        Self {
+            escape: Escape::None,
+            ..Self::new(open, close)
+        }
     }
 
     /// A form that escapes its closer by doubling it.
     pub fn doubling(open: &str, close: &str) -> Self {
-        Self { escape: Escape::Doubling, ..Self::new(open, close) }
+        Self {
+            escape: Escape::Doubling,
+            ..Self::new(open, close)
+        }
     }
 
     /// A form that runs to the end of the line (Zig's `\\`).
     pub fn line_scoped(open: &str) -> Self {
-        Self { line_scoped: true, multiline: true, close: String::new(), ..Self::new(open, "") }
+        Self {
+            line_scoped: true,
+            multiline: true,
+            close: String::new(),
+            ..Self::new(open, "")
+        }
     }
 
     /// A constrained char literal: at most a couple of units, closed within a few more.
     pub fn single_char(open: &str) -> Self {
-        Self { max_span: Some(12), content: Content::SingleChar, ..Self::new(open, "'") }
+        Self {
+            max_span: Some(12),
+            content: Content::SingleChar,
+            ..Self::new(open, "'")
+        }
     }
 
     pub fn multiline(mut self) -> Self {
@@ -214,7 +244,8 @@ impl Syntax {
     }
 
     pub fn line_start_block(mut self, open: &str, close: &str) -> Self {
-        self.block_comments.push(BlockComment::at_line_start(open, close));
+        self.block_comments
+            .push(BlockComment::at_line_start(open, close));
         self
     }
 
@@ -242,12 +273,15 @@ impl Syntax {
     /// longest first, and a string form with no opener — or with no closer and no way to end (no
     /// hashes, not line-scoped) — is dropped.
     pub fn normalised(mut self) -> Self {
-        self.line_comments.sort_by_key(|value| std::cmp::Reverse(value.len()));
-        self.block_comments.sort_by_key(|block| std::cmp::Reverse(block.open.len()));
+        self.line_comments
+            .sort_by_key(|value| std::cmp::Reverse(value.len()));
+        self.block_comments
+            .sort_by_key(|block| std::cmp::Reverse(block.open.len()));
         self.strings.retain(|kind| {
             !kind.open.is_empty() && (!kind.close.is_empty() || kind.hashes || kind.line_scoped)
         });
-        self.strings.sort_by_key(|kind| std::cmp::Reverse(kind.open.len()));
+        self.strings
+            .sort_by_key(|kind| std::cmp::Reverse(kind.open.len()));
         self
     }
 }

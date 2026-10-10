@@ -1,3 +1,4 @@
+// @ts-check
 // ============================================================================
 // SHARED TOKENIZER
 // One lexical pass over a source, parameterised by a language's comment and
@@ -45,6 +46,7 @@ export { JS_SYNTAX, JAVA_SYNTAX, ZIG_SYNTAX } from './syntaxes.js';
  * @typedef {object} StringKind
  * @property {string} open            the literal opener, e.g. `"`, `"""`, `r'`, `@"`
  * @property {string} [close]         the literal closer (defaults to `open`); `hashes` computes it
+ * @property {string} [quote]         the v1 spelling of `open`
  * @property {'backslash' | 'doubling' | null} [escape] how the closer is escaped inside
  * @property {boolean} [multiline]    may span lines
  * @property {boolean} [lineScoped]   runs to the end of the line (Zig `\\`)
@@ -54,12 +56,45 @@ export { JS_SYNTAX, JAVA_SYNTAX, ZIG_SYNTAX } from './syntaxes.js';
  * @property {RegExp} [content]       and the body must match this (again: char vs lifetime)
  */
 /**
+ * A declaration shape the generic `name(` heuristics miss — Ruby's `def add`, a
+ * Haskell binding, Rust's `impl` and `name: Type,` field. The resolver indexes
+ * these instead of parsing: `re` is matched against the *masked* line and group 1
+ * is the name.
+ *
+ * @typedef {object} Declaration
+ * @property {'class' | 'method' | 'property'} kind  which block the shape produces
+ * @property {RegExp} re          group 1 is the declaration's name
+ * @property {string} [body]      `'end'` when the body is closed by a terminator keyword line
+ * @property {string} [end]       that terminator word (`end`, `End`)
+ * @property {boolean} [line]     the declaration line is itself a complete selection
+ */
+/**
+ * The normalized syntax the engine walks: every field present.
+ *
  * @typedef {object} Syntax
  * @property {string} name
+ * @property {string[]} lineComments
+ * @property {BlockComment[]} blockComments
+ * @property {StringKind[]} strings
+ * @property {boolean | 'strict'} heredoc
+ * @property {Declaration[]} declarations
+ * @property {RegExp[]} annotations
+ */
+/**
+ * A syntax as a language table writes it: anything but `name` may be omitted,
+ * and the two v1 spellings (`lineComment`, `blockComment`, `strings: [{ quote }]`)
+ * are accepted alongside the current ones.
+ *
+ * @typedef {object} SyntaxInput
+ * @property {string} [name]
  * @property {string[]} [lineComments]
+ * @property {string} [lineComment]
  * @property {BlockComment[]} [blockComments]
+ * @property {BlockComment} [blockComment]
  * @property {StringKind[]} [strings]
  * @property {boolean | 'strict'} [heredoc]
+ * @property {Declaration[]} [declarations]
+ * @property {RegExp[]} [annotations]
  */
 
 // --- v1 spells the same facts, so both shapes normalise to one ------- -----
@@ -80,7 +115,7 @@ function longestFirst(kinds, open) {
  * (`lineComment`, `blockComment`, `strings: [{ quote }]`) stays accepted, so
  * the exported `JS_SYNTAX`/`JAVA_SYNTAX`/`ZIG_SYNTAX` keep working unchanged.
  *
- * @param {object} syntax
+ * @param {SyntaxInput} syntax
  * @returns {Syntax}
  */
 export function normalizeSyntax(syntax) {
@@ -289,7 +324,7 @@ function extractIfClauses(source, masked, starts) {
  * a caller can enumerate a file without consuming the returned buffer.
  *
  * @param {string} source
- * @param {Syntax} syntax v1 or v2 spelling; both are accepted
+ * @param {SyntaxInput} syntax v1 or v2 spelling; both are accepted
  * @param {{ comment?: (c: Comment & {line:number,col:number}) => void,
  *           string?: (s: StringSpan & {line:number,col:number}) => void,
  *           ifClause?: (c: IfClause) => void }} [visitor]
@@ -382,9 +417,12 @@ export function tokenize(source, syntax, visitor) {
  * line) and `annotationLine(line)`. Neither is built when the language has
  * none, so the resolver's generic shapes stay exactly in charge.
  *
- * @param {Syntax} syntax v1 or v2 spelling
+ * @param {SyntaxInput} syntax v1 or v2 spelling
  * @returns {{ name: string, mask: (s: string) => string, comments: (s: string) => Comment[],
- *            declarations?: (line: string) => object[], annotationLine?: (line: string) => boolean }}
+ *            declarations?: (line: string) => Array<{ kind?: 'class' | 'method' | 'property',
+ *                                                       name: string, headerFrom: number,
+ *                                                       body?: string, end?: string, line?: boolean }>,
+ *            annotationLine?: (line: string) => boolean }}
  */
 export function makeLexer(syntax) {
     const lang = normalizeSyntax(syntax);

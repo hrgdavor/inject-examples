@@ -144,7 +144,10 @@ pub fn condition_literals(orig_line: &str, from: usize) -> Conditions {
         }
     };
 
-    let exact = literals.iter().map(|(start, end)| slice(start + 1, *end)).collect();
+    let exact = literals
+        .iter()
+        .map(|(start, end)| slice(start + 1, *end))
+        .collect();
 
     let mut pasted = Vec::new();
     let mut k = 0;
@@ -168,13 +171,15 @@ pub fn condition_literals(orig_line: &str, from: usize) -> Conditions {
 
 /// The default annotation test: `@Decorator` and `#[attribute]`, which is what the `+` scope takes when
 /// a language's lexer supplies nothing more specific.
+///
+/// `/^\s*(?:@[\w.$]|#\[)/` — `\w` is ASCII in JavaScript, so `@ä` is not an annotation.
 pub fn annotation_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     if let Some(rest) = trimmed.strip_prefix('@') {
         return rest
             .chars()
             .next()
-            .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '.');
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '.');
     }
     trimmed.starts_with("#[")
 }

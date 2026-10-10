@@ -22,8 +22,8 @@ fourth links the sample the [demo page](../docs/index.html) shows it with.
 
 | language | extensions | the construct the entry exists for | sample |
 | --- | --- | --- | --- |
-| `javascript` | `js` `mjs` `cjs` `jsx` | backtick templates, which span lines and hide braces | — |
-| `typescript` | `ts` `tsx` `mts` `cts` | as JavaScript | — |
+| `javascript` | `js` `mjs` `cjs` `jsx` | backtick templates, which span lines and hide braces | [cart.js](../docs/samples/cart.js) |
+| `typescript` | `ts` `tsx` `mts` `cts` | as JavaScript | [cart.js](../docs/samples/cart.js) |
 | `java` | `java` | text blocks (`"""`) | [Inventory.java](../docs/samples/Inventory.java) |
 | `zig` | `zig` | **nested** block comments, `\\` multiline strings | [Nesting.zig](../docs/samples/Nesting.zig) |
 | `go` | `go` | backtick raw strings, which take no escapes | [Cart.go](../docs/samples/Cart.go) |

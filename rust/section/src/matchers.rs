@@ -27,20 +27,40 @@ const COMMENT_OPENERS: [&str; 9] = ["//", "--", ";", "%", "'", "REM", "<!--", "/
 const COMMENT_CLOSERS: [&str; 2] = ["-->", "*/"];
 
 /// The declaration keywords the generic class-like shape knows.
-const TYPE_KEYWORDS: [&str; 8] =
-    ["class", "interface", "enum", "record", "struct", "trait", "object", "union"];
+const TYPE_KEYWORDS: [&str; 8] = [
+    "class",
+    "interface",
+    "enum",
+    "record",
+    "struct",
+    "trait",
+    "object",
+    "union",
+];
 
 /// The statement keywords matcher 5 opens a block on.
-const STATEMENT_KEYWORDS: [&str; 10] =
-    ["if", "else", "for", "while", "do", "switch", "try", "catch", "finally", "synchronized"];
+const STATEMENT_KEYWORDS: [&str; 10] = [
+    "if",
+    "else",
+    "for",
+    "while",
+    "do",
+    "switch",
+    "try",
+    "catch",
+    "finally",
+    "synchronized",
+];
 
 /// A word that stands where a type or modifier would, but declares nothing.
-const NOT_A_TYPE: [&str; 10] =
-    ["return", "throw", "new", "else", "do", "case", "await", "yield", "delete", "typeof"];
+const NOT_A_TYPE: [&str; 10] = [
+    "return", "throw", "new", "else", "do", "case", "await", "yield", "delete", "typeof",
+];
 
 /// Words that turn a `name(` shape into a statement rather than a declaration.
-const STATEMENT_BEFORE: [&str; 9] =
-    ["return", "throw", "new", "await", "yield", "delete", "typeof", "case", "else"];
+const STATEMENT_BEFORE: [&str; 9] = [
+    "return", "throw", "new", "await", "yield", "delete", "typeof", "case", "else",
+];
 
 /// A class-like declaration on a masked line, and where its header ends.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -81,14 +101,20 @@ fn at_word_boundary(text: &str, at: usize) -> bool {
 fn word_at(text: &str, at: usize, word: &str) -> bool {
     text[at..].starts_with(word)
         && at_word_boundary(text, at)
-        && text[at + word.len()..].chars().next().is_none_or(|c| !is_word_char(c))
+        && text[at + word.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !is_word_char(c))
 }
 
 /// The same, for the spellings the grammar accepts in either case (`#region`, `#REGION`).
 fn word_at_ignore_case(text: &str, at: usize, word: &str) -> bool {
     starts_with_ignore_case(&text[at..], word)
         && at_word_boundary(text, at)
-        && text[at + word.len()..].chars().next().is_none_or(|c| !is_word_char(c))
+        && text[at + word.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !is_word_char(c))
 }
 
 /// `[A-Za-z_$][\w$]*` at the start of `text`, and its length.
@@ -131,7 +157,10 @@ pub fn region_directive(line: &str) -> Option<Directive> {
             }
             // `REM` needs a word boundary after it, or `REMOVE` would open a comment.
             if opener == "REM"
-                && text[opener.len()..].chars().next().is_some_and(is_word_char)
+                && text[opener.len()..]
+                    .chars()
+                    .next()
+                    .is_some_and(is_word_char)
             {
                 continue;
             }
@@ -161,14 +190,19 @@ pub fn region_directive(line: &str) -> Option<Directive> {
     if !commented && !hashed {
         return None;
     }
-    Some(Directive { kind, name: rest.trim().to_string() })
+    Some(Directive {
+        kind,
+        name: rest.trim().to_string(),
+    })
 }
 
 /// `^(#?)(region|endregion)\b` — a region line, which is never a comment anchor.
 pub fn is_region_line(text: &str) -> bool {
     let trimmed = text.trim_start();
     let text = trimmed.strip_prefix('#').unwrap_or(trimmed);
-    ["region", "endregion"].iter().any(|word| word_at_ignore_case(text, 0, word))
+    ["region", "endregion"]
+        .iter()
+        .any(|word| word_at_ignore_case(text, 0, word))
 }
 
 /// `^([A-Za-z_$][\w$]*)$` — a comment body that names a block and nothing else.
@@ -247,16 +281,16 @@ pub fn assigned_shape(masked_line: &str, name: &str) -> Option<usize> {
         let after_name = &masked_line[start + name.len()..];
         // An optional `: Type` annotation, then the `=`.
         let after_type = match after_name.find(':') {
-            Some(colon) if after_name[colon + 1..].find('=').is_some() => {
-                &after_name[colon + 1..]
-            }
+            Some(colon) if after_name[colon + 1..].find('=').is_some() => &after_name[colon + 1..],
             _ => after_name,
         };
         let Some(equals) = after_type.find('=') else {
             continue;
         };
         let after_equals = after_type[equals + 1..].trim_start();
-        let after_async = after_equals.strip_prefix("async").map_or(after_equals, |rest| rest.trim_start());
+        let after_async = after_equals
+            .strip_prefix("async")
+            .map_or(after_equals, |rest| rest.trim_start());
         if let Some(rest) = after_async.strip_prefix("function") {
             let length = masked_line.len() - rest.len();
             return Some(length);
@@ -329,7 +363,9 @@ fn take_identifier_from_end(text: &str) -> Option<(&str, usize)> {
         .map(|(index, _)| index)?;
     let candidate = &text[start..];
     // It must be a name, not a type: `Type` is fine, `List<String>` is not a name.
-    if candidate.is_empty() || take_identifier(candidate).map(|(_, length)| length) != Some(candidate.len()) {
+    if candidate.is_empty()
+        || take_identifier(candidate).map(|(_, length)| length) != Some(candidate.len())
+    {
         return None;
     }
     let previous = text[..start].chars().next_back();
@@ -362,7 +398,10 @@ pub fn statement_keyword(line: &str) -> Option<(String, usize)> {
 pub fn is_prefix(text: &str) -> bool {
     text.chars().all(|character| {
         is_word_char(character)
-            || matches!(character, '<' | '>' | '[' | ']' | ',' | '.' | '?' | '*' | '&' | ':' | '@')
+            || matches!(
+                character,
+                '<' | '>' | '[' | ']' | ',' | '.' | '?' | '*' | '&' | ':' | '@'
+            )
             || character.is_whitespace()
     })
 }
@@ -372,7 +411,10 @@ pub fn starts_with_statement_before(text: &str) -> bool {
     let text = text.trim_start();
     STATEMENT_BEFORE.iter().any(|word| {
         text.starts_with(word)
-            && text[word.len()..].chars().next().is_none_or(|c| !is_word_char(c))
+            && text[word.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| !is_word_char(c))
     })
 }
 
@@ -433,7 +475,8 @@ mod tests {
             "REM #region wiring",
             "    * #region wiring",
         ] {
-            let directive = region_directive(line).unwrap_or_else(|| panic!("{line} is a directive"));
+            let directive =
+                region_directive(line).unwrap_or_else(|| panic!("{line} is a directive"));
             assert_eq!(DirectiveKind::Region, directive.kind, "{line}");
             assert_eq!("wiring", directive.name, "{line}");
         }
@@ -449,9 +492,18 @@ mod tests {
 
     #[test]
     fn a_bare_region_is_prose() {
-        assert!(region_directive("region wiring").is_none(), "no comment prefix, no `#`");
-        assert!(region_directive("# regional planning").is_none(), "`regional` is not `region`");
-        assert!(region_directive("REMOVE #region x").is_none(), "`REMOVE` is not `REM`");
+        assert!(
+            region_directive("region wiring").is_none(),
+            "no comment prefix, no `#`"
+        );
+        assert!(
+            region_directive("# regional planning").is_none(),
+            "`regional` is not `region`"
+        );
+        assert!(
+            region_directive("REMOVE #region x").is_none(),
+            "`REMOVE` is not `REM`"
+        );
         assert!(region_directive("plain text").is_none());
     }
 
@@ -464,7 +516,10 @@ mod tests {
 
         let record = declaration_keyword("public record Point(int x) {").unwrap();
         assert_eq!("Point", record.name);
-        assert!(declaration_keyword("classy thing").is_none(), "a word boundary is required");
+        assert!(
+            declaration_keyword("classy thing").is_none(),
+            "a word boundary is required"
+        );
         assert!(declaration_keyword("    return value;").is_none());
     }
 
@@ -474,10 +529,22 @@ mod tests {
             Some(len("    public boolean add()")),
             call_shape("    public boolean add() {", "add")
         );
-        assert!(call_shape("        add(1, 2);", "add").is_some(), "the shape itself matches");
-        assert!(call_shape("        return add(1, 2);", "add").is_none(), "`return` opens a statement");
-        assert!(call_shape("        other.add(1, 2);", "add").is_none(), "a member call is not a declaration");
-        assert!(call_shape("    public boolean add(", "add").is_none(), "an unclosed paren is not a header");
+        assert!(
+            call_shape("        add(1, 2);", "add").is_some(),
+            "the shape itself matches"
+        );
+        assert!(
+            call_shape("        return add(1, 2);", "add").is_none(),
+            "`return` opens a statement"
+        );
+        assert!(
+            call_shape("        other.add(1, 2);", "add").is_none(),
+            "a member call is not a declaration"
+        );
+        assert!(
+            call_shape("    public boolean add(", "add").is_none(),
+            "an unclosed paren is not a header"
+        );
     }
 
     #[test]
@@ -490,18 +557,36 @@ mod tests {
         assert_eq!("total", constant.name);
         assert_eq!(None, constant.type_head);
 
-        assert!(property_decl("        count = 0;").is_none(), "an assignment is not a declaration");
-        assert!(property_decl("    if (a == b) {").is_none(), "a comparison is not an assignment");
-        assert!(property_decl("    return value = 1;").is_none(), "a statement before it disqualifies it");
+        assert!(
+            property_decl("        count = 0;").is_none(),
+            "an assignment is not a declaration"
+        );
+        assert!(
+            property_decl("    if (a == b) {").is_none(),
+            "a comparison is not an assignment"
+        );
+        assert!(
+            property_decl("    return value = 1;").is_none(),
+            "a statement before it disqualifies it"
+        );
     }
 
     #[test]
     fn the_statement_keyword() {
-        assert_eq!(Some(("if".to_string(), 4)), statement_keyword("    if (x) {"));
+        assert_eq!(
+            Some(("if".to_string(), 4)),
+            statement_keyword("    if (x) {")
+        );
         assert_eq!(Some(("else".to_string(), 0)), statement_keyword("else {"));
-        assert!(statement_keyword("    // if (x) {").is_some(), "the scanner reads the masked line");
+        assert!(
+            statement_keyword("    // if (x) {").is_some(),
+            "the scanner reads the masked line"
+        );
         assert!(statement_keyword("    nothing here").is_none());
-        assert!(statement_keyword("    differ(x)").is_none(), "a word boundary is required");
+        assert!(
+            statement_keyword("    differ(x)").is_none(),
+            "a word boundary is required"
+        );
     }
 
     #[test]

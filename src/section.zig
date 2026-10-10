@@ -737,9 +737,9 @@ fn keywordBody(lines: []const Str, decl_line: usize, word: Str) ?struct { open_l
 // --- the generic name shapes ------------------------------------------------
 
 const NOT_A_NAME = [_][]const u8{
-    "if",   "for",  "while",      "switch", "catch", "return", "new",
-    "do",   "else", "throw",      "await",  "yield", "typeof", "delete",
-    "void", "in",   "of",         "instanceof", "super", "this", "with",
+    "if",   "for",  "while",  "switch",     "catch", "return", "new",
+    "do",   "else", "throw",  "await",      "yield", "typeof", "delete",
+    "void", "in",   "of",     "instanceof", "super", "this",   "with",
     "case", "when", "sizeof",
 };
 
@@ -1054,106 +1054,106 @@ const Build = struct {
         const alloc = self.facts.alloc;
         var list = std.ArrayList(*Block).empty;
 
-    var i = from_line;
-    while (i <= to_line) {
-        const mask_line = self.facts.mask_lines[i];
-        if (js.trim(mask_line).len == 0) {
-            i += 1;
-            continue;
-        }
-        const start = self.facts.starts[i];
+        var i = from_line;
+        while (i <= to_line) {
+            const mask_line = self.facts.mask_lines[i];
+            if (js.trim(mask_line).len == 0) {
+                i += 1;
+                continue;
+            }
+            const start = self.facts.starts[i];
 
-        // The language's own declaration shapes first: they are more specific
-        // than the generic ones (Ruby `def name`, a Haskell binding).
-        if (try declaredHere(self, mask_line, i, start, &list)) |last_end| {
-            i = last_end + 1;
-            continue;
-        }
+            // The language's own declaration shapes first: they are more specific
+            // than the generic ones (Ruby `def name`, a Haskell binding).
+            if (try declaredHere(self, mask_line, i, start, &list)) |last_end| {
+                i = last_end + 1;
+                continue;
+            }
 
-        if (matchDeclarationKeyword(mask_line)) |keyword| {
-            if (!isNotAName(keyword.name)) {
-                const header_from = start + keyword.index + keyword.length;
-                const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, header_from);
+            if (matchDeclarationKeyword(mask_line)) |keyword| {
+                if (!isNotAName(keyword.name)) {
+                    const header_from = start + keyword.index + keyword.length;
+                    const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, header_from);
+                    const block = try alloc.create(Block);
+                    block.* = makeBlock(.class, keyword.name, i);
+                    applySpan(block, span);
+                    applyAnchor(self, block, if (span) |found| found.open else null);
+                    try register(self, &list, block);
+                    try descend(self, block, i, span);
+                    i = endLineOf(span, i) + 1;
+                    continue;
+                }
+            }
+
+            if (try methodDeclOn(self, mask_line, i, start)) |found| {
+                const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, found.header_from);
                 const block = try alloc.create(Block);
-                block.* = makeBlock(.class, keyword.name, i);
+                block.* = makeBlock(.method, found.name, i);
                 applySpan(block, span);
-                applyAnchor(self, block, if (span) |found| found.open else null);
+                applyAnchor(self, block, if (span) |found_span| found_span.open else null);
                 try register(self, &list, block);
                 try descend(self, block, i, span);
                 i = endLineOf(span, i) + 1;
                 continue;
             }
-        }
 
-        if (try methodDeclOn(self, mask_line, i, start)) |found| {
-            const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, found.header_from);
-            const block = try alloc.create(Block);
-            block.* = makeBlock(.method, found.name, i);
-            applySpan(block, span);
-            applyAnchor(self, block, if (span) |found_span| found_span.open else null);
-            try register(self, &list, block);
-            try descend(self, block, i, span);
-            i = endLineOf(span, i) + 1;
-            continue;
-        }
+            if (matchStatementKeyword(mask_line)) |stmt| {
+                if (js.indexOfUnit(self.facts.mask[start..], '{')) |brace_offset| {
+                    const brace_pos = start + brace_offset;
+                    const segments = try chainSegments(
+                        alloc,
+                        self.facts.mask,
+                        self.facts.starts,
+                        i,
+                        stmt.keyword,
+                        brace_pos,
+                        stmt.index,
+                    );
+                    var last_close_line = i;
+                    for (segments) |seg| {
+                        const block = try alloc.create(Block);
+                        block.* = makeBlock(.statement, null, seg.header_line);
+                        block.open = seg.open;
+                        block.close = seg.close;
+                        block.open_line = seg.open_line;
+                        block.close_line = seg.close_line;
+                        block.shared_close = seg.shared_close;
+                        block.end_line = seg.close_line;
 
-        if (matchStatementKeyword(mask_line)) |stmt| {
-            if (js.indexOfUnit(self.facts.mask[start..], '{')) |brace_offset| {
-                const brace_pos = start + brace_offset;
-                const segments = try chainSegments(
-                    alloc,
-                    self.facts.mask,
-                    self.facts.starts,
-                    i,
-                    stmt.keyword,
-                    brace_pos,
-                    stmt.index,
-                );
-                var last_close_line = i;
-                for (segments) |seg| {
-                    const block = try alloc.create(Block);
-                    block.* = makeBlock(.statement, null, seg.header_line);
-                    block.open = seg.open;
-                    block.close = seg.close;
-                    block.open_line = seg.open_line;
-                    block.close_line = seg.close_line;
-                    block.shared_close = seg.shared_close;
-                    block.end_line = seg.close_line;
+                        const hdr_start = self.facts.starts[seg.header_line];
+                        const hdr_end = endOfLine(self.facts.mask, hdr_start);
+                        block.conditions = try conditionLiterals(alloc, self.facts.source[hdr_start..hdr_end], seg.cond_offset);
 
-                    const hdr_start = self.facts.starts[seg.header_line];
-                    const hdr_end = endOfLine(self.facts.mask, hdr_start);
-                    block.conditions = try conditionLiterals(alloc, self.facts.source[hdr_start..hdr_end], seg.cond_offset);
-
-                    applyAnchor(self, block, seg.open);
-                    try register(self, &list, block);
-                    try descend(self, block, seg.header_line, .{
-                        .open_line = seg.open_line,
-                        .close_line = seg.close_line,
-                    });
-                    if (seg.close_line > last_close_line) last_close_line = seg.close_line;
-                }
-                i = last_close_line + 1;
-                continue;
-            }
-        }
-
-        if (matchProperty(mask_line)) |prop| {
-            if (!isNotAName(prop.name) and !startsWithStatementBefore(mask_line[0..prop.match_end])) {
-                const skip = prop.typed_head and prop.type_word.len > 0 and isNotAType(prop.type_word);
-                if (!skip) {
-                    const block = try alloc.create(Block);
-                    block.* = makeBlock(.property, prop.name, i);
-                    try register(self, &list, block);
-                    i += 1;
+                        applyAnchor(self, block, seg.open);
+                        try register(self, &list, block);
+                        try descend(self, block, seg.header_line, .{
+                            .open_line = seg.open_line,
+                            .close_line = seg.close_line,
+                        });
+                        if (seg.close_line > last_close_line) last_close_line = seg.close_line;
+                    }
+                    i = last_close_line + 1;
                     continue;
                 }
             }
-        }
 
-        i += 1;
+            if (matchProperty(mask_line)) |prop| {
+                if (!isNotAName(prop.name) and !startsWithStatementBefore(mask_line[0..prop.match_end])) {
+                    const skip = prop.typed_head and prop.type_word.len > 0 and isNotAType(prop.type_word);
+                    if (!skip) {
+                        const block = try alloc.create(Block);
+                        block.* = makeBlock(.property, prop.name, i);
+                        try register(self, &list, block);
+                        i += 1;
+                        continue;
+                    }
+                }
+            }
+
+            i += 1;
+        }
+        return list.toOwnedSlice(alloc);
     }
-    return list.toOwnedSlice(alloc);
-}
 };
 
 /// The language's own declaration shapes on one line, when it has any.
@@ -1769,7 +1769,8 @@ fn matchSegment(
             "\"#region {s}\" appears {d} times; region names must be unique",
             .{ segment, regions },
         ));
-    }    if (regions == 1) {
+    }
+    if (regions == 1) {
         for (scope.regions.items) |region| {
             if (js.eql(region.name, segment)) {
                 try out.append(alloc, .{ .kind = .region, .region = region });
@@ -2481,4 +2482,165 @@ test "the golden section vectors" {
 
     try testing.expectEqual(vectors.cases.len, checked);
     try testing.expect(checked >= 50);
+}
+
+// The lexical corpus, mask half: what each language blanks, and that the mask is still a mask.
+//
+// `test/vectors/section-vectors.json` can only exercise the lexer entries its fixtures name — six of
+// the eighteen — so this is what holds the other twelve, and the built-in engine, to the JavaScript.
+// Every row is reported, not just the first, so one run shows the whole divergence.
+test "the lexical mask vectors" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var failures = std.ArrayList([]const u8).empty;
+    var checked: usize = 0;
+    for (vectors.mask_cases) |case| {
+        const source = try js.utf8Decode(alloc, case.source);
+        const expected = try js.utf8Decode(alloc, case.masked);
+
+        const actual = if (case.path) |path_bytes| blk: {
+            const path = try js.utf8Decode(alloc, path_bytes);
+            // No entry for the type: the built-in default engine applies, exactly as a null lexer does
+            // in JavaScript — the language table is an optimisation, never a requirement.
+            const lexer = lexers.lexerFor(path) orelse break :blk try masked(alloc, source);
+            break :blk try lexer.mask(alloc, source);
+        } else try masked(alloc, source);
+
+        if (!js.eql(actual, expected)) {
+            try failures.append(alloc, try std.fmt.allocPrint(alloc, "{s}: mask {any}, want {any}", .{
+                case.name,
+                actual,
+                expected,
+            }));
+        }
+        // A mask is only useful if it *is* a mask: same length, and every newline still at its own
+        // offset, so a declaration's body can neither end early nor run past its line.
+        if (actual.len != source.len) {
+            try failures.append(alloc, try std.fmt.allocPrint(
+                alloc,
+                "{s}: the mask changed the length, {d} for {d}",
+                .{ case.name, actual.len, source.len },
+            ));
+        } else {
+            for (source, 0..) |unit, at| {
+                if (unit == '\n' and actual[at] != '\n') {
+                    try failures.append(alloc, try std.fmt.allocPrint(
+                        alloc,
+                        "{s}: the mask moved the newline at {d}",
+                        .{ case.name, at },
+                    ));
+                    break;
+                }
+            }
+        }
+        checked += 1;
+    }
+
+    if (failures.items.len > 0) {
+        std.debug.print("{d} of {d} masks disagree with lib/section.mjs:\n", .{
+            failures.items.len,
+            checked,
+        });
+        for (failures.items) |failure| std.debug.print("  {s}\n", .{failure});
+        return error.MaskMismatch;
+    }
+    try testing.expectEqual(vectors.mask_cases.len, checked);
+    try testing.expect(checked >= 40);
+}
+
+// The lexical corpus, shape half: the declaration shapes a language adds to the generic `name(`
+// heuristics, asserted field by field — kind, name, the offset the body starts at, and the body rule.
+//
+// These are the rows a mistranslated matcher fails: `impl<T>` against `impl`, `pub name` against
+// `publisher`, an indented Haskell binding against a column-0 one. Every row is reported.
+test "the lexical shape vectors" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var failures = std.ArrayList([]const u8).empty;
+    var checked: usize = 0;
+    for (vectors.shape_cases) |case| {
+        const path = try js.utf8Decode(alloc, case.path);
+        const line = try js.utf8Decode(alloc, case.line);
+        const lexer = lexers.lexerFor(path) orelse {
+            std.debug.print("{s}: no lexer for {s}\n", .{ case.name, case.path });
+            return error.MissingLexer;
+        };
+
+        const declared = try lexer.declarations(alloc, line);
+        if (declared.len != case.declared.len) {
+            try failures.append(alloc, try std.fmt.allocPrint(
+                alloc,
+                "{s} ({s}): {d} declaration(s), want {d}",
+                .{ case.name, case.line, declared.len, case.declared.len },
+            ));
+        } else for (declared, case.declared) |got, want| {
+            if (@intFromEnum(got.kind) != @intFromEnum(want.kind)) {
+                try failures.append(alloc, try std.fmt.allocPrint(
+                    alloc,
+                    "{s} ({s}): kind {any}, want {any}",
+                    .{ case.name, case.line, got.kind, want.kind },
+                ));
+            }
+            if (!js.eql(got.name, try js.utf8Decode(alloc, want.name))) {
+                try failures.append(alloc, try std.fmt.allocPrint(
+                    alloc,
+                    "{s} ({s}): name {any}, want {s}",
+                    .{ case.name, case.line, got.name, want.name },
+                ));
+            }
+            if (got.header_from != @as(usize, @intCast(want.header_from))) {
+                try failures.append(alloc, try std.fmt.allocPrint(
+                    alloc,
+                    "{s} ({s}): header_from {d}, want {d}",
+                    .{ case.name, case.line, got.header_from, want.header_from },
+                ));
+            }
+            // `body = 'end'` and the terminator travel together, so comparing the terminator compares
+            // both; the corpus never carries one without the other.
+            if ((want.body == null) != (want.end == null)) {
+                try failures.append(alloc, try std.fmt.allocPrint(
+                    alloc,
+                    "{s}: the corpus carries body without end",
+                    .{case.name},
+                ));
+            } else if ((got.end_kw == null) != (want.end == null)) {
+                try failures.append(alloc, try std.fmt.allocPrint(
+                    alloc,
+                    "{s} ({s}): end {any}, want {any}",
+                    .{ case.name, case.line, got.end_kw, want.end },
+                ));
+            } else if (got.end_kw) |end_kw| {
+                if (!js.eql(end_kw, try js.utf8Decode(alloc, want.end.?))) {
+                    try failures.append(alloc, try std.fmt.allocPrint(
+                        alloc,
+                        "{s} ({s}): end {any}, want {s}",
+                        .{ case.name, case.line, end_kw, want.end.? },
+                    ));
+                }
+            }
+            if (got.line != want.line) {
+                try failures.append(alloc, try std.fmt.allocPrint(
+                    alloc,
+                    "{s} ({s}): line {any}, want {any}",
+                    .{ case.name, case.line, got.line, want.line },
+                ));
+            }
+        }
+        checked += 1;
+    }
+
+    if (failures.items.len > 0) {
+        std.debug.print("{d} of {d} shapes disagree with lib/section.mjs:\n", .{
+            failures.items.len,
+            checked,
+        });
+        for (failures.items) |failure| std.debug.print("  {s}\n", .{failure});
+        return error.ShapeMismatch;
+    }
+    try testing.expectEqual(vectors.shape_cases.len, checked);
+    try testing.expect(checked >= 40);
 }
