@@ -723,6 +723,15 @@ field, so npm links the package page to the GitHub repository.
 `src/js/scanner/`, `doc/languages.md`, `doc/section-matching.md`, `README.md` and
 `LICENSE`; the tests and fixtures stay out.
 
+`exports` names what a consumer may import: the package root, the CLI, and two
+subpaths — `./lib/section.mjs` (the matcher) and `./src/js/scanner/lexers.js`
+(the per-type lexers it takes). `files` and `exports` are independent in
+`package.json`, so
+[`tools/package-contents.mjs`](./tools/package-contents.mjs) (`npm test`) checks
+that every exported file exists, is covered by `files`, and that every relative
+import reachable from an entry point ships too: a shipped module importing an
+unshipped one is a broken package that no unit test can see.
+
 ## The matcher ports: Rust and Java
 
 [`lib/section.mjs`](./lib/section.mjs) is the section matcher on its own — one

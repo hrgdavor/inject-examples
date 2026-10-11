@@ -25,6 +25,14 @@ on the package and import the subpath:
 import { resolveSection, parseReference } from '@hrg/inject-examples/lib/section.mjs';
 ```
 
+The per-type lexers are a second exported subpath, so a consumer does not have
+to reach into `node_modules` by path:
+
+```js
+import { lexerFor } from '@hrg/inject-examples/src/js/scanner/lexers.js';
+resolveSection(code, 'Cart/Line/render-', lexerFor('Example.java'));
+```
+
 You hand it the file's text and a reference; it hands you the text or throws:
 
 ```js
@@ -54,8 +62,9 @@ The optional `lexer` is the language-specific half of a scan — `{ name,
 mask(text), comments(text) }`, blanking comments and string literals and
 locating the comments. Omit it (an unknown file type) and the built-in default
 engine masks the file; `src/js/scanner/lexers.js` holds the per-type lexers and
-picks one by extension. A lexer changes only what is blanked, never how the
-blanked text is walked. See the Tokenizers section of the spec.
+picks one by extension (`lexerFor(path)`, an exported subpath of the package). A
+lexer changes only what is blanked, never how the blanked text is walked. See the
+Tokenizers section of the spec.
 
 ## The contract it implements
 

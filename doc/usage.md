@@ -89,6 +89,7 @@ The entire published package, verbatim:
     ".": "./index.mjs",
     "./cli.mjs": "./cli.mjs",
     "./lib/section.mjs": "./lib/section.mjs",
+    "./src/js/scanner/lexers.js": "./src/js/scanner/lexers.js",
     "./package.json": "./package.json"
   },
   "bin": {
@@ -111,7 +112,8 @@ The entire published package, verbatim:
     "access": "public"
   },
   "scripts": {
-    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check",
+    "prepublishOnly": "npm test",
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/package-contents.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
     "lexical:vectors": "node tools/lexical-vectors.mjs",
     "zig:vectors": "node tools/zig-vectors.mjs",
@@ -450,7 +452,7 @@ Top-level keys and a nested one, from `package.json`:
   "name": "@hrg/inject-examples",
   "version": "1.1.0",
   "scripts": {
-    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check"
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/package-contents.mjs --check"
   }
 }
 ```

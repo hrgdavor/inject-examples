@@ -74,6 +74,34 @@ D:\programs\mvn\bin\mvn.cmd clean deploy -Dgpg.skip=false
 `-DautoPublish=false` to inspect it in the portal first. Details, versioning and the consumer-pinning
 note are in [`java/section/PUBLISHING.md`](java/section/PUBLISHING.md).
 
+## Releasing the npm package
+
+```sh
+npm test        # the suite, both corpus gates, and the package-contents gate
+npm publish     # `access: public` is in publishConfig
+```
+
+**`tools/package-contents.mjs` is the gate that matters here**, and `npm test` runs it. It asserts that
+every `exports` subpath exists *and* is covered by `files`, and that every relative import reachable
+from an entry point ships too. The two lists are independent in `package.json`, so the failure it
+prevents is a package that installs cleanly and then cannot be imported: `@hrg/inject-examples` 1.1.0
+shipped `src/js/scanner/` while the `exports` map did not name `lexers.js`, so the per-type lexers the
+matcher takes were unreachable (`ERR_PACKAGE_PATH_NOT_EXPORTED`).
+
+**Trying it without publishing.** Pack it and install the tarball into a consumer:
+
+```sh
+npm pack --pack-destination <dir>          # <dir>/hrg-inject-examples-<version>.tgz
+npm install <dir>/hrg-inject-examples-<version>.tgz      # in the consumer
+```
+
+`npm install --no-save --no-package-lock <tarball>` gets the new version into `node_modules` without
+touching the consumer's `package.json` or lockfile — the shape a consumer wants while the version is
+not on the registry yet, so its committed declaration still resolves for everyone else (jcodebuddy is
+such a consumer today). The manual end-to-end proof is an install into a scratch project plus an
+import of each exported subpath; the packed tarball is the only thing that proves `files` and `exports`
+together, because both checks above read the source tree.
+
 ## Adding the next artifact
 
 1. Copy the publishing block from [`java/section/pom.xml`](java/section/pom.xml): the sources and
@@ -89,11 +117,16 @@ note are in [`java/section/PUBLISHING.md`](java/section/PUBLISHING.md).
 
 ## Checklist before a release
 
+- [ ] `npm test` is green (the suite, the corpus gates and `tools/package-contents.mjs`), and the
+      version in `package.json` is the one being published.
+- [ ] a packed tarball installs into a scratch project and every exported subpath imports from it.
 - [ ] `mvn clean package` (real Maven) succeeds and builds the jar, sources and javadoc.
 - [ ] `<version>` has no `-SNAPSHOT`.
 - [ ] The GPG public key is on a keyserver, and `allow-loopback-pinentry` is set.
 - [ ] `settings.xml` has the `central` (portal token) and `gpg` (passphrase) servers.
 - [ ] The namespace for the artifact's groupId is verified in the Central Portal.
 - [ ] The real Maven binary is used — not the `mvnd` shim.
-- [ ] Every consumer that pins the version was bumped: for the Java matcher that is `webview-core`'s
-      POM and the JetBrains plugin's Gradle build.
+- [ ] Every consumer that pins the version was bumped: for the Java matcher that is jcodebuddy's root
+      POM (which manages it for `webview-core`) and the JetBrains plugin's Gradle build; for the npm
+      package, jcodebuddy's root `package.json` declares `^1.0.1`, which already admits 1.1.0, so it
+      only needs a change when the floor itself has to move.

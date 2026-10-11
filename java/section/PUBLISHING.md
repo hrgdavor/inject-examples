@@ -26,17 +26,19 @@ pass `-DautoPublish=false` to review it in the portal first.
 Bump `<version>` here, and update `<scm><tag>` if this POM carries one, to match the release tag. Two
 places pin the version, and neither follows automatically:
 
-- `webview-core` (jcodebuddy) declares the dependency explicitly in
-  `webview/core/webview-core/pom.xml`;
-- the JetBrains plugin declares it again in `webview-jetbrains/build.gradle.kts`, because
-  `isTransitive = false` keeps it from arriving with the core — which is also why the plugin would fail
-  at runtime, not at build time, if it were forgotten.
+- jcodebuddy's root `pom.xml` manages it in `<dependencyManagement>`, and
+  `webview/core/webview-core/pom.xml` declares the dependency without a version;
+- the JetBrains plugin declares it again in `webview-jetbrains/build.gradle.kts`, because a Gradle
+  build cannot read a Maven `<dependencyManagement>` block and `isTransitive = false` keeps it from
+  arriving with the core — which is also why the plugin would fail at runtime, not at build time, if
+  it were forgotten.
 
 ## Checklist
 
 - [ ] `D:\programs\mvn\bin\mvn.cmd clean package` succeeds — the JDK 21 build the release uses (the POM
       targets 21 and enforces 21+).
-- [ ] `mvn test` is green: the 72 conformance vectors, the API test and the dependency-boundary test.
+- [ ] `mvn test` is green: the 124 conformance vectors, the lexical corpus, the API test and the
+      dependency-boundary test.
 - [ ] `<version>` has no `-SNAPSHOT`.
 - [ ] The `hr.hrg.inject` namespace is verified in the Central Portal.
 - [ ] Both consumers above are bumped to the released version.
