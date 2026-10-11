@@ -6,6 +6,13 @@ written for an implementer who has never seen this repository: every rule needed
 to match a reference to a piece of a target file is here, and only here lives
 the definition of *what a section reference is*.
 
+> **Scope, boundary and conformance obligations live in
+> [`doc/rfc/section-mapping.md`](rfc/section-mapping.md) (RFC 1, status
+> `0.1-draft`).** This document is normative for *how a reference resolves*; the
+> RFC is normative for what a mapper is and is not, the two use cases it serves,
+> and the suite a new implementation is measured against. Read the RFC first if
+> you are writing a port.
+
 The marker that carries one looks like this:
 
 ```text

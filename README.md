@@ -804,10 +804,10 @@ module:
 | Port | Where | Gate | State |
 | --- | --- | --- | --- |
 | Rust | [`rust/section`](./rust/section) | `cargo test` | complete — the grammar and resolution layers, every resolution vector, every mask and every declaration shape |
-| Java | [`java/section`](./java/section) | `mvn test` | complete — all 162 vectors, the language table and the lexical corpus included |
+| Java | [`java/section`](./java/section) | `mvn test` | complete — all 182 vectors, the language table and the lexical corpus included |
 
 Both read [`test/vectors/section-vectors.json`](./test/vectors/section-vectors.json)
-— the same 162 vectors the JavaScript gate uses — directly, rather than keeping a
+— the same 182 vectors the JavaScript gate uses — directly, rather than keeping a
 generated copy, and both fail if a vector is neither asserted nor counted, so a
 layer still to come stays visible instead of silently skipped. Both read the
 lexical corpus too — [`test/vectors/lexical-vectors.json`](./test/vectors/lexical-vectors.json),
@@ -816,6 +816,16 @@ shape row per discriminating declaration spelling — because the resolution
 vectors can only exercise the six lexer entries their fixtures name. The rule is
 the one the Zig port follows: **the JavaScript is the source of truth, and a port
 mirrors rather than leads**.
+
+Writing a fourth port starts with
+[`doc/rfc/section-mapping.md`](./doc/rfc/section-mapping.md) (RFC 1 — *section
+mapping syntax*, status `0.1-draft`): it states the two use cases and the boundary
+between them, the interface a port must expose, what a mapper deliberately is not,
+and the obligations the conformance suite imposes. Its companion is
+[`test/vectors/manifest.json`](./test/vectors/manifest.json), the machine-readable
+map of the suite — every corpus, its row count, its row shape and what each field
+means — so a port does not have to reverse-engineer a generator to know what to
+assert.
 
 The Java one is a Maven artifact (`hr.hrg.inject:inject-examples`) whose POM
 carries the metadata Maven Central asks for and attaches the sources and javadoc

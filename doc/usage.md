@@ -103,7 +103,8 @@ The entire published package, verbatim:
     "lib",
     "src/js/scanner",
     "doc/languages.md",
-    "doc/section-matching.md"
+    "doc/section-matching.md",
+    "doc/rfc"
   ],
   "engines": {
     "node": ">=18"
@@ -113,10 +114,11 @@ The entire published package, verbatim:
   },
   "scripts": {
     "prepublishOnly": "npm test",
-    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/package-contents.mjs --check",
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/conformance-manifest.mjs --check && node tools/package-contents.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
     "lexical:vectors": "node tools/lexical-vectors.mjs",
     "zig:vectors": "node tools/zig-vectors.mjs",
+    "manifest": "node tools/conformance-manifest.mjs",
     "oracle": "node tools/mask-oracle.mjs",
     "compare:zig": "node tools/compare-zig.mjs",
     "typecheck": "tsc --noEmit",
@@ -511,7 +513,7 @@ Top-level keys and a nested one, from `package.json`:
   "name": "@hrg/inject-examples",
   "version": "1.1.0",
   "scripts": {
-    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/package-contents.mjs --check"
+    "test": "node --test test.mjs && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/conformance-manifest.mjs --check && node tools/package-contents.mjs --check"
   }
 }
 ```
