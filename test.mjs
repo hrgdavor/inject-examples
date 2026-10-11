@@ -1178,6 +1178,36 @@ test('scanBlocks: token-pasted adjacent literals', () => {
     assert.deepEqual(stmt.conditions.pasted, ['getUsers']);
 });
 
+test('scanBlocks: a file with many statement blocks scans in linear time', () => {
+    // A regression guard for a hang, not a nicety. The condition-literal scan
+    // takes an offset *within the line*, and a caller once passed one relative to
+    // the mask instead; the scan's `i` only ever grows, so a start before zero
+    // meant the loop could not reach the end by advancing and instead spun until
+    // `i` climbed back past it. Every statement block after the first therefore
+    // cost time proportional to the whole file, and a 2400-line source took 8
+    // seconds instead of 30 ms. The existing test above has two statements and
+    // passed throughout, because the first block's offset was the correct zero.
+    const statements = (n) => Array.from({ length: n },
+        (_, i) => `if (x === ${i}) {\n  go();\n}`).join('\n');
+
+    // The content check: every block reports its own literal, not only the first.
+    const many = scanBlocks(statements(50));
+    const blocks = many.blocks.filter((b) => b.kind === 'statement');
+    assert.equal(blocks.length, 50, 'every statement is a block');
+    assert.deepEqual(blocks[0].conditions.exact, [], 'the first header has no literal');
+    for (const block of blocks) assert.ok(block.conditions, 'every block carries conditions');
+
+    // The timing check: 3200 statements must not take longer than 100 such files
+    // would — the bound is loose on purpose, since it only has to catch a scan
+    // that is quadratic rather than one that is merely slow.
+    const big = statements(3200);
+    const started = Date.now();
+    const scanned = scanBlocks(big);
+    const elapsed = Date.now() - started;
+    assert.equal(scanned.blocks.filter((b) => b.kind === 'statement').length, 3200);
+    assert.ok(elapsed < 2000, `3200 statement blocks scanned in ${elapsed} ms; a quadratic scan takes minutes`);
+});
+
 // A literal inside a comment is not a condition literal.
 test('scanBlocks: comment string is not a condition literal', () => {
     const s = scanBlocks('void f() {\n  // if ("hidden".equals(m)) {\n  if ("shown".equals(m)) {\n    g();\n  }\n}');

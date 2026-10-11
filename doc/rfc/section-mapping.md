@@ -155,9 +155,13 @@ Not section mapping, and no implementation should grow these inside the mapper:
 
 - **Semantic code intelligence.** No type inference, no symbol tables, no
   reference-finding, no call graphs. The mapper matches *declaration shapes* over
-  masked text.
-- **Writing or refactoring.** The mapper never modifies a target.
-- **Language server behaviour.** No completion, diagnostics or rename.
+  masked text. This is the line: a mapper answers *where is this written*, never
+  *what does this mean*.
+- **Writing or refactoring — today.** The mapper as specified is **read-only**:
+  it never modifies a target. A rename, a quick-fix or a refactor needs a writer,
+  and no writer is part of this contract. **This is a boundary of the current
+  version, not of the project** — see the forward goal in
+  [§3.6](#36-forward-goal-refactoring-that-updates-references).
 - **Being a parser.** See [§6](#6-what-a-mapper-is-not); this is the single most
   important non-goal, and the reason the answer is a *range* rather than an AST
   node.
@@ -165,6 +169,87 @@ Not section mapping, and no implementation should grow these inside the mapper:
   interpreted.
 - **Finding a *good* place.** Ranking, "closest match", fuzzy matching: host
   policy, never the mapper's.
+
+**Language servers are not on this list — they are a consumer.** See
+[§3.5](#35-what-a-language-server-consumes): a language server is use case A with
+high call frequency, and the mapper is deliberately shaped to serve it. What is
+out of scope is doing the *server's* work inside the mapper, not being used by
+one.
+
+### 3.5 What a language server consumes
+
+A language server is the most demanding form of use case A: it runs *while a
+person types*, on a document that is usually broken, and it must never block the
+editor. It is a first-class consumer, and every feature below is built from the
+mapper's operations — none of them requires the mapper to do anything more.
+
+| The server wants | Built from | What the mapper supplies |
+| --- | --- | --- |
+| completion of a reference (after `#`, after `/`, after `,`) | `parseSelectors`/`parseReference` | a pure, context-free parse that reads no file, so it is safe to call on every keystroke |
+| a preview of a completion item | `parseSelectors` | the structured `Reference`: `segments`, `scope`, `selectors[]`, and the canonical spelling |
+| go-to-definition, and document highlight | `planSection` | `startLine`/`endLine`, and one range per selector so each piece is highlighted separately |
+| a diagnostic for a broken fragment | `planSection` | a specific message that names the selector at fault, and `warning` as a finding rather than a failure |
+| semantic tokens, folding, "find all references to this section" | `planSection` | `reference.selectors[]` and `ranges` |
+
+**Two properties make this work, and both are already in the interface.**
+
+1. **Parsing is pure and cheap.** `parseSelectors` reads no file and takes about
+   a microsecond, so a server can call it on every keystroke. `planSection` reads
+   the target, so a server calls it when the document or the target changes and
+   caches per file version — exactly the invalidation a host already has.
+2. **Failure is a value, not an approximation.** The mapper never guesses. A
+   server can therefore show *"no section named render in Cart"* confidently, and
+   apply its own fuzzy policy while the user is still typing — a policy the RFC
+   deliberately keeps out of the mapper ([§9.5](#95-no-fallback-in-the-mapper)).
+
+**What the server does, and the mapper does not.** Editing, undoing, ranking
+candidates, fuzzy matching, applying a rename, and diagnosing anything that needs
+a *type* rather than a *shape*. Two honest limits follow from the non-goals:
+
+- **No symbol table.** The mapper cannot tell whether `render` is reachable in the
+  sense a compiler means; it only knows whether a declaration shaped like it is
+  written there.
+- **Shape, not type.** A name that a type system would reject may still resolve,
+  because the mapper matches declaration *shapes* over masked text. That is the
+  trade the non-goals make, and it is why a validator that needs types must
+  re-check the mapper's answer rather than trust it.
+
+### 3.6 Forward goal: refactoring that updates references
+
+**Out of scope for 1.0 — in scope for the project.** A reference is a *name*, and
+a name is exactly what a refactor changes. Today a rename in the target silently
+breaks every document that referenced it, and the mapper's job stops at reporting
+that. The goal is to close that loop: **a refactor that changes a declaration
+should be able to find and update the references that pointed at it.**
+
+The stated direction is to investigate **OpenRewrite** integration — an
+OpenRewrite recipe detects the declaration change, and something must then
+rewrite the `#` fragments across the documents that used them. Nothing about that
+is designed yet, and this section is a statement of direction, not a
+specification.
+
+What 1.0 does to keep that door open, cheaply:
+
+1. **The grammar stays machine-rewritable.** A reference is a `,`-separated list
+   of `/`-separated paths with a trailing modifier; there is no syntax whose
+   meaning depends on context outside the fragment. A writer can regenerate a
+   fragment from a parsed `Reference` without asking anything else — which is
+   already true, because `Reference.canonical` exists.
+2. **A fragment is locatable.** References live in link fragments
+   (`path#reference`) and are found by the document layer, not by guessing at
+   prose. A rewriter needs to find them reliably; it does not need to understand
+   them.
+3. **Failure is explicit.** A rewriter must know which references it could *not*
+   resolve, because those are the ones it must not touch. The mapper already
+   distinguishes "malformed", "names nothing" and "not found", and names the
+   selector at fault in each case.
+
+**What is deliberately not promised.** That the mapper will ever write; that a
+rename can be applied by editing fragments alone (it cannot — the target's own
+declaration changes too, which is the recipe engine's half); and that a reference
+and a declaration can be matched with certainty from text alone. The mapper
+supplies *where the references are and what they asked for*; deciding whether a
+given declaration change invalidates them is the writer's problem.
 
 ---
 
