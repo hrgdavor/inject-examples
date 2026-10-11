@@ -186,13 +186,32 @@ person types*, on a document that is usually broken, and it must never block the
 editor. It is a first-class consumer, and every feature below is built from the
 mapper's operations — none of them requires the mapper to do anything more.
 
+**An IDE or LSP host usually has an AST already, and should use it.** That is the
+preferred arrangement and not a workaround: the parse has been paid for, the
+host's parser knows its own language better than a shape heuristic can, and no
+second parser has to be installed or kept current. So the shape of an IDE
+integration is:
+
+- the **grammar** ([§5.1](#51-parse)) is always the mapper's — a reference must
+  mean the same thing in every host, and parsing a fragment needs no AST at all;
+- **resolution** ([§5.3](#53-plan-the-whole-contract)) uses the host's AST where
+  the host has one for the language, passed in as the engine
+  ([§7.5 rule 5](#75-ast-based-implementations-later-and-what-they-change));
+- the **standalone engine** covers languages the host has no parser for, and any
+  host that is not an IDE — which is why both paths must produce the same range
+  and the same messages.
+
+That division is what the table below assumes; where the host's AST is used, the
+rows are satisfied by the host plus the mapper's grammar, and the mapper's own
+scan is not involved at all.
+
 | The server wants | Built from | What the mapper supplies |
 | --- | --- | --- |
 | completion of a reference (after `#`, after `/`, after `,`) | `parseSelectors`/`parseReference` | a pure, context-free parse that reads no file, so it is safe to call on every keystroke |
 | a preview of a completion item | `parseSelectors` | the structured `Reference`: `segments`, `scope`, `selectors[]`, and the canonical spelling |
-| go-to-definition, and document highlight | `planSection` | `startLine`/`endLine`, and one range per selector so each piece is highlighted separately |
+| go-to-definition, and document highlight | `planSection`, or the host's AST | `startLine`/`endLine`, and one range per selector so each piece is highlighted separately |
 | a diagnostic for a broken fragment | `planSection` | a specific message that names the selector at fault, and `warning` as a finding rather than a failure |
-| semantic tokens, folding, "find all references to this section" | `planSection` | `reference.selectors[]` and `ranges` |
+| semantic tokens, folding, "find all references to this section" | `planSection`, or the host's AST | `reference.selectors[]` and `ranges` |
 
 **Two properties make this work, and both are already in the interface.**
 
@@ -567,9 +586,9 @@ error messages, the same conformance rows.
 | --- | --- | --- |
 | Correctness for its language | best-effort by shape, per §6 | **source of truth for that language** |
 | Which constructs it resolves | the shapes it recognises | everything the grammar defines |
-| Cost | no parse; microseconds | a parse of the file |
+| Cost | no parse; microseconds | a parse of the file, or **none, when the host has already parsed it** |
 | Dependencies | none, vendorable | the language's parser |
-| Status | the general engine, all languages | the authority for its own language |
+| Status | the general engine, all languages; **the fallback wherever a host AST exists** | the authority for its own language, and **the preferred engine in an IDE that holds one** |
 
 **The rules that follow.**
 
@@ -589,23 +608,63 @@ error messages, the same conformance rows.
    > If the standalone engine is not correct, and not faster or leaner than the
    > AST variant, then the custom implementation is pointless and should be
    > replaced by the parser.
+
+   **Where the host already has the AST, the comparison is not even close**, and
+   the preference is settled rather than argued: the parse is already paid for,
+   the host's parser knows its own language better than any heuristic, and using
+   it ships no new dependency. The standalone engine's claim in *that*
+   environment is portability and coverage, not speed — and if it is slower than
+   a parse that already happened, it has no claim there at all. Its cost argument
+   belongs to the environment that has no AST: the documentation build, where the
+   alternative to a microsecond heuristic is a parser per language that must be
+   installed, kept current and paid for on every file.
 4. **Benchmarks become part of the suite, not an afterthought.** Cost is a
    property the project claims, so comparing engine and variant on time and
    memory over the fixtures is a gate, alongside the vectors. A performance
    regression is a defect in the same way a wrong range is.
-5. **Selection is a policy, and it has to be visible.** When both exist for a
-   language, which one a document is resolved with must be a stated choice
+5. **The host decides, and the host's own AST is preferred where it has one.**
+   The target usages include an **IDE or a language server**, and those
+   environments usually *already hold an AST* for the language being edited. In
+   such an environment, **a mapper that uses the host's built-in AST is
+   preferred** over the standalone heuristic engine — the parse has already been
+   paid for, the host's knowledge of its own language is better than any shape
+   heuristic, and it needs no second parser to ship. The rule:
+   > Resolve with the best engine the host already has. Where the host has an AST
+   > for the language, use it. The standalone engine is for hosts that do not,
+   > and for languages the host does not cover.
+   Two things this does **not** mean: it does not weaken the conformance
+   requirement (an AST-backed resolution must still agree with the suite,
+   [§7.5 rule 1](#75-ast-based-implementations-later-and-what-they-change)), and
+   it does not make the standalone engine pointless — it is the portable
+   baseline that works everywhere, including the CI job that builds the docs,
+   which has no IDE and no AST.
+6. **Selection is a policy, and it has to be visible.** Whichever engines are
+   available, which one a document is resolved with must be a stated choice
    (a default, a flag, or a rule override) — never an accident of what happens to
    be installed. A document that resolves differently on two machines is the
-   failure mode to design out.
-6. **A variant is registered like a rule, not bolted on.** The interface already
+   failure mode to design out. In an IDE the natural statement is *"prefer the
+   host's AST, fall back to the standalone engine"*; in the documentation
+   pipeline it is *"the standalone engine"*, and the two must be nameable.
+7. **A variant is registered like a rule, not bolted on.** The interface already
    takes the language's engine as an argument (`lexer`), so a variant is *an
-   engine a caller passes*, not a second code path inside the mapper.
+   engine a caller passes*, not a second code path inside the mapper. That is
+   what lets an IDE pass an AST-backed engine and a CLI pass the standalone one
+   without either knowing about the other.
+
+**The two environments, side by side.** The same contract, served two ways:
+
+| | IDE / LSP host | Documentation pipeline (this project) |
+| --- | --- | --- |
+| AST available | usually, for the edited language | no |
+| Preferred engine | **the host's AST** | the standalone engine |
+| Standalone engine's role | fallback, and coverage for languages the host lacks | the only engine |
+| Cost that matters | per keystroke, inside an already-warm document | per build, over many files |
+| What must not differ | the resolved range and the messages | the same |
 
 **Nothing here is scheduled**, and none of it is needed for 1.0. The point of
 writing it down now is that 1.0 does not have to be redesigned to allow it: the
-contract is already engine-agnostic, and the conformance suite is already the
-arbiter.
+contract is already engine-agnostic, the conformance suite is already the
+arbiter, and the engine is already a parameter.
 
 ---
 
@@ -789,6 +848,13 @@ through the fragment.
       ([§3.6](#36-forward-goal-refactoring-that-updates-references)), with
       OpenRewrite integration named as the direction. Read-only is a boundary of
       this version, not of the project.
+    - **In an IDE or LSP host, the host's AST is the preferred engine** when it
+      has one for the language — the parse is already paid for, the host knows its
+      own language better than a heuristic, and it ships no new dependency. The
+      standalone engine keeps the grammar, covers what the host cannot, and serves
+      the hosts that have no AST at all
+      ([§3.5](#35-what-a-language-server-consumes),
+      [§7.5](#75-ast-based-implementations-later-and-what-they-change)).
     - Row counts in [§7.1](#71-the-three-corpora) corrected to the corpus as it
       stands.
   - `0.1-draft` — first draft, extracted from the implementation and the
