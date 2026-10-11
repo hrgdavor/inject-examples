@@ -14,6 +14,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,7 +23,12 @@ const JS_TOOL = join(ROOT, 'cli.mjs');
 const ZIG_TOOL = process.platform === 'win32'
     ? join(ROOT, 'zig-out', 'inject-examples.exe')
     : join(ROOT, 'zig-out', 'inject-examples');
-const TMP = join(ROOT, '.compare-tmp');
+// The scenario tree lives **outside** the repository on purpose: a document
+// below the checkout inherits its `.gitignore`, which lists `.compare-tmp/`, and
+// every marker in it is then skipped as gitignored — the two tools agree on
+// doing nothing, and the scenario proves nothing. `--no-gitignore` is not an
+// option here: it is one of the flags under test.
+const TMP = join(tmpdir(), 'inject-examples-compare');
 
 if (!existsSync(ZIG_TOOL)) {
     console.error(`Zig binary not found: ${ZIG_TOOL}`);
@@ -468,6 +474,166 @@ const ORDERS_SQL = [
     '',
 ].join('\n');
 
+// --- declarations whose header does not fit on one line ---------------------
+//
+// A wrapped parameter list, a wrapped generic list, a wrapped `throws` clause
+// and a wrapped class header are formatting, not a different declaration: the
+// header runs past the line it starts on, and only the `{` or `;` that ends it
+// stops the reading. The fixtures are the ones `test.mjs` resolves — the Java
+// pair the vectors also carry, and the other lexers the same construct crosses.
+
+const WRAPPED_JAVA = [
+    'package demo;',
+    '',
+    '/** A declaration whose header does not fit on one line. */',
+    'public class Wrapped {',
+    '',
+    '    public String render(',
+    '            String name,',
+    '            int quantity) {',
+    '        return name + " x" + quantity;',
+    '    }',
+    '',
+    '    public <T extends Comparable<T>> T widest(',
+    '            T left,',
+    '            T right) {',
+    '        return left.compareTo(right) >= 0 ? left : right;',
+    '    }',
+    '',
+    '    /** The header wraps, and so does the class line below it. */',
+    '    @Override',
+    '    public String toString(',
+    '    ) {',
+    '        return name;',
+    '    }',
+    '',
+    '    public void store(',
+    '            String name,',
+    '            int quantity)',
+    '            throws IllegalStateException {',
+    '        this.name = name;',
+    '    }',
+    '',
+    '    private String name;',
+    '',
+    '    /** A body-less member whose header wraps, beside the members that have one. */',
+    '    abstract String label(',
+    '            int width);',
+    '}',
+    '',
+].join('\n');
+
+const WRAPPED_CLASS_JAVA = [
+    'package demo;',
+    '',
+    '/**',
+    ' * A class whose own header wraps: type parameters, `extends` and `implements`',
+    ' * each on their own line, which is how a long declaration is usually formatted.',
+    ' */',
+    'public class Wrapped<',
+    '        T extends Comparable<T>,',
+    '        U extends CharSequence>',
+    '        extends AbstractBase',
+    '        implements Renderer<T> {',
+    '',
+    '    public T best(',
+    '            T left,',
+    '            T right) {',
+    '        return left.compareTo(right) >= 0 ? left : right;',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
+/** The `)` carries the return type, and one member's body is an expression. */
+const WRAPPED_KT = [
+    'package demo',
+    '',
+    'class Wrapped {',
+    '    fun render(',
+    '        name: String,',
+    '        quantity: Int',
+    '    ): String {',
+    '        return "$name x$quantity"',
+    '    }',
+    '',
+    '    fun label(',
+    '        upper: Boolean',
+    '    ): String = if (upper) name.uppercase() else name',
+    '}',
+    '',
+].join('\n');
+
+const WRAPPED_TS = [
+    'export class Wrapped {',
+    '    render(',
+    '        name: string,',
+    '        quantity: number,',
+    '    ): string {',
+    '        return `${name} x${quantity}`;',
+    '    }',
+    '',
+    '    add(',
+    '        item: string,',
+    '    ): void {',
+    '        this.items.push(item);',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
+/** Indentation, not braces, ends the wrapped `def`'s body. */
+const WRAPPED_PY = [
+    'class Wrapped:',
+    '    def render(',
+    '            self,',
+    '            name: str,',
+    '            quantity: int) -> str:',
+    '        return f"{name} x{quantity}"',
+    '',
+    '    def label(self) -> str:',
+    '        return self.name',
+    '',
+].join('\n');
+
+/** The brace opens on the line after the wrapped parameter list. */
+const WRAPPED_GO = [
+    'package demo',
+    '',
+    'func Add(',
+    '\titems []string,',
+    '\titem string,',
+    ') []string {',
+    '\treturn append(items, item)',
+    '}',
+    '',
+    'func Plain(items []string) int {',
+    '\treturn len(items)',
+    '}',
+    '',
+].join('\n');
+
+/**
+ * A wrapped *call* beside a wrapped declaration of the same name: the call is
+ * still a call, so nothing is injected for it and `run/wrappedCall` must miss.
+ */
+const WRAPPED_CALLS_JAVA = [
+    'class Svc {',
+    '    void run() {',
+    '        wrappedCall(',
+    '            1,',
+    '            2);',
+    '    }',
+    '',
+    '    void wrappedCall(',
+    '            int a,',
+    '            int b) {',
+    '        work();',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
 const BASE_FILES = {
     'README.md': simpleDoc(),
     'fixtures/one.md': 'real content\nsecond line\n',
@@ -498,6 +664,14 @@ const BASE_FILES = {
     'fixtures/Widget.cs': WIDGET_CS,
     'fixtures/Repo.kt': REPO_KT,
     'fixtures/Orders.sql': ORDERS_SQL,
+    // Declarations whose header does not fit on one line.
+    'fixtures/Wrapped.java': WRAPPED_JAVA,
+    'fixtures/WrappedClass.java': WRAPPED_CLASS_JAVA,
+    'fixtures/Wrapped.kt': WRAPPED_KT,
+    'fixtures/Wrapped.ts': WRAPPED_TS,
+    'fixtures/Wrapped.py': WRAPPED_PY,
+    'fixtures/Wrapped.go': WRAPPED_GO,
+    'fixtures/WrappedCalls.java': WRAPPED_CALLS_JAVA,
 };
 
 /** Every `#<reference>` the reference corpus can be asked for. */
@@ -565,6 +739,21 @@ const REFERENCE_CASES = [
     ['fixtures/one.md', 'a//b'],
     ['fixtures/one.md', 'add--'],
 
+    // Line ranges and selector lists: the two readings of the same bytes, a
+    // column, a leading modifier a range ignores, a range beside a path, the
+    // out-of-file error, a range carrying a modifier, a line range in a rule
+    // that renders its selection, and a name that only opens like a range.
+    ['fixtures/code.ts', 'L2-L4'],
+    ['fixtures/code.ts', 'L1:4-L1:21'],
+    ['fixtures/code.ts', '+L2-L4'],
+    ['fixtures/code.ts', 'add,L1'],
+    ['fixtures/code.ts', 'L12,double-'],
+    ['fixtures/code.ts', 'L999'],
+    ['fixtures/code.ts', 'L1-L2+'],
+    ['fixtures/data.json', 'L1-L2'],
+    ['fixtures/app.yaml', 'server,L1'],
+    ['fixtures/one.md', 'Lx'],
+
     // The hard spellings, one reference per misspelling a matcher can make: a
     // generic impl, a `pub`-prefixed field name, a primed or indented Haskell
     // binding, a VB modifier, and a region in SQL line comments.
@@ -595,6 +784,36 @@ const REFERENCE_CASES = [
     ['fixtures/Orders.sql', 'orders'],
     ['fixtures/Form.vb', 'Form/Add-'],
     ['fixtures/Form.vb', 'Form/Run'],
+
+    // A declaration whose header does not fit on one line: the wrapped
+    // parameter list, the wrapped generic list, the wrapped `throws` clause,
+    // the wrapped class header, and the same construct in the other lexers.
+    // `label` and `run/wrappedCall` are the negative pair: a body-less member
+    // and a call contribute nothing, however their header wraps.
+    ['fixtures/Wrapped.java', 'render'],
+    ['fixtures/Wrapped.java', 'render-'],
+    ['fixtures/Wrapped.java', 'Wrapped/render'],
+    ['fixtures/Wrapped.java', 'widest'],
+    ['fixtures/Wrapped.java', 'store'],
+    ['fixtures/Wrapped.java', 'store-'],
+    ['fixtures/Wrapped.java', 'toString+'],
+    ['fixtures/Wrapped.java', 'label'],
+    ['fixtures/WrappedClass.java', 'Wrapped'],
+    ['fixtures/WrappedClass.java', 'Wrapped/best'],
+    ['fixtures/Wrapped.kt', 'Wrapped/render'],
+    ['fixtures/Wrapped.kt', 'render-'],
+    ['fixtures/Wrapped.kt', 'label'],
+    ['fixtures/Wrapped.ts', 'Wrapped'],
+    ['fixtures/Wrapped.ts', 'add'],
+    ['fixtures/Wrapped.ts', 'add-'],
+    ['fixtures/Wrapped.py', 'Wrapped/render'],
+    ['fixtures/Wrapped.py', 'Wrapped/render-'],
+    ['fixtures/Wrapped.py', 'label'],
+    ['fixtures/Wrapped.go', 'Add'],
+    ['fixtures/Wrapped.go', 'Add-'],
+    ['fixtures/Wrapped.go', 'Plain'],
+    ['fixtures/WrappedCalls.java', 'wrappedCall'],
+    ['fixtures/WrappedCalls.java', 'run/wrappedCall'],
 ];
 
 
@@ -937,19 +1156,27 @@ function fixedScenarios() {
     // path and modifier grammar, and the four data-format rules. One scenario
     // per case, run in `--lenient` (report the failures), update and check
     // modes (write what resolves, verify it).
+    //
+    // `regionDoc` labels the link with `target` and points it at `./${target}`;
+    // `parseMarker` accepts that only while the label and the target name the
+    // same path after one leading `./` is stripped. Passing a target that
+    // already began with `./` produced `[./fixtures/x](././fixtures/x#ref)`,
+    // which is not a marker at all — the document then had no markers, both
+    // tools reported "no injection markers found", and the scenario proved
+    // nothing. The target is passed as `REFERENCE_CASES` writes it.
     for (const [target, reference] of REFERENCE_CASES) {
         const label = `${target.replace(/[^A-Za-z0-9]+/g, '_')}-${reference.replace(/[^A-Za-z0-9]+/g, '_')}`;
         scenario(`ref-${label}-lenient`, ['--lenient', 'README.md'], {
             ...BASE_FILES,
-            'README.md': regionDoc(reference, 'stale', `./${target}`),
+            'README.md': regionDoc(reference, 'stale', target),
         });
         scenario(`ref-${label}-update`, ['README.md'], {
             ...BASE_FILES,
-            'README.md': regionDoc(reference, 'stale', `./${target}`),
+            'README.md': regionDoc(reference, 'stale', target),
         });
         scenario(`ref-${label}-check`, ['--check', 'README.md'], {
             ...BASE_FILES,
-            'README.md': regionDoc(reference, 'stale', `./${target}`),
+            'README.md': regionDoc(reference, 'stale', target),
         });
     }
 
@@ -991,7 +1218,7 @@ function fuzzScenarios(seed, rounds) {
     const some = (list, max) => Array.from({ length: Math.floor(random() * (max + 1)) }, () => pick(list));
 
     const targets = ['fixtures/one.md', 'fixtures/two.md', 'fixtures/three.md', 'fixtures/data.json', 'fixtures/code.ts', 'missing.md', 'fixtures/notes.txt'];
-    const references = ['', '#table', '#name', '#missing', '#add', '#-add', '#+add', '#++add', '#a,b', '#list.0', '#deep.key', '#', '#1e5'];
+    const references = ['', '#table', '#name', '#missing', '#add', '#-add', '#+add', '#++add', '#a,b', '#list.0', '#deep.key', '#', '#1e5', '#L1-L2', '#L1:1-L1:2', '#table,L1'];
     const fences = ['```', '````', '```markdown', '   ```', '```js'];
     const bodies = ['stale', 'old body', '', 'real content', 'multi\nline', '  indented'];
     const prose = ['# Title', 'Some prose.', '', 'Text with `code` in it.', '- a list item', '> a quote'];

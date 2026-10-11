@@ -90,8 +90,16 @@ public final class BlockScanner {
                            boolean line) {
     }
 
-    /** A declaration the generic rules found on a masked line. */
-    record Declaration(String kind, String name, int headerFrom) {
+    /**
+     * A declaration's header as a slice of the mask: from its first character through the {@code {}
+     * or {@code ;} that ends it, <b>including</b> that terminator — one line, or the several a
+     * wrapped parameter list spans.
+     */
+    record Header(int start, int end) {
+    }
+
+    /** A declaration the generic rules found on a masked line, and the header it declares with. */
+    record Declaration(String kind, String name, Header header) {
     }
 
     /** A comment anchor: the comment that is the first thing inside a block's braces. */
@@ -280,6 +288,10 @@ public final class BlockScanner {
     private static final Pattern BRACE_LINE = Pattern.compile("^\\s*\\{");
     private static final Pattern DOC_CLOSE_TAIL = Pattern.compile("\\*/\\s*$");
     private static final Pattern TRAILING_SEMICOLON = Pattern.compile(";\\s*$");
+    /** How far a declaration's header may run past the line it starts on, and no further. */
+    private static final int HEADER_LINES = 200;
+    /** A line that opens a header the next line could continue: a bracket, a comma or a semicolon. */
+    private static final Pattern CONTINUES_HEADER = Pattern.compile("[(,;]\\s*$");
 
     private static final List<String> NOT_A_NAME = List.of(
             "if", "for", "while", "switch", "catch", "return", "new", "do", "else",
@@ -378,10 +390,13 @@ public final class BlockScanner {
             if (!declaredHere.isEmpty()) {
                 int lastEnd = i;
                 for (Declared entry : declaredHere) {
+                    // A shape a language declares is read from its own line, which is how those
+                    // languages spell one: its header is the declaration line itself.
+                    Header header = new Header(start + entry.headerFrom(),
+                            start + maskedLine.length());
                     Span span = "end".equals(entry.body())
                             ? keywordBody(lex.lines, i, entry.end() == null ? "end" : entry.end())
-                            : bodySpan(lex.mask, lex.maskLines, lex.starts, i,
-                                    start + entry.headerFrom());
+                            : bodySpan(lex.mask, lex.maskLines, lex.starts, i, header);
                     Block block = new Block(entry.kind() == null ? "method" : entry.kind(),
                             entry.name(), i);
                     if (span != null) {
@@ -401,11 +416,17 @@ public final class BlockScanner {
                 continue;
             }
 
+            // The declaration's header, and the lines it spans (a wrapped parameter list is one
+            // header over several lines). Computed once per line, and only for a line that might
+            // declare something.
+            Header[] headerRef = new Header[1];
+
             Matcher keyword = DECLARATION_KEYWORD.matcher(maskedLine);
             if (keyword.find() && !NOT_A_NAME.contains(keyword.group(1))) {
                 String name = keyword.group(1);
                 int headerFrom = start + keyword.start() + keyword.group().length();
-                Span span = bodySpan(lex.mask, lex.maskLines, lex.starts, i, headerFrom);
+                Span span = bodySpan(lex.mask, lex.maskLines, lex.starts, i,
+                        new Header(headerFrom, headerOf(lex, i, headerRef).end()));
                 Block block = new Block("class", name, i);
                 applySpan(block, span);
                 applyAnchor(block, lex, span == null ? null : span.open);
@@ -429,7 +450,9 @@ public final class BlockScanner {
                         || STATEMENT_BEFORE.matcher(prefix).find())) {
                     continue;
                 }
-                Declaration found = declarationOn(maskedLine, start, name);
+                // Read the candidate as a declaration, its own line first.
+                Declaration found = declarationOn(maskedLine, start, name, List.of(),
+                        headerOf(lex, i, headerRef), lex);
                 if (found != null && "method".equals(found.kind())) {
                     methodDecl = found;
                     methodHasPrefix = !prefix.isEmpty();
@@ -439,7 +462,8 @@ public final class BlockScanner {
             if (methodDecl == null) {
                 Matcher assigned = ARROW_ASSIGNED.matcher(maskedLine);
                 while (assigned.find()) {
-                    Declaration found = declarationOn(maskedLine, start, assigned.group(2));
+                    Declaration found = declarationOn(maskedLine, start, assigned.group(2),
+                            List.of(), null, null);
                     if (found != null && "method".equals(found.kind())) {
                         methodDecl = found;
                         methodHasPrefix = true;
@@ -448,7 +472,7 @@ public final class BlockScanner {
                 }
             }
             if (methodDecl != null) {
-                Span span = bodySpan(lex.mask, lex.maskLines, lex.starts, i, methodDecl.headerFrom());
+                Span span = bodySpan(lex.mask, lex.maskLines, lex.starts, i, methodDecl.header());
                 if (span == null && !methodHasPrefix) {
                     i++;                              // a bare `foo();` call, not a declaration
                     continue;
@@ -520,11 +544,14 @@ public final class BlockScanner {
     /**
      * A body span, or null when the member has no body to inject (an interface or {@code abstract}
      * method). Read over the mask, so a brace in a string or comment cannot end a body.
+     *
+     * <p>{@code header} is the declaration's header as a slice of the mask — one line, or the several
+     * a wrapped parameter list spans — ending at the {@code {} or {@code ;} that ends it, so the
+     * terminators are only looked for inside it.
      */
     private static Span bodySpan(String mask, String[] lines, int[] starts, int declLine,
-                                 int headerFrom) {
-        int lineEnd = Masker.endOfLine(mask, starts[declLine]);
-        String rest = mask.substring(headerFrom, Math.max(headerFrom, lineEnd));
+                                 Header header) {
+        String rest = slice(mask, header.start(), header.end());
 
         int braceAt = rest.indexOf('{');
         int semiAt = rest.indexOf(';');
@@ -553,13 +580,13 @@ public final class BlockScanner {
             int braceInRest = rest.indexOf('{', afterArrow);
             if (braceInRest == -1) {
                 Span expression = new Span();
-                expression.expression = headerFrom + afterArrow;
+                expression.expression = header.start() + afterArrow;
                 return expression;
             }
-            return braceBody(mask, starts, headerFrom + braceInRest);
+            return braceBody(mask, starts, header.start() + braceInRest);
         }
         if ("brace".equals(firstKind)) {
-            return braceBody(mask, starts, headerFrom + firstAt);
+            return braceBody(mask, starts, header.start() + firstAt);
         }
 
         int next = Masker.nextNonBlank(lines, declLine + 1);
@@ -600,6 +627,81 @@ public final class BlockScanner {
         span.openLine = Masker.lineOf(starts, open);
         span.closeLine = Masker.lineOf(starts, close);
         return span;
+    }
+
+    /** JavaScript's {@code text.slice(from, to)}: clamped at both ends. */
+    private static String slice(String text, int from, int to) {
+        int start = Math.max(0, Math.min(from, text.length()));
+        int end = Math.max(start, Math.min(to, text.length()));
+        return text.substring(start, end);
+    }
+
+    /**
+     * The header of a declaration that starts on {@code line}: the mask from the line's first
+     * character through the {@code {} or {@code ;} that ends the header, <b>including</b> it.
+     *
+     * <p>A wrapped parameter list is formatting, not a different declaration, so the header of a
+     * member may span lines — but only until the {@code {} or {@code ;} that ends it, and only while
+     * the text still looks like a header: brackets may be open, a line may end on an operator, and an
+     * annotation may start one. Counting every bracket — {@code (}, {@code [}, {@code {}, {@code <} —
+     * is what makes a wrapped parameter list, a wrapped generic list and a wrapped {@code throws} one
+     * rule; a {@code {} inside the header's own brackets (a lambda default, an array initialiser) is
+     * not the body's brace, because a bracket is open. A header that is not closed within
+     * {@link #HEADER_LINES} lines is not followed, rather than scanned to the end of the file.
+     *
+     * <p>The depth is what ends the window early as well: a {@code >} that closes nothing (the arrow
+     * of a Rust {@code -> String}) drives the depth negative, and the window stops there — which is
+     * how a Rust method's body is found by indentation rather than by a brace on its own header.
+     */
+    private static Header headerWindow(Lex lex, int line) {
+        String[] maskLines = lex.maskLines;
+        int[] starts = lex.starts;
+        int last = Math.min(maskLines.length - 1, line + HEADER_LINES - 1);
+        int start = starts[line];
+
+        int depth = 0;
+        for (int i = line; i <= last; i++) {
+            String text = maskLines[i];
+            int from = starts[i];
+            boolean continues = depth > 0 || CONTINUES_HEADER.matcher(text).find();
+
+            for (int column = 0; column < text.length(); column++) {
+                char character = text.charAt(column);
+                if (depth == 0 && character == '{') {
+                    return new Header(start, from + column + 1);
+                }
+                if (depth == 0 && character == ';') {
+                    return new Header(start, from + column + 1);
+                }
+                if (character == '(' || character == '[' || character == '{' || character == '<') {
+                    depth++;
+                } else if (character == ')' || character == ']' || character == '}' || character == '>') {
+                    depth--;
+                }
+                if (depth < 0) {
+                    return new Header(start, from + column + 1);
+                }
+            }
+            depth = Math.max(0, depth);
+            // A line that opened nothing the next line could continue ends a header that never found
+            // its brace — and the caller then finds no body to inject, which is the honest answer for
+            // a body-less declaration.
+            if (!continues) {
+                return new Header(start, from + text.length());
+            }
+        }
+        return new Header(start, start + maskLines[line].length());
+    }
+
+    /**
+     * The header window of the line the scanner is reading, computed at most once per line: the
+     * JavaScript computes it lazily too, and only for a line that might declare something.
+     */
+    private static Header headerOf(Lex lex, int line, Header[] cache) {
+        if (cache[0] == null) {
+            cache[0] = headerWindow(lex, line);
+        }
+        return cache[0];
     }
 
     /**
@@ -715,29 +817,43 @@ public final class BlockScanner {
     // ------------------------------------------------------------------
 
     /**
-     * Whether a masked line declares {@code name}, and where its header ends. The generic shapes are
-     * tried after the lexer's own (which is passed in as {@code declared}).
+     * Whether a declaration on {@code line} names {@code name}, and the header it declares with.
+     *
+     * <p>The declaration is read from its own line whenever that line says everything there is to
+     * say, which is the only shape the matcher ever had to read. A header that wraps — a parameter
+     * list, a generic list, a {@code throws} clause — is not readable that way, because the closing
+     * bracket sits on a later line; for those, {@link #declarationAcross} reads the header window
+     * ({@link #headerWindow}) instead. The line's own reading is what decides <em>whether</em> there
+     * is a declaration at all — a bare name that merely appears inside a wrapped construct must not
+     * become one — and the window is only asked where it ends.
+     *
+     * @param maskedLine the line as the mask has it
+     * @param start      the offset of that line in the mask
+     * @param name       the name being looked for
+     * @param declared   the lexer's own shapes for this line
+     * @param header     the line's header window, when the caller has one; the wrapped reading needs
+     *                   it
+     * @param lex        the scan's lexical facts, for the wrapped reading
      */
-    private static Declaration declarationOn(String maskedLine, int start, String name) {
-        return declarationOn(maskedLine, start, name, List.of());
-    }
-
     private static Declaration declarationOn(String maskedLine, int start, String name,
-                                             List<Declared> declared) {
+                                             List<Declared> declared, Header header, Lex lex) {
         if (name.isEmpty() || NOT_A_NAME.contains(name)) {
             return null;
         }
+        Header window = header != null ? header : new Header(start, start + maskedLine.length());
 
         for (Declared entry : declared) {
             if (name.equals(entry.name())) {
+                int headerFrom = start + entry.headerFrom();
                 return new Declaration(entry.kind() == null ? "method" : entry.kind(), name,
-                        start + entry.headerFrom());
+                        new Header(headerFrom, window.end()));
             }
         }
 
         Matcher keyword = DECLARATION_KEYWORD.matcher(maskedLine);
         if (keyword.find() && name.equals(keyword.group(1))) {
-            return new Declaration("class", name, start + keyword.start() + keyword.group().length());
+            int headerFrom = start + keyword.start() + keyword.group().length();
+            return new Declaration("class", name, new Header(headerFrom, window.end()));
         }
 
         Matcher call = Pattern.compile("(^|[^\\w$.])" + Pattern.quote(name) + "\\s*\\(")
@@ -749,12 +865,18 @@ public final class BlockScanner {
                     || STATEMENT_BEFORE.matcher(prefix).find())) {
                 continue;
             }
-            int paren = call.start() + call.group().length() - 1;
-            int close = Masker.matchingBracket(maskedLine, paren, ')');
+            int close = Masker.matchingBracket(maskedLine, call.end() - 1, ')');
             if (close == -1) {
                 continue;
             }
-            return new Declaration("method", name, start + close + 1);
+            int headerFrom = start + close + 1;
+            return new Declaration("method", name, new Header(headerFrom, window.end()));
+        }
+
+        if (window.end() > start + maskedLine.length()) {
+            // The header continues past this line, so the closing bracket a wrapped parameter list put
+            // there is only visible to the whole-window reading.
+            return declarationAcross(window, name, lex);
         }
 
         Matcher assigned = Pattern.compile("(^|[^\\w$.])(?:const\\s+|let\\s+|var\\s+)?"
@@ -766,11 +888,68 @@ public final class BlockScanner {
             int arrow = rest.indexOf("=>");
             Matcher function = FUNCTION_WORD.matcher(rest);
             boolean hasFunction = function.find();
+            int from;
             if (arrow != -1 && (!hasFunction || arrow < function.start())) {
-                return new Declaration("method", name, start + after + arrow);
+                from = start + after + arrow;
+            } else if (hasFunction) {
+                from = start + after + function.group().length();
+            } else {
+                continue;
             }
-            if (hasFunction) {
-                return new Declaration("method", name, start + after + function.group().length());
+            return new Declaration("method", name, new Header(from, window.end()));
+        }
+        return null;
+    }
+
+    /**
+     * The same matchers, run over the whole header window instead of one line.
+     *
+     * <p>The window exists because a wrapped parameter list closes its bracket on a later line, and
+     * the matchers compare the text before a name to a return type / modifier list — so the name is
+     * looked for where it is written, and the brackets are matched across the lines that hold them.
+     * {@code name(} must still open the name, and the window still ends at the {@code {} or {@code ;}
+     * that ends the header, so a name appearing inside a wrapped argument list is not a declaration.
+     *
+     * <p>{@code matchingBracket} takes an index into the text handed to it — the window slice — and
+     * not an index into the whole mask, which is why the `(` is located in {@code text}.
+     */
+    private static Declaration declarationAcross(Header header, String name, Lex lex) {
+        String[] maskLines = lex.maskLines;
+        int[] starts = lex.starts;
+        String text = slice(lex.mask, header.start(), header.end());
+
+        Matcher open = Pattern.compile("(^|[^\\w$.])" + Pattern.quote(name) + "\\s*\\(")
+                .matcher(text);
+        while (open.find()) {
+            int column = open.start() + open.group(1).length();
+            int line = Masker.lineOf(starts, header.start() + column);
+            String before = slice(maskLines[line], 0, header.start() + column - starts[line]);
+            String prefix = FUNC_PREFIX.matcher(before.trim()).replaceFirst("func ");
+            if (!prefix.isEmpty() && (!PREFIX.matcher(prefix).matches()
+                    || STATEMENT_BEFORE.matcher(prefix).find())) {
+                continue;
+            }
+            if (Masker.matchingBracket(text, open.end() - 1, ')') == -1) {
+                continue;
+            }
+            return new Declaration("method", name, header);
+        }
+
+        Matcher assigned = Pattern.compile("(^|[^\\w$.])(?:const\\s+|let\\s+|var\\s+)?"
+                        + Pattern.quote(name) + "\\b(?:\\s*:\\s*[^=\\n]+)?\\s*=\\s*(?:async\\s+)?")
+                .matcher(text);
+        while (assigned.find()) {
+            int column = assigned.start();
+            int line = Masker.lineOf(starts, header.start() + column);
+            String before = slice(maskLines[line], 0, header.start() + column - starts[line]);
+            String prefix = before.trim();
+            if (!prefix.isEmpty() && (!PREFIX.matcher(prefix).matches()
+                    || STATEMENT_BEFORE.matcher(prefix).find())) {
+                continue;
+            }
+            String rest = text.substring(assigned.end());
+            if (rest.contains("=>") || FUNCTION_WORD.matcher(rest).find()) {
+                return new Declaration("method", name, header);
             }
         }
         return null;

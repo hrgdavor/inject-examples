@@ -57,11 +57,16 @@ Usage:
   without a rule of its own) takes a #region directive, or the name of a
   method or inner class — optionally prefixed with - for its body alone, + to
   include the annotations above it, or ++ to include its doc comment too. A
-  .json file, which has no comments, takes a comma-separated list of dotted
-  key paths, rendered as valid JSON:
+  #L<line> or #L<line>:<column> reference names lines directly, instead of a
+  block by name: #L40-L44 is those lines, #L40:12-L44:3 from a column to a
+  column. Either kind may be a comma-separated list, and the pieces are
+  injected in the order written. A .json file, which has no comments, takes a
+  comma-separated list of dotted key paths, rendered as valid JSON:
 
       [src/app.ts](./src/app.ts#table)
       [src/app.ts](./src/app.ts#++table)
+      [src/app.ts](./src/app.ts#L40:12-L44:3)
+      [src/app.ts](./src/app.ts#table,parse)
       [package.json](./package.json#scripts.test,name)
 
 Arguments:

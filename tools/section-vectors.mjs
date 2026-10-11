@@ -28,7 +28,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseReference, planSection } from '../lib/section.mjs';
+import { parseReference, parseSelectors, planSection } from '../lib/section.mjs';
 import { lexerFor } from '../src/js/scanner/lexers.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -57,12 +57,25 @@ const WIDGET = 'test/fixtures/Widget.cs';
 const REPO = 'test/fixtures/Repo.kt';
 const ORDERS = 'test/fixtures/Orders.sql';
 const VB_FORM = 'test/fixtures/Form.vb';
+// The wrapped-header fixtures: a declaration whose parameters, `throws` clause
+// or type parameters do not fit on one line.
+const WRAPPED = 'test/fixtures/Wrapped.java';
+const WRAPPED_CLASS = 'test/fixtures/WrappedClass.java';
 
 const cases = [
     // Grammar — parse only: canonical form and (lack of) errors.
     ...[
         'add', 'add-', 'add+', 'add++', '-add', '+add', '++add',
         'Cart/Line/render', 'Cart/Line-', 'Cart/-Line', 'Cart/Line/-render',
+        // Multiple selectors: the comma is the composition contract, and a
+        // single selector is the degenerate case of it.
+        'add,render', 'Cart/Line/render,Cart/Line', 'a,b,c',
+        // Line ranges: one line, one column, a range, both columns.
+        'L40', 'L40:12', 'L40-L44', 'L40:12-L44:3', 'L1-L1',
+        // A leading modifier is the whole reference's, and a range ignores it.
+        '+L40-L44',
+        // …and a range as one selector among several.
+        'add,L40-L44', 'L40-L44,add', 'L40,L50-L52', 'add,L40:2-L40:8,remove',
     ].map((reference) => ({ name: `grammar:${reference}`, mode: 'parse', reference })),
 
     // Grammar errors — parse only: the thrown message.
@@ -72,10 +85,57 @@ const cases = [
         ['Cart/-Line/render', 'dash-second-of-three'],
         ['a+++', 'three-plus'], ['a---', 'three-dash'], ['a--', 'two-dash'],
         ['a/b/c/d/e/f/g/h/i', 'nine-segments'],
+        ['add,', 'empty-first-selector'], [',add', 'empty-last-selector'],
+        ['add,,render', 'empty-middle-selector'],
+        ['L40-', 'range-open-ended'], ['L40:x', 'range-column-not-a-number'],
+        ['L0', 'range-line-zero'], ['L1:0', 'range-column-zero'],
+        ['L44-L40', 'range-backwards'], ['L40-L44:0', 'range-end-column-zero'],
+        ['L40:x-L44', 'range-start-column-not-a-number'],
+        ['L40-L44+', 'range-with-a-modifier'],
     ].map(([reference, slug]) => ({ name: `grammar-error:${slug}`, mode: 'parse', reference })),
 
     // Warnings — parse only: the contradiction and the canonical form.
     ...['a++-', 'a-++', 'a+-', 'a-+'].map((reference) => ({ name: `warning:${reference}`, mode: 'parse', reference })),
+
+    // Resolution — line ranges on Example.java, beside the semantic selectors
+    // that name the same bytes. `L12-L14` is `toString`, `L13` its body, and a
+    // range that starts at a column starts mid-line; the two readings have to
+    // agree byte for byte, which is what makes a line reference safe to write.
+    { name: 'ex-lines-package', input: EXAMPLE, reference: 'L1-L3' },
+    { name: 'ex-lines-tostring', input: EXAMPLE, reference: 'L12-L14' },
+    { name: 'ex-lines-tostring-body', input: EXAMPLE, reference: 'L13' },
+    { name: 'ex-lines-column-to-column', input: EXAMPLE, reference: 'L4:8-L4:21' },
+    { name: 'ex-lines-column-to-end-of-line', input: EXAMPLE, reference: 'L13:9' },
+    { name: 'ex-lines-open-end', input: EXAMPLE, reference: 'L12-L30' },
+    { name: 'ex-lines-past-the-end', input: EXAMPLE, reference: 'L31' },
+    { name: 'ex-lines-column-past-the-line', input: EXAMPLE, reference: 'L13:100' },
+
+    // Resolution — several selectors in one reference: the pieces are injected
+    // in the order written, each from its own lines, and the answer's span is
+    // their outermost bounds.
+    { name: 'ex-selectors-method-then-package', input: EXAMPLE, reference: 'toString,L1-L3' },
+    { name: 'ex-selectors-two-declarations', input: EXAMPLE, reference: 'toString,Line' },
+    { name: 'ex-selectors-line-then-method', input: EXAMPLE, reference: 'L1-L3,Cart/Line/render' },
+    { name: 'ex-selectors-modifier-on-the-last', input: EXAMPLE, reference: 'toString,Line-' },
+    { name: 'ex-selectors-leading-modifier', input: EXAMPLE, reference: '-toString,Line' },
+    { name: 'ex-selectors-one-missing', input: EXAMPLE, reference: 'toString,missing' },
+
+    // Resolution — Wrapped.java: a declaration whose header does not fit on one
+    // line. The parameters, the `throws` clause and the class's type parameters
+    // each get their own line, so the matcher has to follow the header past the
+    // line it starts on — and a port that only reads lines finds nothing.
+    { name: 'wrapped-method', input: WRAPPED, reference: 'render' },
+    { name: 'wrapped-method-body', input: WRAPPED, reference: 'render-' },
+    { name: 'wrapped-method-in-scope', input: WRAPPED, reference: 'Wrapped/render' },
+    { name: 'wrapped-generic-method', input: WRAPPED, reference: 'widest' },
+    { name: 'wrapped-throws-clause', input: WRAPPED, reference: 'store' },
+    { name: 'wrapped-throws-clause-body', input: WRAPPED, reference: 'store-' },
+    { name: 'wrapped-annotation-scope', input: WRAPPED, reference: 'toString+' },
+    { name: 'wrapped-class-header', input: WRAPPED_CLASS, reference: 'Wrapped' },
+    { name: 'wrapped-class-member', input: WRAPPED_CLASS, reference: 'Wrapped/best' },
+    // A body-less member whose header wraps is still a name with nothing to
+    // inject, not a section with a body.
+    { name: 'wrapped-bodyless-member', input: WRAPPED, reference: 'label' },
 
     // Resolution — Example.java.
     { name: 'ex-tostring', input: EXAMPLE, reference: 'toString' },
@@ -245,10 +305,13 @@ function buildCase(c) {
     if (c.mode === 'parse') {
         let error = null;
         let warning = null;
-        try { warning = warningOf(parseReference(c.reference)); } catch (e) { error = e.message; }
+        // The whole reference grammar: one selector, several, or a line range.
+        // `parseReference` reads one path selector only, and a port that reads
+        // the vectors through it has to treat the others as the errors they are.
+        try { warning = warningOf(parseSelectors(c.reference)); } catch (e) { error = e.message; }
         return {
             name: c.name, input: null, reference: c.reference, text: null,
-            startLine: null, endLine: null, kind: null, error, warning,
+            startLine: null, endLine: null, ranges: null, kind: null, error, warning,
         };
     }
     const source = readFileSync(join(ROOT, c.input), 'utf8');
@@ -256,13 +319,15 @@ function buildCase(c) {
         const plan = planSection(source, c.reference, lexerFor(c.input));
         return {
             name: c.name, input: c.input, reference: c.reference, text: plan.text,
-            startLine: plan.startLine, endLine: plan.endLine, kind: plan.kind,
+            startLine: plan.startLine, endLine: plan.endLine,
+            ranges: plan.ranges.map((range) => [range.from, range.to]),
+            kind: plan.kind,
             error: null, warning: warningOf(plan.reference),
         };
     } catch (e) {
         return {
             name: c.name, input: c.input, reference: c.reference, text: null,
-            startLine: null, endLine: null, kind: null, error: e.message, warning: null,
+            startLine: null, endLine: null, ranges: null, kind: null, error: e.message, warning: null,
         };
     }
 }

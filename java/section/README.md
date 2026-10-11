@@ -17,11 +17,11 @@ import the ES module, and it is the sibling of the Rust implementation in
 | --- | --- |
 | Reference parsing, canonicalisation, errors, the contradiction warning | **ported** |
 | Mask pass (`masked`, `commentsIn`) | **ported** — the mask invariant is asserted, as the spec requires |
-| Block scanner (`scanBlocks`) | **ported** — regions, comment anchors, condition literals, properties, if/else chains |
+| Block scanner (`scanBlocks`) | **ported** — regions, comment anchors, condition literals, properties, if/else chains, headers that wrap |
 | Resolution (`resolveSection`, `extractDeclaration`) | **ported** |
 | Per-language lexers (the language table) | **ported** — all eighteen entries and the extension registry |
 
-All 124 conformance vectors pass, and so does the lexical corpus beside them.
+All 172 conformance vectors pass, and so does the lexical corpus beside them.
 
 ```sh
 mvn test        # the gate
@@ -30,7 +30,7 @@ mvn package     # jar + sources + javadoc, as Maven Central wants them
 
 `SectionVectorsTest` reads
 [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json) —
-the same 124 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
+the same 172 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
 to — and asserts all of them: the grammar, the exact error text, the
 contradiction warning, and resolution against the fixtures, each through the
 language its file extension selects. It fails if a vector is unaccounted for, so

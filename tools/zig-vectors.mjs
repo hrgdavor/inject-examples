@@ -83,12 +83,35 @@ const fixtures = inputs.map((path) => {
     return `/// \`${path}\`\npub const ${fixtureName(path)} =\n    ${zigLiteral(sources.get(path))};\n`;
 });
 
+/**
+ * The `ranges` field of a resolution vector: one line span per selector.
+ *
+ * Written inline, and empty (`&.{}`) for a parse-only probe and for a row whose
+ * expected answer is an error — there is nothing to point at.
+ */
+function zigRanges(ranges) {
+    if (!Array.isArray(ranges)) return '&.{}';
+    const spans = ranges.map(([from, to]) => `.{ .from = ${from}, .to = ${to} }`);
+    // `zig fmt` puts the spaces in for two or more elements and leaves a single
+    // one tight, so the generated file is written the way it would be formatted.
+    return spans.length === 1 ? `&.{${spans[0]}}` : `&.{ ${spans.join(', ')} }`;
+}
+
+/** The `kind` field of a resolution vector: a `PlanKind` tag, or null. */
+function zigKind(kind) {
+    return kind === null || kind === undefined ? 'null' : `.${kind}`;
+}
+
 const cases = vectors.map((c) => {
     const parts = [
         `        .name = ${zigString(c.name)},`,
         `        .input = ${zigString(c.input)},`,
         `        .reference = ${zigString(c.reference)},`,
         `        .text = ${zigString(c.text)},`,
+        `        .start_line = ${c.startLine ?? 'null'},`,
+        `        .end_line = ${c.endLine ?? 'null'},`,
+        `        .ranges = ${zigRanges(c.ranges)},`,
+        `        .kind = ${zigKind(c.kind)},`,
         `        .error_message = ${zigString(c.error)},`,
         `        .warning = ${zigWarning(c.warning)},`,
     ];
@@ -145,15 +168,28 @@ pub const Warning = struct {
     dropped: []const u8,
 };
 
+/// The matcher that found a single selector, or \`multiple\` for several.
+pub const PlanKind = enum { region, declaration, property, condition, anchor, lines, multiple };
+
 pub const Case = struct {
     name: []const u8,
     input: ?[]const u8,
     reference: []const u8,
     /// The expected selection, or null when the case expects an error.
     text: ?[]const u8,
+    /// The one-line span the selection came from, or null when there is none.
+    start_line: ?i64,
+    end_line: ?i64,
+    /// One line range per selector: the same answer, piece by piece.
+    ranges: []const LineSpan,
+    /// The matcher that found it, or null for a parse-only probe.
+    kind: ?PlanKind,
     error_message: ?[]const u8,
     warning: ?Warning,
 };
+
+/// A 1-based inclusive line range.
+pub const LineSpan = struct { from: i64, to: i64 };
 
 /// One mask row: a source unit and the mask the JavaScript produces for it.
 pub const MaskCase = struct {

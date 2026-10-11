@@ -29,27 +29,35 @@ authoritative: a port that disagrees with it is wrong by definition.
 
 ## At a glance
 
-A section reference is a `/`-separated path of names. A `+`, `++` or `-` applies
-to the **last** name only — a modifier written on an earlier name is collected and
-applied to the last one, not an error — and the canonical spelling puts it at the
-very end. A leading spelling is accepted in two cases only, and they are not
-symmetric: see [Where a modifier may appear](#where-a-modifier-may-appear). Three
-questions fully specify it, and this document keeps each in its own section so
-they do not blur into one another:
+A section reference is a `,`-separated list of **selectors**, and every selector
+is one of two things: a `/`-separated path of names, or a **line range**
+(`L40:12-L44:3`). A `+`, `++` or `-` applies to the **last** selector only — a
+modifier written on an earlier selector belongs to that selector, and one written
+in front of the whole reference is the reference's own — and the canonical
+spelling puts the reference's modifier at the very end. A leading spelling is
+accepted in two cases only, and they are not symmetric: see
+[Where a modifier may appear](#where-a-modifier-may-appear). Four questions fully
+specify it, and this document keeps each in its own section so they do not blur
+into one another:
 
 | Question | In one line | Expanded in |
 | --- | --- | --- |
+| How do several selectors combine? | A reference is a list; each selector contributes its own text, and the pieces are joined with a newline in the order written. | [Selectors](#selectors) |
 | How does a path with one or more `/` resolve? | Every name except the last **narrows the scope** to the block it finds; only the **last** name selects content; a single name searches the whole file. | [Paths and scopes](#paths-and-scopes) |
 | How is one name found inside a scope? | Inside that scope — the whole file, or a block a parent narrowed it to — the six matchers run in order against the scope's own members; the first match wins, and a shallower sibling always beats a deeper block. | [Searching one element in a scope](#searching-one-element-in-a-scope) |
-| Where do `+`, `++` and `-` apply, and what do they do? | A modifier binds to the **last** segment, wherever it was written; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
+| Where do `+`, `++` and `-` apply, and what do they do? | A modifier binds to the **last** selector, wherever it was written; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
 
-[Grammar](#grammar) gives the syntax and [The six rules](#the-six-rules) is the
-compact normative statement; the three topics expand them, and the tables beneath
-each topic are the detail.
+[Grammar](#grammar) gives the syntax, [Selectors](#selectors) the composition and
+the line range, and [The six rules](#the-six-rules) the compact normative
+statement; the topics expand them, and the tables beneath each topic are the
+detail.
 
 ## Contents
 
 - [Grammar](#grammar)
+- [Selectors](#selectors)
+  - [Line ranges](#line-ranges)
+  - [Several selectors](#several-selectors)
 - [The six rules](#the-six-rules)
 - [Paths and scopes](#paths-and-scopes)
   - [Narrowing the scope](#narrowing-the-scope)
@@ -71,17 +79,78 @@ each topic are the detail.
 ## Grammar
 
 ```text
-section-reference := path [ modifier ]
-modifier          := '++' | '+' | '-'            ; longest match first; those three only
-path              := segment ( '/' segment )*    ; at most 8 segments
+section-reference := selector ( ',' selector )*     ; at most 8 path segments per selector
+selector          := path [ modifier ]
+                   | line-range
+modifier          := '++' | '+' | '-'               ; longest match first; those three only
+path              := segment ( '/' segment )*
 segment           := token
 token             := /[A-Za-z_$][\w$]*/ | 'new'
+line-range        := point [ '-' point ]
+point             := 'L' digits [ ':' digits ]      ; lines and columns from 1
 ```
 
-A `token` contains no `/`, `+`, `-` or whitespace. A name may be dotted
+A `token` contains no `/`, `+`, `-`, `,` or whitespace. A name may be dotted
 (`Foo.Bar` is one token, because dotted names occur in JS/TS code); dots are
-never path separators. The syntax alone says nothing about resolution — the six
-rules below do, and each is expanded in its own topic.
+never path separators. A selector that opens `L<digit>` is a line range or a
+typo, never a name — which is what reserves the `L<digit>` spelling — while `Lx`
+is an ordinary name. The syntax alone says nothing about resolution — the rules
+below do, and each is expanded in its own topic.
+
+## Selectors
+
+A reference is a **list**: one or more selectors separated by `,`. Each selector
+resolves on its own, to its own text and its own line span, and the pieces are
+joined with a newline in the order they were written; the reference's
+`startLine`/`endLine` are the outermost bounds of the pieces and its `ranges` is
+one entry per selector. A single selector is the degenerate case of a list of
+one, and every rule of this document about a path applies to a selector of that
+list: the comma is structure, not part of a name, and an empty selector (`a,`,
+`,a`, `a,,b`) is the `has an empty selector` error.
+
+Every selector of a reference must resolve. A list is not a fallback — the first
+missing piece fails the whole reference, naming the selector that failed.
+
+### Line ranges
+
+A selector may name lines instead of a block, for a file whose structure the
+matchers cannot see:
+
+| Reference | Selects |
+| --- | --- |
+| `L40` | line 40 alone, without its newline |
+| `L40:12` | line 40 from its twelfth character to the end of the line |
+| `L40-L44` | lines 40 through 44, inclusive, verbatim |
+| `L40:12-L44:3` | from character 12 of line 40 to character 3 of line 44, inclusive at both ends |
+
+Lines and columns are counted **from 1**, both ends are inclusive, and an
+endpoint with no column runs to the end of its line. `L<line>` and
+`L<line>:<column>` are the only endpoint spellings: `L40:` ("to the end of the
+line") is malformed, because writing the point alone already says that.
+
+The text is the file's own bytes (LF-normalised, as every scan is) with nothing
+added and nothing rendered, and the span is exactly the lines and columns asked
+for. Anything the file does not have is an error, never a clamp — `L31` in a
+30-line file is `"#L31": the file has 30 line(s)`, and a column past the end of
+its line is `line 13 has 39 character(s)`. A range that silently became a
+different range is the drift a line reference is written to avoid.
+
+A line range has no modifier of its own: there is nothing about a verbatim slice
+of lines for `+` to widen, and its `-` is already spoken for by the range. So a
+modifier spelled **on** a range — `L40+`, `L40-L44-` — is not a range at all
+(`is not a line range`), while a modifier in front of the **whole reference**
+(`+L40-L44`) is the reference's own, lands on the last selector, and is ignored
+when that selector is a range, exactly as a `#region` ignores one.
+
+### Several selectors
+
+Each selector carries its own modifier, wherever that modifier is written: the
+reference's own run (leading the whole reference, or trailing its last selector)
+applies to the **last** selector only, and a modifier written on a selector's
+path is that selector's. So `add-,render++` is two selectors that each say what
+they mean, and only two readings landing on the *same* selector — `getUsers++-`,
+`-getUsers+` — contradict (see
+[Contradictory modifiers](#contradictory-modifiers-are-a-warning)).
 
 ## The six rules
 
@@ -116,6 +185,9 @@ The grammar, as six rules. Each violated below is an error (see
    a `String add` property, a `class add`, a `//add` anchor, or an
    `if ("add".equals(...))` block — whichever the walk finds first, the
    shallowest candidate winning.
+
+A **line-range selector** is resolved by none of the six: it names lines, and
+the lines it names are the selection (see [Line ranges](#line-ranges)).
 
 Rules 1, 2 and 4 are the subject of [Paths and scopes](#paths-and-scopes); rule
 5 (and the matcher table rule 6 names) of
@@ -236,7 +308,10 @@ also ends the whole search.
 A class-like name beats a same-named constructor. Body-less members (interface
 methods, `abstract` declarations) have nothing to inject and are skipped. A
 `#region`/`#endregion` line is never an anchor, and a comment that is not the
-first thing in the block is not an anchor either.
+first thing in the block is not an anchor either. A header may span lines — see
+[A declaration's header may span lines](#not-a-parser) — and the closing bracket
+of a wrapped parameter list is where the matchers look for it, not on the line
+the name is written on.
 
 **The walk.** Within one scope the table is tried top to bottom against that
 scope's own members — matchers 5 and 6 never sweep deeper blocks — and the first
@@ -280,7 +355,10 @@ inject — the whole declaration, the body alone, the declaration with its
 annotations, or with its doc comment too. Two facts govern where it may sit:
 
 - It is **trailing**: it attaches to the very end of the whole reference.
-- It binds to the **last segment** only. A scope segment may not carry one:
+- It binds to the **last selector** only. A selector that is not the last may
+  carry its own modifier — that one is its own and means what it says — but the
+  reference's own run (leading or trailing the whole thing) reaches only the last
+  one. A scope segment inside a path may not carry one at all:
   `Cart/-Line/render` is an error, because `-` would modify the scope `Line`
   rather than the selected `render`.
 
@@ -290,6 +368,10 @@ scope](#searching-one-element-in-a-scope)) run on the bare name; the modifier is
 applied to the result. `getUsers` and `getUsers-` find the same block and differ
 only in how much of it is taken.
 
+A **line-range** selector takes no modifier at all, and one written on it is not
+a modifier but a malformed range (`L40+`, `L40-L44-`); a modifier in front of the
+whole reference still lands on the last selector, and a range ignores it.
+
 ### Where a modifier may appear
 
 The canonical spelling is trailing: the modifier sits at the very end of the whole
@@ -298,13 +380,15 @@ that conflates them will disagree with `lib/section.mjs` on `a/+b` or on `a++/b`
 
 | Written | Where it is | Result |
 | --- | --- | --- |
-| `add+`, `Cart/Line/render-` | trailing, at the very end | the modifier, joined to the last segment |
+| `add+`, `Cart/Line/render-` | trailing, at the very end | the reference's modifier, applied to the last selector |
 | `+add`, `++a/b`, `-a/b` | a prefix of the **whole reference** | moved to the end: `add+`, `a/b++`, `a/b-` |
 | `a/-b`, `Cart/Line/-render` | a single `-` leading the **last segment** | moved to the end: `a/b-`, `Cart/Line/render-` |
 | `Cart/-Line` | a single `-` leading the second of **two** segments | moved to the end: `Cart/Line-` |
 | `a/+b`, `a/++b` | a `+` or `++` leading a **segment** — any segment, the last included | **error** |
 | `a++/b`, `a-/b` | a trailing run on a segment that is **not** the last | collected, then applied to the last segment: `a/b++`, `a/b-` |
 | `x/y+z`, `Cart/-Line/render` | anywhere else: a `+` inside a name, or a `-` on a segment that is neither the last nor the second of two | **error** |
+| `add-,render++` | the trailing run of a **selector that is not the last** | that selector's own modifier; no contradiction, no warning |
+| `getUsers++-` | the reference's trailing run after a selector that already carries one | **contradiction**: `++` wins, warned |
 
 **The two leading forms are not symmetric.** A single `-` may lead a segment when
 that segment is the last one, or the second of two; `+` and `++` may appear in
@@ -325,20 +409,25 @@ which is authoritative.
 
 The canonical form is **trailing**, so the parser normalises before it parses:
 
-1. If the reference begins with `++`, `+` or `-`, detach that prefix and append it
-   to the end.
-2. After step 1, if the **second** segment begins with exactly one `-` and
-   nothing was detached in step 1, detach that `-` and append it
-   (`Cart/-Line` → `Cart/Line-`).
-3. Walk the segments: a leading `-` on the last segment is detached and appended;
-   a leading `+` or `++` on any segment is an error; a trailing run on any segment
-   is detached and collected.
-4. If more than one modifier was collected, they are combined: a `++`/`+` together
-   with a `-` contradict and warn, and the positive one wins; the same modifier
-   twice is an error (see
-   [Contradictory modifiers](#contradictory-modifiers-are-a-warning)).
-5. The result is the segments joined with `/`, followed by the modifier — or
-   nothing when there was none.
+1. If the reference begins with `++`, `+` or `-`, detach that prefix: it is the
+   **reference's own** modifier.
+2. Read the last selector. Its trailing run — and, further up its path, the
+   trailing run of its last segment — is the reference's own modifier too, so
+   `-a/b` is `a/b-` and `a++/b` is `a/b++`. Two runs on that one selector
+   (`-a-`, `-getUsers+`) are the `carries more than one modifier` error.
+3. Every *other* selector keeps the spelling it was written with — its own
+   modifier included, wherever on its path it was written — because that
+   modifier belongs to that selector. So `add-,render++` is two selectors that
+   each say what they mean.
+4. The reference's own run is combined: a `++`/`+` together with a `-`
+   contradict and warn, and the positive one wins; the same modifier twice is an
+   error (see
+   [Contradictory modifiers](#contradictory-modifiers-are-a-warning)). A run on
+   one selector is not combined with another selector's: only the reference's
+   own run is one run.
+5. The result is the selectors joined with `,` — the last one spelled from its
+   parsed path — followed by the reference's modifier, or nothing when there was
+   none.
 
 | Accepted | Notes |
 | --- | --- |
@@ -349,6 +438,9 @@ The canonical form is **trailing**, so the parser normalises before it parses:
 | `+a/b`, `++a/b`, `-a/b` | canonicalise to `a/b+`, `a/b++`, `a/b-` — the prefix belongs to the whole reference, not to the first segment |
 | `a/-b` | canonicalises to `a/b-` |
 | `a++/b`, `a-/b` | canonicalise to `a/b++`, `a/b-` (collected; see above) |
+| `add-,render++` | unchanged: each selector keeps its own modifier |
+| `+add,render` | `add,render+` — the reference's modifier lands on the last selector |
+| `L40-L44`, `L40:12-L44:3`, `+L40-L44` | unchanged (a range takes no modifier; a leading one is ignored) |
 
 | Rejected (errors) | Message |
 | --- | --- |
@@ -356,10 +448,14 @@ The canonical form is **trailing**, so the parser normalises before it parses:
 | `Cart/-Line/render` — a `-` leading a segment that is neither last nor the second of two | `"-" may only modify the last path segment of "#<the reference as written>"` |
 | `a//b`, `a/`, `/a` — an empty path segment | `"#<the reference as written>" has an empty path segment` |
 | `a+++`, `a---`, `a--` — more than one modifier | `"#<the reference as written>" carries more than one modifier` |
+| `L40-`, `L40:x`, `L40-L44+` — a range that is not one, or one carrying a modifier | `"#<the reference as written>" is not a line range; write L<line> or L<line>:<column>` |
+| `L0`, `L1:0` — a line or column below 1 | `"#<the reference as written>" counts lines and columns from 1` |
+| `L44-L40` — a range that ends before it starts | `"#<the reference as written>" ends before it starts` |
+| `add,`, `,add`, `add,,render` — an empty selector | `"#<the reference as written>" has an empty selector` |
 
 | Warned (see [Contradictory modifiers](#contradictory-modifiers-are-a-warning)) |
 | --- |
-| `a/b++-`, `a-/b++`, `a+-` |
+| `a/b++-`, `a-/b++`, `a+-`, `getUsers++-` |
 
 ### Modifiers
 
@@ -406,6 +502,7 @@ while refactoring, so it must not hold a whole document hostage.
 | `+` with `-` (`a+-`, `a-+`) | Warning | Same shape: contradictory, `+` wins |
 | One modifier named twice (`a+++`, `a---`) | Error | Malformed, not contradictory — see [Errors](#errors) |
 | A modifier anywhere but the end | Error | See [Canonicalisation](#canonicalisation) |
+| Two selectors that each carry one (`add-,render++`) | Neither | Each modifier is its own selector's; two selectors are not one reference saying two things |
 
 Three consequences it is easy to miss:
 
@@ -423,7 +520,8 @@ Three consequences it is easy to miss:
 
 Every message quotes the reference **exactly as the user wrote it** (call it
 `<raw>`, `/`-separated, before normalisation) — `Cart/-Line` therefore appears
-as written even though it normalises to `Cart/Line-`:
+as written even though it normalises to `Cart/Line-`. Where the message names a
+selector, it is that selector as written (`L40-`), not the whole reference:
 
 | Condition | Message shape |
 | --- | --- |
@@ -433,6 +531,13 @@ as written even though it normalises to `Cart/Line-`:
 | the same modifier twice or thrice (`a+++`, `a---`) | `"#<raw>" carries more than one modifier` |
 | a detached leading modifier and a trailing one (`-a-`) | `"#<raw>" carries more than one modifier` |
 | more than 8 segments | `"#<raw>" is deeper than 8 sections` |
+| an empty selector (`a,`, `,a`, `a,,b`) | `"#<raw>" has an empty selector` |
+| a range that is not one, or one carrying a modifier (`L40-`, `L40:x`, `L40-L44+`) | `"#<selector>" is not a line range; write L<line> or L<line>:<column>` |
+| a line or column below 1 (`L0`, `L1:0`) | `"#<selector>" counts lines and columns from 1` |
+| a range that ends before it starts (`L44-L40`) | `"#<selector>" ends before it starts` |
+| a line the file does not have (`L31` in a 30-line file) | `"#<selector>": the file has <n> line(s)` |
+| a column past the end of its line | `"#<selector>": line <n> has <m> character(s)` |
+| a line range in a rule that renders its selection (`.json`, `.yaml`, `.toml`, `.ini`) | `"#<selector>" is a line range, which only the code rule reads; "<rule>" reads keys` |
 | a segment matches nothing anywhere | `no "#region <name>" found, and no section named "<name>"` |
 | a class/block is matched but path remains | `"<name>" is not a container` |
 | a mid-path scope does not exist | `no section named "<name>" in "<previous>"` |
@@ -469,6 +574,18 @@ documented `toString()` and an inner `Line` with a `render()`:
 | `Line/toString` | error: `no section named "toString" in "Line"` |
 | `Cart/Line/render/extra` | error: `render` is not a container |
 | `Cart/Cart` | error: `Cart` is not a container (a class is a scope, not a section) |
+| `L12-L14` | the same three lines as `toString`, byte for byte |
+| `L13` | the same line as `toString-` |
+| `L13:9` | `        return String.join(",", items);` from its ninth character: `return String.join(",", items);` |
+| `L4:8-L4:21` | `java.util.List` — the import's class, from column to column |
+| `L31` | error: `"#L31": the file has 30 line(s)` |
+| `toString,L1-L3` | `toString`'s three lines, then the first three lines of the file, joined with a newline |
+| `toString,L16-L20` | the `toString` declaration and the opening of the `Line` class — two pieces, two `ranges` entries |
+| `add-,render++` | the body of `add` and the annotated declaration of `render`, each taking the modifier written on it |
+
+A reference of several selectors answers with one `text` — the pieces joined by a
+newline — and a `ranges` list with one entry per selector, so a consumer can
+point at each piece instead of at everything between them.
 
 Given `test/fixtures/Anchors.java` — a method `dispatch` whose body holds an
 `if ("getUsers".equals(methodName)) { … }` block, a `handler` method opened by
@@ -536,6 +653,32 @@ AST would add nothing the matcher uses. A matching step is:
 4. Offer the scopes of one depth, left to right, each in matcher-precedence
    order; the first match ends the lookup for the whole depth. Only a depth
    that yields nothing is descended (rule 5).
+
+**A declaration's header may span lines.** Wrapping a parameter list, a generic
+list or a `throws` clause is formatting, not a different declaration, so a
+member is *not* required to fit its header on one line. When the line a
+declaration starts on does not say everything there is to say — the closing `)`
+is on a later line — the matchers are run over the **header window** instead: the
+mask from the declaration's first character through the `{` or `;` that ends the
+header.
+
+The window ends at the first `{` or `;` met with every bracket closed, and stops
+at a blank line or a line that opened nothing the next line could continue. Every
+bracket counts — `(`, `[`, `{` and `<` — which is what makes a wrapped parameter
+list, a wrapped generic list, a wrapped `throws` and a wrapped class header one
+rule; a `{` inside the header's own brackets (a lambda default, an array
+initialiser) is not the body's brace, because a bracket is open, and a line whose
+brackets are balanced ends the header there. The window is bounded (200 lines), so
+a header that is never closed is not followed through the rest of the file.
+
+What the window must **not** do is invent a declaration. The name is looked for
+where it is written, and only a statement that would declare it counts: the text
+before the name must be a return type, a modifier list or nothing at all, and the
+`(` must belong to the name. A wrapped *call* — `return map(\n  1, 2);` — is
+therefore still a call, at whatever depth it appears, and a name that merely
+occurs inside a wrapped argument list is not a section. A body-less member whose
+header wraps (`abstract String label(\n  int width);`) is a name with nothing to
+inject, exactly as its one-line spelling is.
 
 So the guarantee is one-directional, and consumers must not expect more of it
 than that: valid source never breaks the lexical layer, but a construct the
@@ -683,22 +826,25 @@ README's "Region rules by file type" section); a custom rule calls
 
 ### What a resolution answers
 
-A resolution is three answers rather than one, because the three consumers of it
-need different ones — and answering the same question twice is how two answers
-start to disagree:
+A resolution is four answers rather than one, because the consumers of it need
+different ones — and answering the same question twice is how two answers start
+to disagree:
 
 | Field | What it is | Who needs it |
 | --- | --- | --- |
-| `text` | the bytes the section stands for | an injector, which writes them into a document |
-| `startLine`, `endLine` | the **1-based inclusive** line span the text came from | a host, which navigates to a line rather than to bytes |
-| `kind` | the matcher that found it: `region`, `declaration`, `property`, `condition` or `anchor` | anything that has to explain the answer, which is what makes a heuristic arguable instead of mysterious |
+| `text` | the bytes the section stands for — every selector's text, joined with a newline in the order written | an injector, which writes them into a document |
+| `ranges` | one **1-based inclusive** line range per selector, in the order written | a host, which highlights or navigates to each piece rather than to everything between them |
+| `startLine`, `endLine` | the outermost bounds of `ranges` | a host that wants the one span the selection occupies |
+| `kind` | the matcher that found a single selector: `region`, `declaration`, `property`, `condition`, `anchor` or `lines` (a line range); `multiple` when the reference named several | anything that has to explain the answer, which is what makes a heuristic arguable instead of mysterious |
 
-The span is computed from the same slice the text was made from, so it cannot
-disagree with it; a section whose slice is empty still reports the line it would
-start on, rather than a range that runs backwards. `resolveSection` is
-`planSection(...).text` — the one-field shorthand for a caller that only wants the
-bytes.
+The ranges are computed from the same slices the text was made from, so they
+cannot disagree with it; a rendering that prepends a line of its own — the `if`
+of a condition literal, the header line of a shared-close chain segment —
+contributes the header line as well as the lines that follow it. A section whose
+slice is empty still reports the line it would start on, rather than a range that
+runs backwards. `resolveSection` is `planSection(...).text` — the one-field
+shorthand for a caller that only wants the bytes.
 
-`test/vectors/section-vectors.json` pins all three for every resolution case, so a
-port that agrees about the bytes but not about the span or the kind fails the
+`test/vectors/section-vectors.json` pins all four for every resolution case, so a
+port that agrees about the bytes but not about the ranges or the kind fails the
 conformance gate rather than passing it quietly.

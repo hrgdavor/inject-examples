@@ -267,6 +267,12 @@ file's extension. Five rules ship — JSON, YAML, TOML, INI and the `code`
 fallback — and a sixth is a few lines in a `regionRules`
 array (see [Adding a rule for another type](#adding-a-rule-for-another-type)).
 
+A reference is one or more **selectors** separated by commas, and every rule
+reads the list that way: the pieces are resolved in the order they were written
+and injected in that order, one after another. What a single selector may say is
+the rule's business — a name, a key path, or a line range — and a reference of
+one selector is the ordinary case of a list of one.
+
 ### The default rule: code, and everything else
 
 One rule covers every type no other rule claims — source code, `README.md`,
@@ -435,6 +441,59 @@ inject-examples: warn: doc/usage.md:320: [../test/fixtures/Anchors.java](../test
 The full grammar is in [section-matching.md](./section-matching.md), and the
 matcher is one dependency-free module, [lib/section.mjs](../lib/section.mjs)
 (documented in its own [lib/README.md](../lib/README.md)).
+
+#### Line ranges, when a name will not do
+
+A selector may also be a **line range**, for a file whose structure the matchers
+cannot see — a config fragment, a log, a table in a comment. `L<line>` is one
+line, `L<line>:<column>` starts at a column of it, and `L<line>-L<line>` is a
+range; lines and columns are counted from 1, both ends are inclusive, and an
+endpoint with no column runs to the end of its line:
+
+| Reference | Injected text |
+| --- | --- |
+| `#L12-L14` | lines 12, 13 and 14, verbatim |
+| `#L13` | line 13 alone |
+| `#L13:9` | line 13 from its ninth character to the end of the line |
+| `#L4:8-L4:22` | from the eighth character of line 4 to its twenty-second |
+
+The three lines of `toString`, named by number rather than by name:
+
+[../test/fixtures/Example.java](../test/fixtures/Example.java#L12-L14)
+
+```java
+    public String toString() {
+        return String.join(",", items);
+    }
+```
+
+A range that asks for lines the file does not have is an error — `#L31` in a
+30-line file, `#L2:1` on a blank line — never a silent clamp: a range that
+quietly became a different range is the drift this tool exists to prevent. A
+range takes no modifier (`#L40+` is malformed, because the `+` would have to be
+read as part of the range); a modifier written in front of the whole reference
+belongs to the reference, and a range ignores it.
+
+Because the comma is the contract every rule shares, one reference may name
+several pieces and they are injected in the order written — a name and a range
+mix freely. The annotated `toString`, then the inner `Line` class:
+
+[../test/fixtures/Example.java](../test/fixtures/Example.java#+toString,L16-L20)
+
+```java
+    public String toString() {
+        return String.join(",", items);
+    }
+    /** One line of a cart. */
+    public static class Line {
+        private final String name;
+        private final int quantity;
+
+```
+
+(`#add,remove` names two methods the same way, and `#scripts.test,keywords.0`
+two JSON keys — the list is general, and how a rule joins its pieces is the
+rule's own business.)
 
 ### The JSON rule
 

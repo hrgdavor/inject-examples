@@ -294,11 +294,13 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
         if (plan.reference.warning) {
             warn(`${marker.path}#${marker.reference}: ${plan.reference.warning.kind} modifier; using "${plan.reference.kept}"`);
         }
-        const range = locateRange(file.text, text, marker.reference);
-        if (range === null) {
+        // The plan knows exactly which lines each selector came from — a
+        // reference of several selectors, or a line range, has more than one
+        // place to point at — so the page does not have to find them again.
+        ranges = plan.ranges.map((range) => [range.from, range.to]);
+        if (ranges.length === 0) {
             throw new Error(`${marker.raw}: the lines of "#${marker.reference}" cannot be located in ${marker.path}`);
         }
-        ranges = [[range.from, range.to]];
     } else {
         text = rule.resolve(file.text, marker.reference, marker.path);
         ranges = locateRendered(file.text, text)?.ranges ?? null;

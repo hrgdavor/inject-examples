@@ -18,9 +18,12 @@
 //!
 //! # What is ported so far
 //!
-//! - [`parse_reference`] — the reference grammar: path segments, the trailing
-//!   modifier, the leading spellings, canonicalisation, and the contradiction
-//!   warning. Complete, and pinned by every grammar and warning vector.
+//! - [`parse_reference`] and [`parse_selectors`] — the reference grammar: one
+//!   path selector with its path segments, trailing modifier and leading
+//!   spellings, or a comma-separated list of selectors where a selector is a path
+//!   or a line range (`L40:12-L44:3`), with canonicalisation, per-selector scopes
+//!   and the contradiction warning. Complete, and pinned by every grammar and
+//!   warning vector.
 //! - [`mask`] and [`lexer`] — the mask pass (part A) and the language-engine
 //!   seam, with the mask invariant asserted.
 //! - [`tokenizer`], [`syntax`] and [`syntaxes`] — the one-pass tokenizer and the
@@ -28,10 +31,9 @@
 //! - [`matchers`], [`span`] and [`block`] — the shape matchers, the body-span
 //!   readers and the block tree, each unit-tested on its own.
 //! - [`scanner`] — `scanBlocks`: the layer that composes them into a [`block::Scan`].
-//!
-//! Still to port: resolution (`resolveSection`/`extractDeclaration`, part C) with
-//! the line span and the matcher kind the Java port reports. Until then the
-//! resolution vectors are counted but not asserted — see `tests/vectors.rs`.
+//! - [`resolver`] — resolution (`planSection`/`resolveSection`/`extractDeclaration`):
+//!   the matcher walk, the per-selector scopes, the line ranges and the matcher
+//!   kind the plan reports. Pinned by every resolution vector.
 
 use std::fmt;
 
@@ -45,6 +47,8 @@ pub mod span;
 pub mod syntax;
 pub mod syntaxes;
 pub mod tokenizer;
+
+pub use resolver::{parse_selectors, LinePoint, Selector};
 
 /// A failure that is not a malformed reference: the mask invariant was broken, the file cannot be
 /// scanned, or a well-formed reference matched nothing.
@@ -117,9 +121,14 @@ pub struct Warning {
 pub struct Reference {
     /// The text as it was given, without the `#`.
     pub raw: String,
-    /// The normalised spelling, e.g. `Cart/Line/render-`.
+    /// The normalised spelling, e.g. `Cart/Line/render-` or `add-,render++`.
     pub canonical: String,
-    /// The path segments, with every modifier removed.
+    /// The selectors, in the order written: one for a single path or a single line
+    /// range, several when the reference is comma-separated. [`parse_reference`]
+    /// reads one path selector and leaves this empty.
+    pub selectors: Vec<Selector>,
+    /// The path segments, with every modifier removed: the last path selector's
+    /// segments, or none for a line range and for a mixed reference.
     pub segments: Vec<String>,
     pub scope: Scope,
     pub warning: Option<Warning>,
@@ -164,7 +173,7 @@ impl std::error::Error for SectionReferenceError {}
 
 pub type Result<T> = std::result::Result<T, SectionReferenceError>;
 
-fn scope_from_modifier(modifier: Option<&str>) -> Scope {
+pub(crate) fn scope_from_modifier(modifier: Option<&str>) -> Scope {
     match modifier {
         Some("-") => Scope::Body,
         Some("+") => Scope::Annotated,
@@ -176,7 +185,7 @@ fn scope_from_modifier(modifier: Option<&str>) -> Scope {
 /// Splits a run of `+`/`-` into modifiers, longest match first, and stops at
 /// anything else. `+++` is `["++", "+"]`, which is two modifiers — and two
 /// positive ones is an error, not a `++` followed by an ignored `+`.
-fn tokenize_modifier_run(run: &str) -> Vec<&'static str> {
+pub(crate) fn tokenize_modifier_run(run: &str) -> Vec<&'static str> {
     let chars: Vec<char> = run.chars().collect();
     let mut tokens = Vec::new();
     let mut i = 0;
@@ -249,7 +258,7 @@ fn extract_leading_modifier(
 }
 
 /// Splits a segment into its name and the modifier run that trails it.
-fn extract_trailing_modifier(name: &str) -> (String, Vec<&'static str>) {
+pub(crate) fn extract_trailing_modifier(name: &str) -> (String, Vec<&'static str>) {
     let chars: Vec<char> = name.chars().collect();
     let mut i = chars.len();
     while i > 0 && (chars[i - 1] == '+' || chars[i - 1] == '-') {
@@ -264,16 +273,33 @@ fn extract_trailing_modifier(name: &str) -> (String, Vec<&'static str>) {
     }
 }
 
-/// Parses a section reference — the text after the `#`.
+/// Parses a section reference — the text after the `#` — as **one path selector**.
+///
+/// The whole-reference grammar is [`parse_selectors`], which reads a comma-separated
+/// list of selectors and is the entry point the corpus is held to. This reader stays
+/// because a port that wants one path, and not a list, still needs it: it refuses a
+/// comma and a line range as the different things they are.
 ///
 /// # Errors
 ///
 /// Returns a [`SectionReferenceError`] whose message is part of the contract when
 /// the reference is malformed: nothing named, an empty path segment, more than
-/// eight segments, more than one modifier, or a modifier where it may not go.
+/// eight segments, more than one modifier, a modifier where it may not go, a comma
+/// (a list belongs to [`parse_selectors`]), or a line range (`L40` is not a path).
 pub fn parse_reference(raw: &str) -> Result<Reference> {
     if raw.is_empty() {
         return Err(SectionReferenceError::new("\"#\" names nothing"));
+    }
+    if raw.contains(',') {
+        return Err(SectionReferenceError::new(format!(
+            "\"#{raw}\" has an empty selector"
+        )));
+    }
+    if resolver::is_line_range_prefix(raw) {
+        resolver::line_range_of(raw)?; // fails when the spelling is malformed
+        return Err(SectionReferenceError::new(format!(
+            "\"#{raw}\" is a line range, not a section path"
+        )));
     }
 
     let mut detached: Option<&'static str> = None;
@@ -412,6 +438,7 @@ pub fn parse_reference(raw: &str) -> Result<Reference> {
     Ok(Reference {
         raw: raw.to_string(),
         canonical,
+        selectors: Vec::new(),
         segments: clean_segments,
         scope,
         warning,

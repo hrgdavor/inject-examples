@@ -13,12 +13,12 @@ use std::rc::Rc;
 
 use crate::block::{apply_span, leading_anchor, pair_regions, Anchor, Block, BlockRef, Scan};
 use crate::lexer::Lexer;
-use crate::mask::{from_units, index_of, line_of, line_starts, units, Comment};
+use crate::mask::{from_units, index_of, line_of, line_starts, matching_bracket, units, Comment};
 use crate::matchers::{
     assigned_shape, call_shape, declaration_keyword, is_not_a_name, is_not_a_type, is_prefix,
-    property_decl, statement_keyword, starts_with_statement_before, take_identifier,
+    property_decl, starts_with_statement_before, statement_keyword, take_identifier,
 };
-use crate::span::{body_span, keyword_body, Span};
+use crate::span::{body_span, is_blank_unit, keyword_body, Header, Span};
 use crate::SectionError;
 
 /// The lexical facts one scan needs, kept so the resolver does not have to re-read the file.
@@ -39,7 +39,10 @@ pub struct Lex {
 impl Lex {
     /// The source line holding `line`, or `""`.
     pub fn source_line(&self, line: usize) -> &str {
-        self.source_lines.get(line).map(String::as_str).unwrap_or("")
+        self.source_lines
+            .get(line)
+            .map(String::as_str)
+            .unwrap_or("")
     }
 }
 
@@ -54,6 +57,352 @@ struct Segment {
     close_line: usize,
 }
 
+/// How far a declaration's header may run past the line it starts on.
+///
+/// Wrapping a parameter list is formatting, not a different declaration, so the header of a member
+/// may span lines — but only until the `{` or `;` that ends it, and only while the text still looks
+/// like a header: brackets may be open, a line may end on an operator, and an annotation may start
+/// one. A header that is not closed within this many lines is not followed, rather than scanned to
+/// the end of the file.
+const HEADER_LINES: usize = 200;
+
+/// A declaration read from a line: the shape the matchers found, its name, and the header window it
+/// was read through (see [`header_window`]).
+struct Declaration {
+    kind: &'static str,
+    name: String,
+    header: Header,
+}
+
+/// The header of a declaration that starts on `line`: the mask from the line's first character
+/// through the `{` or `;` that ends the header, **including** it.
+///
+/// A wrapped parameter list is formatting, so the header of a member may span lines — but only while
+/// the text could still be a header. It ends at the first `{` or `;` met with every bracket closed,
+/// and stops at the blank line or the code line that proves it ended without one (a body-less
+/// interface method, a declaration the mask cut short). Counting every bracket — `(`, `[`, `{`, `<`
+/// — is what makes a wrapped parameter list, a wrapped generic list and a wrapped `throws` clause one
+/// rule; a `{` inside the header's own brackets (a lambda default, an array initialiser) is not the
+/// body's brace, because a bracket is open.
+fn header_window(lex: &Lex, line: usize) -> Header {
+    let start = lex.starts.get(line).copied().unwrap_or(0);
+    let Some(first_line) = lex.mask_lines.get(line) else {
+        return Header {
+            start,
+            end: start,
+            last: line,
+        };
+    };
+    let last = lex
+        .mask_lines
+        .len()
+        .saturating_sub(1)
+        .min(line.saturating_add(HEADER_LINES - 1));
+
+    let mut depth = 0i32;
+    for i in line..=last {
+        let text = &lex.mask_lines[i];
+        let from = lex.starts.get(i).copied().unwrap_or(start);
+        let continues = depth > 0 || line_continues(text);
+
+        for (column, unit) in text.iter().enumerate() {
+            let unit = *unit;
+            if depth == 0 && (unit == b'{' as u16 || unit == b';' as u16) {
+                return Header {
+                    start,
+                    end: from + column + 1,
+                    last: i,
+                };
+            }
+            if unit == b'(' as u16
+                || unit == b'[' as u16
+                || unit == b'{' as u16
+                || unit == b'<' as u16
+            {
+                depth += 1;
+            } else if unit == b')' as u16
+                || unit == b']' as u16
+                || unit == b'}' as u16
+                || unit == b'>' as u16
+            {
+                depth -= 1;
+            }
+            if depth < 0 {
+                return Header {
+                    start,
+                    end: from + column + 1,
+                    last: i,
+                };
+            }
+        }
+        depth = depth.max(0);
+        // A line that is blank, or that opened nothing the next line could continue, ends a header
+        // that never found its brace — and the caller then finds no body to inject, which is the
+        // honest answer for a body-less declaration.
+        if !continues {
+            return Header {
+                start,
+                end: from + text.len(),
+                last: i,
+            };
+        }
+    }
+    Header {
+        start,
+        end: start + first_line.len(),
+        last,
+    }
+}
+
+/// Whether a line ends on `(`, `,` or `;` — the JavaScript's `/[(,;]\s*$/`, so a wrapped parameter
+/// list or a declaration whose body is on a following line continues past it.
+fn line_continues(text: &[u16]) -> bool {
+    let mut at = text.len();
+    while at > 0 && is_blank_unit(text[at - 1]) {
+        at -= 1;
+    }
+    at > 0
+        && matches!(
+            text[at - 1],
+            unit if unit == b'(' as u16 || unit == b',' as u16 || unit == b';' as u16
+        )
+}
+
+/// Whether a declaration on `masked_line` names `name`, and the header it was read through.
+///
+/// The declaration is read from its own line whenever that line says everything there is to say,
+/// which is the only shape the matcher ever had to read. A header that wraps — a parameter list, a
+/// generic list, a `throws` clause — is not readable that way, because the closing bracket sits on a
+/// later line; for those, [`declaration_across`] reads the header window instead. The line's own
+/// reading is what decides *whether* there is a declaration at all — a bare name that merely appears
+/// inside a wrapped construct must not become one — and the window is only asked where it ends.
+fn declaration_on(
+    masked_line: &str,
+    start: usize,
+    name: &str,
+    header: Header,
+    lex: &Lex,
+    line: usize,
+) -> Option<Declaration> {
+    if name.is_empty() || is_not_a_name(name) {
+        return None;
+    }
+
+    if let Some(keyword) = declaration_keyword(masked_line) {
+        if keyword.name == name {
+            let header_from = start + keyword.header_from;
+            return Some(Declaration {
+                kind: "class",
+                name: name.to_string(),
+                header: Header {
+                    start: header_from,
+                    ..header
+                },
+            });
+        }
+    }
+
+    if let Some(header_from) = call_shape(masked_line, name) {
+        let header_from = start + header_from;
+        return Some(Declaration {
+            kind: "method",
+            name: name.to_string(),
+            header: Header {
+                start: header_from,
+                ..header
+            },
+        });
+    }
+
+    if header.last > line {
+        // The header continues past this line, so the closing bracket a wrapped parameter list put
+        // there is only visible to the whole-window reading.
+        return declaration_across(&header, name, lex);
+    }
+
+    if let Some(header_from) = assigned_shape(masked_line, name) {
+        let header_from = start + header_from;
+        return Some(Declaration {
+            kind: "method",
+            name: name.to_string(),
+            header: Header {
+                start: header_from,
+                ..header
+            },
+        });
+    }
+
+    None
+}
+
+/// The same matchers, run over the whole header window instead of one line.
+///
+/// The window exists because a wrapped parameter list closes its bracket on a later line, and the
+/// matchers compare the text before a name to a return type / modifier list — so the name is looked
+/// for where it is written, and the brackets are matched across the lines that hold them. `name(`
+/// must still open the name, and the window still ends at the `{` or `;` that ends the header, so a
+/// name appearing inside a wrapped argument list is not a declaration.
+fn declaration_across(header: &Header, name: &str, lex: &Lex) -> Option<Declaration> {
+    let text = window_units(lex, header);
+    let needle = units(name);
+
+    // The `name(` form, with the text before the name **on its own line** validated by the same
+    // prefix rules the line-local matcher uses.
+    let mut from = 0usize;
+    while from <= text.len() {
+        let Some(at) = index_of(&text[from..], &needle, 0) else {
+            break;
+        };
+        let start = from + at;
+        from = start + needle.len().max(1);
+        if !window_boundary(&text, start) {
+            continue;
+        }
+        let mut open = start + needle.len();
+        while open < text.len() && is_blank_unit(text[open]) {
+            open += 1;
+        }
+        if text.get(open) != Some(&(b'(' as u16)) {
+            continue;
+        }
+        if !window_prefix(lex, header, start, true) {
+            continue;
+        }
+        if matching_bracket(&text, open, b')' as u16).is_none() {
+            continue;
+        }
+        return Some(Declaration {
+            kind: "method",
+            name: name.to_string(),
+            header: *header,
+        });
+    }
+
+    // The assigned form: `name = … =>` / `= function`.
+    let mut from = 0usize;
+    while from <= text.len() {
+        let Some(at) = index_of(&text[from..], &needle, 0) else {
+            break;
+        };
+        let start = from + at;
+        from = start + needle.len().max(1);
+        if !window_boundary(&text, start) {
+            continue;
+        }
+        if text
+            .get(start + needle.len())
+            .is_some_and(|unit| is_word_unit(*unit))
+        {
+            continue;
+        }
+        if !window_prefix(lex, header, start, false) {
+            continue;
+        }
+        let Some(after_head) = assigned_head(&text[start + needle.len()..]) else {
+            continue;
+        };
+        let rest = &text[start + needle.len() + after_head..];
+        if index_of(rest, &units("=>"), 0).is_some() || starts_with_word_units(rest, "function") {
+            return Some(Declaration {
+                kind: "method",
+                name: name.to_string(),
+                header: *header,
+            });
+        }
+    }
+
+    None
+}
+
+/// The window's text as units, clamped to the mask.
+fn window_units<'a>(lex: &'a Lex, header: &Header) -> &'a [u16] {
+    let start = header.start.min(lex.mask.len());
+    let end = header.end.min(lex.mask.len()).max(start);
+    &lex.mask[start..end]
+}
+
+/// Whether the unit before `at` may open a name — the JavaScript's `(^|[^\w$.])`.
+fn window_boundary(text: &[u16], at: usize) -> bool {
+    at == 0 || !(is_word_unit(text[at - 1]) || text[at - 1] == b'.' as u16)
+}
+
+/// Whether a unit is part of a name: the JavaScript's `\w` plus `$`.
+fn is_word_unit(unit: u16) -> bool {
+    (unit < 0x80 && (unit as u8).is_ascii_alphanumeric())
+        || unit == b'_' as u16
+        || unit == b'$' as u16
+}
+
+/// The prefix gate over the name's own line inside the window, or `false` when the text before the
+/// name disqualifies it. `normalise_func` is the call form's `func (r T) name` rewrite.
+fn window_prefix(lex: &Lex, header: &Header, column: usize, normalise_func: bool) -> bool {
+    let line = line_of(&lex.starts, header.start + column);
+    let line_start = lex.starts.get(line).copied().unwrap_or(0);
+    let end = (header.start + column)
+        .saturating_sub(line_start)
+        .min(lex.mask_lines.get(line).map_or(0, Vec::len));
+    let before = lex
+        .mask_lines
+        .get(line)
+        .map(|units| from_units(&units[..end]))
+        .unwrap_or_default();
+    let prefix = if normalise_func {
+        match allowed_prefix(&before) {
+            Some(prefix) => prefix,
+            None => return false,
+        }
+    } else {
+        before.trim().to_string()
+    };
+    prefix.is_empty() || (is_prefix(&prefix) && !starts_with_statement_before(&prefix))
+}
+
+/// `(?:const\s+|let\s+|var\s+)?name\b(?:\s*:\s*[^=\n]+)?\s*=\s*(?:async\s+)?` from just past a name:
+/// the offset just past the assignment head, or `None` when what follows is not one.
+fn assigned_head(tail: &[u16]) -> Option<usize> {
+    let mut at = 0usize;
+    let mut probe = 0usize;
+    while probe < tail.len() && is_blank_unit(tail[probe]) {
+        probe += 1;
+    }
+    if tail.get(probe) == Some(&(b':' as u16)) {
+        // A type annotation, up to the first `=`.
+        let mut after = probe + 1;
+        while after < tail.len() && is_blank_unit(tail[after]) {
+            after += 1;
+        }
+        while after < tail.len() && tail[after] != b'=' as u16 {
+            after += 1;
+        }
+        at = after;
+    }
+    while at < tail.len() && is_blank_unit(tail[at]) {
+        at += 1;
+    }
+    if tail.get(at) != Some(&(b'=' as u16)) {
+        return None;
+    }
+    at += 1;
+    while at < tail.len() && is_blank_unit(tail[at]) {
+        at += 1;
+    }
+    if starts_with_word_units(&tail[at..], "async") {
+        at += "async".len();
+        while at < tail.len() && is_blank_unit(tail[at]) {
+            at += 1;
+        }
+    }
+    Some(at)
+}
+
+/// Whether `text` opens with `word` followed by a non-word unit, as `\b` reads it.
+fn starts_with_word_units(text: &[u16], word: &str) -> bool {
+    let word = units(word);
+    text.len() >= word.len()
+        && text[..word.len()] == word[..]
+        && text.get(word.len()).is_none_or(|unit| !is_word_unit(*unit))
+}
+
 /// Scan a source for blocks and the indexable things in each scope: the block tree plus region pairs,
 /// condition literals and comment anchors, ready for resolution.
 pub fn scan_blocks(text: &str, lexer: &dyn Lexer) -> Result<Scan, SectionError> {
@@ -63,7 +412,13 @@ pub fn scan_blocks(text: &str, lexer: &dyn Lexer) -> Result<Scan, SectionError> 
 
     let mut blocks: Vec<BlockRef> = Vec::new();
     let root = Block::root();
-    let top = build_scope(&lex, lexer, 0, lex.lines.len().saturating_sub(1), &mut blocks);
+    let top = build_scope(
+        &lex,
+        lexer,
+        0,
+        lex.lines.len().saturating_sub(1),
+        &mut blocks,
+    );
     {
         let mut root_block = root.borrow_mut();
         root_block.children.extend(top.iter().cloned());
@@ -90,7 +445,13 @@ pub fn scan_blocks(text: &str, lexer: &dyn Lexer) -> Result<Scan, SectionError> 
         .filter_map(|block| block.borrow().anchor.clone())
         .collect();
 
-    Ok(Scan { root, blocks, regions, anchors, lex })
+    Ok(Scan {
+        root,
+        blocks,
+        regions,
+        anchors,
+        lex,
+    })
 }
 
 /// The lexical facts, with the mask invariant asserted for the supplied engine.
@@ -120,9 +481,21 @@ fn make_lex(source: &str, lexer: &dyn Lexer) -> Result<Lex, SectionError> {
 
     let mask_lines: Vec<Vec<u16>> = from_units(&mask).split('\n').map(units).collect();
     let comments = lexer.comments(source);
-    let annotation_lines = source_lines.iter().map(|line| lexer.is_annotation_line(line)).collect();
+    let annotation_lines = source_lines
+        .iter()
+        .map(|line| lexer.is_annotation_line(line))
+        .collect();
 
-    Ok(Lex { source: source.to_string(), source_lines, lines, starts, mask, mask_lines, comments, annotation_lines })
+    Ok(Lex {
+        source: source.to_string(),
+        source_lines,
+        lines,
+        starts,
+        mask,
+        mask_lines,
+        comments,
+        annotation_lines,
+    })
 }
 
 /// Build the blocks directly inside one scope, in source order.
@@ -153,12 +526,29 @@ fn build_scope(
         if !declared_here.is_empty() {
             let mut last_end = i;
             for entry in declared_here {
+                // A shape may close its body with a keyword line (`end` in Ruby, `End` in VB) rather
+                // than a brace, in which case the header is the declaration line itself; otherwise
+                // the header is the shape's own `headerFrom` through the end of its line.
                 let span = if entry.body.as_deref() == Some("end") {
                     keyword_body(&lex.lines, i, entry.end.as_deref().unwrap_or("end"))
                 } else {
-                    body_span(&lex.mask, &lex.mask_lines, &lex.starts, i, start + entry.header_from)
+                    body_span(
+                        &lex.mask,
+                        &lex.mask_lines,
+                        &lex.starts,
+                        i,
+                        Header {
+                            start: start + entry.header_from,
+                            end: start + lex.mask_lines[i].len(),
+                            last: i,
+                        },
+                    )
                 };
-                let kind = if entry.kind.is_empty() { "method" } else { entry.kind.as_str() };
+                let kind = if entry.kind.is_empty() {
+                    "method"
+                } else {
+                    entry.kind.as_str()
+                };
                 let block = Block::new(kind, Some(&entry.name), i);
                 match &span {
                     Some(span) => apply_span(&block, span),
@@ -181,7 +571,18 @@ fn build_scope(
         if let Some(keyword) = declaration_keyword(&masked_line) {
             if !is_not_a_name(&keyword.name) {
                 let header_from = start + keyword.header_from;
-                let span = body_span(&lex.mask, &lex.mask_lines, &lex.starts, i, header_from);
+                let window = header_window(lex, i);
+                let span = body_span(
+                    &lex.mask,
+                    &lex.mask_lines,
+                    &lex.starts,
+                    i,
+                    Header {
+                        start: header_from,
+                        end: window.end,
+                        last: window.last,
+                    },
+                );
                 let block = Block::new("class", Some(&keyword.name), i);
                 if let Some(span) = &span {
                     apply_span(&block, span);
@@ -194,13 +595,22 @@ fn build_scope(
             }
         }
 
-        if let Some((kind, name, header_from)) = method_declaration(&masked_line, start) {
-            let span = body_span(&lex.mask, &lex.mask_lines, &lex.starts, i, header_from);
-            if span.is_none() && kind == "bare" {
+        let window = header_window(lex, i);
+        if let Some((declaration, has_prefix)) =
+            method_declaration(&masked_line, start, window, lex, i)
+        {
+            let span = body_span(
+                &lex.mask,
+                &lex.mask_lines,
+                &lex.starts,
+                i,
+                declaration.header,
+            );
+            if span.is_none() && !has_prefix {
                 i += 1; // a bare `foo();` call, not a declaration
                 continue;
             }
-            let block = Block::new("method", Some(&name), i);
+            let block = Block::new("method", Some(&declaration.name), i);
             if let Some(span) = &span {
                 apply_span(&block, span);
             }
@@ -213,8 +623,14 @@ fn build_scope(
 
         if let Some((keyword, keyword_offset)) = statement_keyword(&masked_line) {
             if let Some(brace_pos) = index_of(&lex.mask, &[b'{' as u16], start) {
-                let segments =
-                    chain_segments(&lex.mask, &lex.starts, i, &keyword, brace_pos, keyword_offset);
+                let segments = chain_segments(
+                    &lex.mask,
+                    &lex.starts,
+                    i,
+                    &keyword,
+                    brace_pos,
+                    keyword_offset,
+                );
                 let mut last_close_line = i;
                 for segment in segments {
                     let block = Block::new("statement", None, segment.header_line);
@@ -238,7 +654,14 @@ fn build_scope(
                         close_line: Some(segment.close_line),
                         ..Span::default()
                     };
-                    descend(&block, segment.header_line, Some(&child_span), lex, lexer, blocks);
+                    descend(
+                        &block,
+                        segment.header_line,
+                        Some(&child_span),
+                        lex,
+                        lexer,
+                        blocks,
+                    );
                     last_close_line = last_close_line.max(segment.close_line);
                 }
                 i = last_close_line + 1;
@@ -269,8 +692,20 @@ fn build_scope(
     list
 }
 
-/// A method-shaped declaration on this line, or the `"bare"` marker that says "a call with no body".
-fn method_declaration(masked_line: &str, start: usize) -> Option<(String, String, usize)> {
+/// The method this line declares, and whether its call carried a prefix.
+///
+/// The call shape is tried at every `name(` the line spells, in order, and the declaration its name
+/// reads to is what decides — a wrapped parameter list closes its bracket on a later line, where only
+/// the header window can see it. A call with no prefix and no body is a statement, not a declaration;
+/// one that carries a prefix may still be a declaration whose body is on a later line, so the flag is
+/// what tells the caller "a bare `foo();`" from "a member with nothing to inject".
+fn method_declaration(
+    masked_line: &str,
+    start: usize,
+    window: Header,
+    lex: &Lex,
+    line: usize,
+) -> Option<(Declaration, bool)> {
     for (at, _) in masked_line.char_indices() {
         let Some((name, length)) = take_identifier(&masked_line[at..]) else {
             continue;
@@ -278,29 +713,60 @@ fn method_declaration(masked_line: &str, start: usize) -> Option<(String, String
         if is_not_a_name(name) {
             continue;
         }
-        let after = &masked_line[at + length..];
-        // Only a call position or an assignment can name a declaration.
         let before = &masked_line[..at];
-        let previous = before.chars().next_back();
-        if previous.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '.') {
+        if !quiet_prefix(before) {
             continue;
         }
-        if let Some(header_from) = call_shape(masked_line, name) {
-            let Some(prefix) = allowed_prefix(before) else {
-                continue;
-            };
-            // A call with no prefix and no body is a statement, not a declaration; one that does carry a
-            // prefix may still be a declaration whose body is on a later line.
-            let marker = if prefix.is_empty() { "bare" } else { "method" };
-            return Some((marker.to_string(), name.to_string(), start + header_from));
+        let after = &masked_line[at + length..];
+        if !after.trim_start().starts_with('(') {
+            continue;
         }
-        if after.trim_start().starts_with(':') || after.trim_start().starts_with('=') {
-            if let Some(header_from) = assigned_shape(masked_line, name) {
-                return Some(("method".to_string(), name.to_string(), start + header_from));
+        let Some(prefix) = allowed_prefix(before) else {
+            continue;
+        };
+        if let Some(found) = declaration_on(masked_line, start, name, window, lex, line) {
+            if found.kind == "method" {
+                return Some((found, !prefix.is_empty()));
+            }
+        }
+    }
+
+    // The assigned shape, read from its own line: `name = … =>` / `= function`.
+    for (at, _) in masked_line.char_indices() {
+        let Some((name, length)) = take_identifier(&masked_line[at..]) else {
+            continue;
+        };
+        if is_not_a_name(name) {
+            continue;
+        }
+        let before = &masked_line[..at];
+        if !quiet_prefix(before) {
+            continue;
+        }
+        let after = &masked_line[at + length..];
+        if !(after.trim_start().starts_with(':') || after.trim_start().starts_with('=')) {
+            continue;
+        }
+        let line_window = Header {
+            start,
+            end: start + masked_line.len(),
+            last: line,
+        };
+        if let Some(found) = declaration_on(masked_line, start, name, line_window, lex, line) {
+            if found.kind == "method" {
+                return Some((found, true));
             }
         }
     }
     None
+}
+
+/// Whether the text before a name can open one at all: the JavaScript's `(^|[^\w$.])`.
+fn quiet_prefix(before: &str) -> bool {
+    before
+        .chars()
+        .next_back()
+        .is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '$' || c == '.'))
 }
 
 /// The declaration prefix a call shape may carry, normalised: `None` when it may not precede a
@@ -318,7 +784,9 @@ fn allowed_prefix(before: &str) -> Option<String> {
         _ => trimmed.to_string(),
     };
     let normalised = normalised.trim().to_string();
-    if normalised.is_empty() || (is_prefix(&normalised) && !starts_with_statement_before(&normalised)) {
+    if normalised.is_empty()
+        || (is_prefix(&normalised) && !starts_with_statement_before(&normalised))
+    {
         Some(normalised)
     } else {
         None
@@ -359,8 +827,8 @@ fn chain_segments(
                         .filter(|word| is_continuation(word));
                     // A continuation only exists if a brace actually follows; without that guard the
                     // walk would jump backwards and never terminate.
-                    let next_open = continuation
-                        .and_then(|_| index_of(mask, &[b'{' as u16], i + 1));
+                    let next_open =
+                        continuation.and_then(|_| index_of(mask, &[b'{' as u16], i + 1));
                     if let (Some(word), Some(new_open)) = (continuation, next_open) {
                         segments.push(make_segment(
                             starts,
@@ -583,11 +1051,20 @@ mod tests {
         let lexer = lexer_for_path("Cart.java");
         let scan = scan_blocks(JAVA, &*lexer).expect("a scan");
 
-        let names: Vec<Option<String>> =
-            scan.blocks.iter().map(|block| block.borrow().name.clone()).collect();
+        let names: Vec<Option<String>> = scan
+            .blocks
+            .iter()
+            .map(|block| block.borrow().name.clone())
+            .collect();
         assert!(names.contains(&Some("Cart".to_string())), "{names:?}");
-        assert!(names.contains(&Some("add".to_string())), "a method: {names:?}");
-        assert!(names.contains(&Some("total".to_string())), "a property: {names:?}");
+        assert!(
+            names.contains(&Some("add".to_string())),
+            "a method: {names:?}"
+        );
+        assert!(
+            names.contains(&Some("total".to_string())),
+            "a property: {names:?}"
+        );
 
         // The method is in the class's scope, not the file's.
         let add = scan
@@ -622,7 +1099,11 @@ mod tests {
         assert_eq!(1, scan.regions.len());
         assert_eq!(
             ("wiring".to_string(), 0, 6),
-            (scan.regions[0].name.clone(), scan.regions[0].start_line, scan.regions[0].end_line),
+            (
+                scan.regions[0].name.clone(),
+                scan.regions[0].start_line,
+                scan.regions[0].end_line
+            ),
             "the region covers `#region` through `#endregion` inclusive"
         );
 
@@ -632,9 +1113,20 @@ mod tests {
             .filter(|block| block.borrow().kind == "statement")
             .cloned()
             .collect();
-        assert_eq!(2, statements.len(), "the `if` and its `else` are two segments");
-        assert!(statements[0].borrow().shared_close, "the first segment shares the close");
-        let conditions = statements[0].borrow().conditions.clone().expect("conditions");
+        assert_eq!(
+            2,
+            statements.len(),
+            "the `if` and its `else` are two segments"
+        );
+        assert!(
+            statements[0].borrow().shared_close,
+            "the first segment shares the close"
+        );
+        let conditions = statements[0]
+            .borrow()
+            .conditions
+            .clone()
+            .expect("conditions");
         assert_eq!(vec!["getUsers".to_string()], conditions.exact);
     }
 
@@ -655,7 +1147,10 @@ mod tests {
                 block_ref.name,
                 block_ref.open_line,
                 block_ref.close_line,
-                block_ref.anchor.as_ref().map(|anchor| (anchor.name.clone(), anchor.line))
+                block_ref
+                    .anchor
+                    .as_ref()
+                    .map(|anchor| (anchor.name.clone(), anchor.line))
             );
         }
         println!("comments: {}", scan.lex.comments.len());
@@ -733,13 +1228,21 @@ mod tests {
                 Vec::new()
             }
         }
-        let error = scan_blocks("class Cart {}\n", &ShortMask).expect_err("the invariant is enforced");
-        assert!(error.message().contains("preserve length"), "{}", error.message());
+        let error =
+            scan_blocks("class Cart {}\n", &ShortMask).expect_err("the invariant is enforced");
+        assert!(
+            error.message().contains("preserve length"),
+            "{}",
+            error.message()
+        );
     }
 
     #[test]
     fn the_default_engine_scans_an_unknown_type() {
         let scan = scan_blocks(JAVA, &DefaultLexer).expect("a scan");
-        assert!(scan.blocks.iter().any(|block| block.borrow().name.as_deref() == Some("Cart")));
+        assert!(scan
+            .blocks
+            .iter()
+            .any(|block| block.borrow().name.as_deref() == Some("Cart")));
     }
 }

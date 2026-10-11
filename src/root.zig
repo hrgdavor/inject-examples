@@ -22,6 +22,9 @@ const js = @import("js.zig");
 const section = @import("section.zig");
 const data_rules = @import("data_rules.zig");
 const lexers = @import("scanner/lexers.zig");
+/// The generated corpora, for the fixture texts the tests below resolve
+/// against — the same bytes `test.mjs` reads from `test/fixtures`.
+const vectors = @import("section_vectors.zig");
 
 /// The shared JavaScript runtime facts — code-unit strings, `String.prototype`
 /// equivalents, Node's UTF-8 — live in `js.zig` so every module of the port
@@ -1752,7 +1755,8 @@ const Language = struct {
 };
 
 /// GitHub's list of extensions to fence languages, where `typescript` is not
-/// `ts` and `.mjs` is `javascript`.
+/// `ts` and `.mjs` is `javascript`. The table mirrors `LANGUAGES` in `index.mjs`
+/// entry for entry, in its order.
 const LANGUAGES = [_]Language{
     .{ .extension = "c", .language = &lit("c") },
     .{ .extension = "h", .language = &lit("c") },
@@ -1761,28 +1765,41 @@ const LANGUAGES = [_]Language{
     .{ .extension = "cs", .language = &lit("csharp") },
     .{ .extension = "css", .language = &lit("css") },
     .{ .extension = "go", .language = &lit("go") },
+    .{ .extension = "hs", .language = &lit("haskell") },
+    .{ .extension = "lhs", .language = &lit("haskell") },
     .{ .extension = "htm", .language = &lit("html") },
     .{ .extension = "html", .language = &lit("html") },
+    .{ .extension = "cfg", .language = &lit("ini") },
     .{ .extension = "ini", .language = &lit("ini") },
+    .{ .extension = "properties", .language = &lit("ini") },
     .{ .extension = "java", .language = &lit("java") },
     .{ .extension = "cjs", .language = &lit("javascript") },
     .{ .extension = "js", .language = &lit("javascript") },
     .{ .extension = "mjs", .language = &lit("javascript") },
     .{ .extension = "jsx", .language = &lit("jsx") },
     .{ .extension = "json", .language = &lit("json") },
+    .{ .extension = "kt", .language = &lit("kotlin") },
+    .{ .extension = "kts", .language = &lit("kotlin") },
     .{ .extension = "md", .language = &lit("markdown") },
     .{ .extension = "markdown", .language = &lit("markdown") },
     .{ .extension = "php", .language = &lit("php") },
     .{ .extension = "pl", .language = &lit("perl") },
     .{ .extension = "py", .language = &lit("python") },
+    .{ .extension = "pyi", .language = &lit("python") },
     .{ .extension = "rb", .language = &lit("ruby") },
     .{ .extension = "rs", .language = &lit("rust") },
     .{ .extension = "bash", .language = &lit("bash") },
     .{ .extension = "sh", .language = &lit("bash") },
+    .{ .extension = "zsh", .language = &lit("bash") },
     .{ .extension = "sql", .language = &lit("sql") },
     .{ .extension = "toml", .language = &lit("toml") },
+    .{ .extension = "cts", .language = &lit("typescript") },
+    .{ .extension = "mts", .language = &lit("typescript") },
     .{ .extension = "ts", .language = &lit("typescript") },
     .{ .extension = "tsx", .language = &lit("tsx") },
+    .{ .extension = "bas", .language = &lit("vb") },
+    .{ .extension = "vb", .language = &lit("vb") },
+    .{ .extension = "vbs", .language = &lit("vb") },
     .{ .extension = "xml", .language = &lit("xml") },
     .{ .extension = "yaml", .language = &lit("yaml") },
     .{ .extension = "yml", .language = &lit("yaml") },
@@ -2125,9 +2142,16 @@ pub fn resolveMarker(
 
 /// `planMarker`: the text a marker stands for, plus the section warning the
 /// code rule may carry when a reference contradicts itself (§11).
+///
+/// `ranges` is the line span of each selector the reference named, for the code
+/// rule — the same answer `planSection` gives, so a host that highlights or
+/// navigates does not have to find the text again. A rule that *renders* its
+/// selection (JSON, YAML, TOML, INI) answers null: its selection is not a byte
+/// slice of the file.
 pub const MarkerPlan = struct {
     text: []u16,
     warning: ?section.Reference.Warning = null,
+    ranges: ?[]const section.LineSpan = null,
 };
 
 pub fn planMarker(
@@ -2155,9 +2179,34 @@ pub fn planMarker(
             error.Failed, error.Grammar => return failure.set(section_failure.message),
             else => |other| return other,
         };
-        return .{ .text = plan.text, .warning = plan.reference.warning };
+        return .{
+            .text = plan.text,
+            .warning = plan.reference.warning,
+            .ranges = plan.ranges,
+        };
     }
+    try rejectLineRange(alloc, region, rule, failure);
     return .{ .text = try rule.resolve(alloc, text, region, marker.path, failure) };
+}
+
+/// `rejectLineRange`: a line range is a code rule's syntax. A rule that renders
+/// its selection (JSON, YAML, TOML, INI) has no such slice to hand back, so
+/// `#L40-L44` in one of those files is a mistake worth reporting rather than a
+/// selection rendered into source of the format that would not mean anything.
+fn rejectLineRange(alloc: Allocator, reference: Str, rule: Rule, failure: *Failure) JsError!void {
+    var section_failure = section.Failure{};
+    const ref = section.parseSelectors(alloc, reference, &section_failure) catch |err| switch (err) {
+        error.Failed, error.Grammar => return failure.set(section_failure.message),
+        else => |other| return other,
+    };
+    for (ref.selectors.?) |selector| switch (selector) {
+        .path => {},
+        .lines => |line| return failure.set(try format(
+            alloc,
+            "\"#{s}\" is a line range, which only the code rule reads; \"{s}\" reads keys",
+            .{ line.raw, try dupAscii(alloc, rule.name) },
+        )),
+    };
 }
 
 fn isCodeRule(rule: Rule) bool {
@@ -2721,6 +2770,157 @@ test "extractDeclaration rejects ambiguous names and ignores calls" {
     try std.testing.expect((try extractDeclaration(alloc, bodiless, try context.units("add"), .declaration, &failure)) == null);
 }
 
+// A declaration whose header does not fit on one line is still a declaration:
+// the reference resolves, and resolves to the whole member. The failure this
+// guards against is not a wrong slice but *no match at all* — the name is
+// visible in the file, and a reference to it must resolve. `test.mjs` is the
+// specification; these are the same cases over the same fixtures.
+
+test "a declaration whose header does not fit on one line" {
+    var context: TestContext = undefined;
+    context.init();
+    defer context.deinit();
+    const alloc = context.alloc;
+    const java = try context.units(vectors.Wrapped_java);
+    const file = try context.units("x.java");
+    var failure = Failure{};
+
+    // The whole declaration: from the line the header starts on through its
+    // closing brace, parameters and all.
+    const render = "    public String render(\n" ++
+        "            String name,\n" ++
+        "            int quantity) {\n" ++
+        "        return name + \" x\" + quantity;\n" ++
+        "    }";
+    try expectText(render, try extractCodeRegion(alloc, java, try context.units("render"), file, &failure));
+
+    // The body alone: the signature (wrapped across lines) is dropped whole, and
+    // the span still starts after the `{` of the closing line.
+    try expectText(
+        "        return name + \" x\" + quantity;",
+        try extractCodeRegion(alloc, java, try context.units("render-"), file, &failure),
+    );
+
+    // The same declaration reached through its class scope, and a wrapped
+    // signature carrying a generic method's type parameters.
+    try expectText(render, try extractCodeRegion(alloc, java, try context.units("Wrapped/render"), file, &failure));
+    try expectText(
+        "    public <T extends Comparable<T>> T widest(\n" ++
+            "            T left,\n" ++
+            "            T right) {\n" ++
+            "        return left.compareTo(right) >= 0 ? left : right;\n" ++
+            "    }",
+        try extractCodeRegion(alloc, java, try context.units("widest"), file, &failure),
+    );
+
+    // A `throws` clause on its own line is part of the header, and the body
+    // scope starts after the brace the wrapped header ends on.
+    try expectText(
+        "    public void store(\n" ++
+            "            String name,\n" ++
+            "            int quantity)\n" ++
+            "            throws IllegalStateException {\n" ++
+            "        this.name = name;\n" ++
+            "    }",
+        try extractCodeRegion(alloc, java, try context.units("store"), file, &failure),
+    );
+    try expectText(
+        "        this.name = name;",
+        try extractCodeRegion(alloc, java, try context.units("store-"), file, &failure),
+    );
+
+    // The `+` scope reaches the annotation above a header that wraps.
+    try expectText(
+        "    @Override\n    public String toString(\n    ) {\n        return name;\n    }",
+        try extractCodeRegion(alloc, java, try context.units("toString+"), file, &failure),
+    );
+}
+
+test "a wrapped class header is a declaration too" {
+    var context: TestContext = undefined;
+    context.init();
+    defer context.deinit();
+    const alloc = context.alloc;
+    const java = try context.units(vectors.WrappedClass_java);
+    const file = try context.units("x.java");
+    var failure = Failure{};
+
+    // The class line is two lines longer than the rule of thumb allows: the type
+    // parameters, the `extends` and the `implements` each get their own line, and
+    // the body only opens after them.
+    try expectText(
+        "public class Wrapped<\n" ++
+            "        T extends Comparable<T>,\n" ++
+            "        U extends CharSequence>\n" ++
+            "        extends AbstractBase\n" ++
+            "        implements Renderer<T> {\n" ++
+            "\n" ++
+            "    public T best(\n" ++
+            "            T left,\n" ++
+            "            T right) {\n" ++
+            "        return left.compareTo(right) >= 0 ? left : right;\n" ++
+            "    }",
+        try extractCodeRegion(alloc, java, try context.units("Wrapped"), file, &failure),
+    );
+
+    // The member whose parameters wrap is reachable through that class scope,
+    // and by its own name.
+    try expectText(
+        "    public T best(\n            T left,\n            T right) {\n" ++
+            "        return left.compareTo(right) >= 0 ? left : right;\n    }",
+        try extractCodeRegion(alloc, java, try context.units("Wrapped/best"), file, &failure),
+    );
+}
+
+test "a wrapped header does not invent declarations" {
+    var context: TestContext = undefined;
+    context.init();
+    defer context.deinit();
+    const alloc = context.alloc;
+    const file = try context.units("x.java");
+    var failure = Failure{};
+
+    // A call whose arguments wrap is still a call: without a body there is
+    // nothing to inject, and `run/wrappedCall` must keep failing.
+    const source = try context.units(
+        "class Svc {\n" ++
+            "    void run() {\n" ++
+            "        wrappedCall(\n" ++
+            "            1,\n" ++
+            "            2);\n" ++
+            "    }\n" ++
+            "\n" ++
+            "    void wrappedCall(\n" ++
+            "            int a,\n" ++
+            "            int b) {\n" ++
+            "        work();\n" ++
+            "    }\n" ++
+            "}",
+    );
+    try expectText(
+        "    void wrappedCall(\n            int a,\n            int b) {\n        work();\n    }",
+        try extractCodeRegion(alloc, source, try context.units("wrappedCall"), file, &failure),
+    );
+    // The call inside `run` is reached only by naming its scope, and it is a
+    // call, not a declaration there: nothing is injected for it.
+    try std.testing.expectError(
+        error.Failed,
+        extractCodeRegion(alloc, source, try context.units("run/wrappedCall"), file, &failure),
+    );
+    try expectFailure("no section named \"wrappedCall\" in \"run\"", failure);
+
+    // A body-less member still has nothing to inject, however its header wraps:
+    // the name is matched, and what it contributes is nothing at all.
+    const iface = try context.units(
+        "interface I {\n    void bar(\n            int x);\n    void baz() {\n        work();\n    }\n}",
+    );
+    try expectText(
+        "    void baz() {\n        work();\n    }",
+        try extractCodeRegion(alloc, iface, try context.units("baz"), file, &failure),
+    );
+    try expectText("", try extractCodeRegion(alloc, iface, try context.units("bar"), file, &failure));
+}
+
 test "extractCodeRegion prefers an explicit region directive" {
     var context: TestContext = undefined;
     context.init();
@@ -2888,6 +3088,56 @@ test "resolveMarker resolves a region by the file type" {
         JSON_DOC,
         try resolveMarker(alloc, whole, read, ruleFor(whole.path, &REGION_RULES), &failure),
     );
+}
+
+test "planMarker carries the ranges of the code rule, and none for a rendered rule" {
+    var context: TestContext = undefined;
+    context.init();
+    defer context.deinit();
+    const alloc = context.alloc;
+
+    const range_source = "one\ntwo\nthree\nfour\n";
+    const stub = Stub{ .files = &.{
+        .{ .path = "a.java", .content = range_source },
+        .{ .path = "a.json", .content = "{\"a\": 1}" },
+    } };
+    const read = stub.reader();
+    var failure = Failure{};
+
+    // `L2-L3` is `two\nthree`, and the span a host navigates to rides along.
+    const code = parseMarker(try context.units("[a.java](./a.java#L2-L3)")).?;
+    const plan = try planMarker(alloc, code, read, ruleFor(code.path, &REGION_RULES), &failure);
+    try expectText("two\nthree", plan.text);
+    try std.testing.expect(plan.ranges != null);
+    try std.testing.expectEqual(@as(usize, 1), plan.ranges.?.len);
+    try std.testing.expectEqual(@as(usize, 2), plan.ranges.?[0].from);
+    try std.testing.expectEqual(@as(usize, 3), plan.ranges.?[0].to);
+
+    // A rendered rule answers null: its selection is not a byte slice.
+    const json = parseMarker(try context.units("[a.json](./a.json#a)")).?;
+    const rendered = try planMarker(alloc, json, read, ruleFor(json.path, &REGION_RULES), &failure);
+    try expectText("{\n  \"a\": 1\n}", rendered.text);
+    try std.testing.expect(rendered.ranges == null);
+
+    // A whole file is every line, and the document already knows that.
+    const whole = parseMarker(try context.units("[a.java](./a.java)")).?;
+    try std.testing.expect(
+        (try planMarker(alloc, whole, read, ruleFor(whole.path, &REGION_RULES), &failure)).ranges == null,
+    );
+
+    // A line range is a code rule's syntax: a rule that renders its selection
+    // has no such slice to hand back, and says so.
+    const rejected = parseMarker(try context.units("[a.json](./a.json#L1)")).?;
+    try std.testing.expectError(
+        error.Failed,
+        planMarker(alloc, rejected, read, ruleFor(rejected.path, &REGION_RULES), &failure),
+    );
+    try expectFailure("\"#L1\" is a line range, which only the code rule reads; \"json\" reads keys", failure);
+
+    // The comma is still the data rules' own contract when no range is named.
+    var ok = Failure{};
+    const keys = parseMarker(try context.units("[a.json](./a.json#a)")).?;
+    try expectText("{\n  \"a\": 1\n}", try resolveMarker(alloc, keys, read, ruleFor(keys.path, &REGION_RULES), &ok));
 }
 
 test "parseMarker reads whole-file and region markers" {

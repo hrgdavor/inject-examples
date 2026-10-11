@@ -1,5 +1,6 @@
-//! Resolution (`planSection`/`resolveSection`/`extractDeclaration`): turning a parsed reference into
-//! text, a line span and the matcher that found it.
+//! Resolution (`planSection`/`resolveSection`/`extractDeclaration`) and the reference grammar it
+//! consumes: turning a reference into text, the line ranges that text came from, and the matcher that
+//! found it.
 //!
 //! The walk is the interesting part. It is **sibling-first and level-order**: within one scope the
 //! matchers are tried in precedence order (region, anchor-into-this-block, class, method, property,
@@ -7,24 +8,535 @@
 //! candidate that cannot hold the rest of the path gives way to the next one at the same level — but the
 //! **last** segment is not retried, because its first match in walk order is the selection.
 //!
-//! The span and the `kind` are not decoration: a host navigates to the span and explains itself with the
-//! kind, and both come from the same slice the text was made from, so no second search can disagree with
-//! the first answer.
+//! A reference is one or more **selectors** separated by `,`, each a semantic path or a line range
+//! (`L40:12-L44:3`). Each selector contributes its own text, rendered under its own scope, and the texts
+//! are joined with a newline; the line ranges and the `kind` are the same slice the text was made from,
+//! so no second search can disagree with the first answer.
 
 use crate::block::{Block, BlockRef, Region, Scan};
 use crate::lexer::Lexer;
-use crate::mask::{bracket_balance, end_of_line, line_of};
+use crate::mask::{bracket_balance, end_of_line, line_of, units};
 use crate::scanner::{scan_blocks, Lex};
-use crate::{Reference, Scope, SectionError, SectionReferenceError};
+use crate::{Reference, Scope, SectionError, SectionReferenceError, Warning};
 
-/// What a reference resolved to: the text, the parsed reference, the **1-based inclusive** line range
-/// the text came from, and the matcher that found it.
+// ---------------------------------------------------------------------------
+// The reference grammar: one path selector, or a comma-separated selector list
+// ---------------------------------------------------------------------------
+
+/// One endpoint of a line range: a 1-based line, and a 1-based column or `None` for the whole line.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LinePoint {
+    pub line: usize,
+    pub column: Option<usize>,
+}
+
+/// A line range as the grammar read it, before it is resolved against a file.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct ParsedRange {
+    pub from: LinePoint,
+    pub to: Option<LinePoint>,
+}
+
+/// One selector of a reference: a semantic path, resolved by the matcher precedence and the
+/// sibling-first walk, or an explicit line range, which selects verbatim lines and consults no matcher.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Selector {
+    /// A semantic path. `raw` is the selector as written — for the last one, without the modifier run
+    /// that belongs to the whole reference — and `scope` is the share *this* selector asks for.
+    Path {
+        raw: String,
+        segments: Vec<String>,
+        scope: Scope,
+    },
+    /// Verbatim lines: no name, no matcher, no scope and no modifier of its own.
+    Lines {
+        raw: String,
+        from: LinePoint,
+        to: Option<LinePoint>,
+    },
+}
+
+impl Selector {
+    /// The selector as written.
+    pub fn raw(&self) -> &str {
+        match self {
+            Selector::Path { raw, .. } | Selector::Lines { raw, .. } => raw,
+        }
+    }
+}
+
+/// The single modifier a selector or a whole reference carries, once its tokens are merged.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum MergedModifier {
+    /// One modifier: `++`, `+` or `-`.
+    Sole(&'static str),
+    /// `+`/`++` against `-`: the positive reading wins, and the user is told.
+    Contradiction {
+        kept: &'static str,
+        dropped: &'static str,
+    },
+}
+
+impl MergedModifier {
+    /// The spelling a merged modifier takes at the end of a canonical reference.
+    fn spelling(self) -> &'static str {
+        match self {
+            MergedModifier::Sole(modifier) => modifier,
+            MergedModifier::Contradiction { kept, .. } => kept,
+        }
+    }
+
+    fn scope(self) -> Scope {
+        crate::scope_from_modifier(Some(self.spelling()))
+    }
+
+    fn warning(self, canonical: &str) -> Option<Warning> {
+        match self {
+            MergedModifier::Sole(_) => None,
+            MergedModifier::Contradiction { kept, dropped } => Some(Warning {
+                kind: "contradiction",
+                kept,
+                dropped,
+                canonical: canonical.to_string(),
+                message: format!("\"{kept}\" contradicts \"{dropped}\"; using \"#{canonical}\""),
+            }),
+        }
+    }
+}
+
+/// The reference's own modifier, detached from the front of the whole reference.
+struct LeadingModifier {
+    modifier: Option<&'static str>,
+    remainder: String,
+}
+
+/// The longest prefix of `raw` that is a modifier run (`+`, `++`, `-`).
+fn detach_leading_modifier(raw: &str) -> LeadingModifier {
+    if let Some(rest) = raw.strip_prefix("++") {
+        return LeadingModifier {
+            modifier: Some("++"),
+            remainder: rest.to_string(),
+        };
+    }
+    if let Some(rest) = raw.strip_prefix('+') {
+        return LeadingModifier {
+            modifier: Some("+"),
+            remainder: rest.to_string(),
+        };
+    }
+    if let Some(rest) = raw.strip_prefix('-') {
+        return LeadingModifier {
+            modifier: Some("-"),
+            remainder: rest.to_string(),
+        };
+    }
+    LeadingModifier {
+        modifier: None,
+        remainder: raw.to_string(),
+    }
+}
+
+/// Whether `text` can open an identifier.
+fn starts_with_word(text: &str) -> bool {
+    text.chars().next().is_some_and(|character| {
+        character.is_ascii_alphanumeric() || character == '_' || character == '$'
+    })
+}
+
+/// Whether `text` can open a path selector at all (`[\w$/+-]`).
+fn starts_with_path(text: &str) -> bool {
+    text.chars().next().is_some_and(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '_' | '$' | '/' | '+' | '-')
+    })
+}
+
+/// Combine the modifier tokens one selector carries into the single modifier it has, or fail when they
+/// cannot be combined.
+///
+/// `+` against `-` is the one contradiction: the reference asks for the declaration *with* its
+/// annotations and for the *body* alone, and no section is both. That is worth a warning rather than an
+/// error, because it is what a human types while refactoring — the annotation reading wins, and the
+/// caller reports it once. The same modifier twice is malformed.
+fn merge_modifiers(
+    modifiers: &[&'static str],
+    raw: &str,
+) -> Result<Option<MergedModifier>, SectionReferenceError> {
+    if modifiers.is_empty() {
+        return Ok(None);
+    }
+    if modifiers.len() == 1 {
+        return Ok(Some(MergedModifier::Sole(modifiers[0])));
+    }
+
+    let positive = modifiers
+        .iter()
+        .filter(|modifier| modifier.starts_with('+'))
+        .count();
+    let negative = modifiers
+        .iter()
+        .filter(|modifier| modifier.starts_with('-'))
+        .count();
+    if positive > 1 || negative > 1 {
+        return Err(SectionReferenceError::new(format!(
+            "\"#{raw}\" carries more than one modifier"
+        )));
+    }
+    let kept = if modifiers.contains(&"++") { "++" } else { "+" };
+    Ok(Some(MergedModifier::Contradiction { kept, dropped: "-" }))
+}
+
+/// A decimal digit, as `\d` reads it in the grammar's own patterns.
+fn is_digit(character: char) -> bool {
+    character.is_ascii_digit()
+}
+
+/// Does this selector at least begin like a line range (`L40`)?
+pub(crate) fn is_line_range_prefix(raw: &str) -> bool {
+    let mut characters = raw.chars();
+    characters.next() == Some('L') && characters.next().is_some_and(is_digit)
+}
+
+/// Read `L<point>` and `L<point>-L<point>`, and nothing else.
+///
+/// A line range takes no modifier: there is nothing about a verbatim slice of lines for `+` to add, and
+/// the `-` of the range is already spoken for, so a selector that is not exactly one of the two forms
+/// is not a range at all.
+fn split_range_modifier(raw: &str) -> Option<()> {
+    let characters: Vec<char> = raw.chars().collect();
+    let mut at = 0usize;
+    for endpoint in 0..2 {
+        if endpoint == 1 {
+            if characters.get(at) != Some(&'-') {
+                return None;
+            }
+            at += 1;
+        }
+        if characters.get(at) != Some(&'L')
+            || !characters.get(at + 1).copied().is_some_and(is_digit)
+        {
+            return None;
+        }
+        at += 2;
+        while characters.get(at).copied().is_some_and(is_digit) {
+            at += 1;
+        }
+        if characters.get(at) == Some(&':') {
+            if !characters.get(at + 1).copied().is_some_and(is_digit) {
+                return None;
+            }
+            at += 2;
+            while characters.get(at).copied().is_some_and(is_digit) {
+                at += 1;
+            }
+        }
+        // An endpoint is complete here; a second `-` starts the range's other end.
+        if characters.get(at) == Some(&'-') {
+            continue;
+        }
+        break;
+    }
+    if at == characters.len() {
+        Some(())
+    } else {
+        None
+    }
+}
+
+/// The digits at the front of `raw`, and what follows them.
+fn take_digits(raw: &str) -> Option<(&str, &str)> {
+    let end = raw
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(raw.len());
+    if end == 0 {
+        return None;
+    }
+    Some((&raw[..end], &raw[end..]))
+}
+
+/// `:digits` at the front of `raw`, or no column at all.
+fn take_column(raw: &str) -> Option<(Option<usize>, &str)> {
+    let Some(rest) = raw.strip_prefix(':') else {
+        return Some((None, raw));
+    };
+    let (digits, rest) = take_digits(rest)?;
+    Some((Some(number(digits)), rest))
+}
+
+/// A line or column number. A spelling too long for a `usize` is still "far past the file", which is
+/// all the reader does with it.
+fn number(digits: &str) -> usize {
+    digits.parse::<usize>().unwrap_or(usize::MAX)
+}
+
+/// The two endpoints of a core `split_range_modifier` accepted.
+fn range_endpoints(core: &str) -> Option<(LinePoint, Option<LinePoint>)> {
+    let rest = core.strip_prefix('L')?;
+    let (line_text, rest) = take_digits(rest)?;
+    let (column, rest) = take_column(rest)?;
+    let from = LinePoint {
+        line: number(line_text),
+        column,
+    };
+    if rest.is_empty() {
+        return Some((from, None));
+    }
+    let rest = rest.strip_prefix("-L")?;
+    let (line_text, rest) = take_digits(rest)?;
+    let (column, rest) = take_column(rest)?;
+    if !rest.is_empty() {
+        return None;
+    }
+    Some((
+        from,
+        Some(LinePoint {
+            line: number(line_text),
+            column,
+        }),
+    ))
+}
+
+/// Read `raw` as a line-range selector, or return `None` when it is not one.
+///
+/// The accepted spellings are `L40` (one line), `L40:12` (from column 12 of that line), `L40-L44` and
+/// `L40:12-L44:3`. An endpoint ending in `:` is deliberately not accepted: it would mean "to the end of
+/// the line", which writing the point alone already says.
+///
+/// Fails when the text claims to be a line range and is not one — `L40-`, `L40:x`, `L0`, `L5-L2`, and a
+/// range carrying a modifier (`L40-L44+`) — because a reference that opens `L<digit>` is a line range or
+/// a typo, never a name. (`Lx` is still a name: it does not open with a digit, so it parses as a path.)
+pub(crate) fn line_range_of(raw: &str) -> Result<Option<ParsedRange>, SectionReferenceError> {
+    if !is_line_range_prefix(raw) {
+        return Ok(None);
+    }
+
+    let malformed = || {
+        SectionReferenceError::new(format!(
+            "\"#{raw}\" is not a line range; write L<line> or L<line>:<column>"
+        ))
+    };
+    if split_range_modifier(raw).is_none() {
+        return Err(malformed());
+    }
+    let Some((from, to)) = range_endpoints(raw) else {
+        return Err(malformed());
+    };
+
+    let zero = |at: LinePoint| at.line < 1 || at.column.is_some_and(|column| column < 1);
+    if zero(from) || to.is_some_and(zero) {
+        return Err(SectionReferenceError::new(format!(
+            "\"#{raw}\" counts lines and columns from 1"
+        )));
+    }
+    if let Some(to) = to {
+        let backwards = to.line < from.line
+            || (to.line == from.line
+                && to.column.is_some()
+                && from.column.is_some()
+                && to.column < from.column);
+        if backwards {
+            return Err(SectionReferenceError::new(format!(
+                "\"#{raw}\" ends before it starts"
+            )));
+        }
+    }
+
+    Ok(Some(ParsedRange { from, to }))
+}
+
+/// Read a whole reference as its selectors, or fail.
+///
+/// A reference is one or more selectors separated by `,`: each is either a semantic path
+/// (`Cart/Line/render-`) or a line range (`L40:12-L44:3`). A single path selector is the degenerate
+/// case of it: everything [`parse_reference`](crate::parse_reference) accepts parses here to the same
+/// canonical spelling, the same segments and the same scope.
+///
+/// Two modifiers with two readings are only ambiguous when they land on the **same** selector, because
+/// then neither says which reading was meant. A leading or trailing modifier of the whole reference
+/// therefore belongs to the **last** selector, exactly as it belonged to the last path segment before;
+/// a modifier written on a selector's own path is that selector's and nobody else's, so `add-,render++`
+/// is two selectors that each say what they mean. A line range has no modifier of its own and takes
+/// none: its own `-` is spoken for, so a range carrying one is malformed.
+///
+/// # Errors
+///
+/// Returns a [`SectionReferenceError`] whose message is part of the contract when the reference is
+/// malformed: nothing named, an empty selector, a malformed line range, or more than one modifier on
+/// one selector.
+pub fn parse_selectors(raw: &str) -> Result<Reference, SectionReferenceError> {
+    if raw.is_empty() {
+        return Err(SectionReferenceError::new("\"#\" names nothing"));
+    }
+
+    let leading = detach_leading_modifier(raw);
+    if leading.remainder.is_empty() {
+        return Err(SectionReferenceError::new(format!(
+            "\"#{raw}\" names nothing"
+        )));
+    }
+
+    let parts: Vec<&str> = leading.remainder.split(',').collect();
+    if parts.iter().any(|part| part.trim().is_empty()) {
+        return Err(SectionReferenceError::new(format!(
+            "\"#{raw}\" has an empty selector"
+        )));
+    }
+    let last_part = parts.len() - 1;
+
+    // The reference's own modifier: the leading one, the trailing one, or both. It is collected
+    // separately from a selector's own run because only it can reach the last selector's path (`-a/b`
+    // is `a/b-`). A line range is read first and on its own: a range takes no modifier at all.
+    let mut reference_modifiers: Vec<&'static str> = leading.modifier.into_iter().collect();
+    let last_text = parts[last_part].trim();
+    if line_range_of(last_text)?.is_none() {
+        let (written_name, written_tokens) = crate::extract_trailing_modifier(last_text);
+        let parsed_last = if starts_with_word(&written_name) {
+            Some(crate::parse_reference(&written_name)?)
+        } else {
+            None
+        };
+        // The trailing run of the last selector is the reference's own, and so is a run written
+        // further up that selector's path (`a-/b++`): it is read back from the path's canonical
+        // spelling, which is where a modifier has always been canonicalised to.
+        let suffix = match &parsed_last {
+            Some(parsed) if !parsed.segments.is_empty() => {
+                let head = parsed.segments.join("/");
+                parsed
+                    .canonical
+                    .strip_prefix(&head)
+                    .unwrap_or("")
+                    .to_string()
+            }
+            _ => String::new(),
+        };
+        reference_modifiers.extend(written_tokens);
+        reference_modifiers.extend(crate::tokenize_modifier_run(&suffix));
+    }
+    let modifier = merge_modifiers(&reference_modifiers, raw)?;
+
+    let mut selectors: Vec<Selector> = Vec::new();
+    for (index, part) in parts.iter().enumerate() {
+        let trimmed = part.trim();
+
+        // A selector that opens `L<digit>` is a line range, and is read as one before anything is
+        // stripped from it: a range takes no modifier at all.
+        if index == last_part || is_line_range_prefix(trimmed) {
+            let text = if index == last_part {
+                last_text
+            } else {
+                trimmed
+            };
+            if let Some(range) = line_range_of(text)? {
+                selectors.push(Selector::Lines {
+                    raw: trimmed.to_string(),
+                    from: range.from,
+                    to: range.to,
+                });
+                continue;
+            }
+        }
+
+        // The last selector is read without the run that is the reference's own, so the reference's
+        // modifier and the selector's are compared rather than counted twice.
+        let text = if index == last_part {
+            crate::extract_trailing_modifier(trimmed).0
+        } else {
+            trimmed.to_string()
+        };
+
+        // A path is a name. What cannot even open a name — `@x` — names nothing; anything else is read
+        // by the single-selector grammar, whose own errors quote the selector and are the ones a user
+        // needs to see.
+        if !starts_with_path(&text) {
+            return Err(SectionReferenceError::new(format!(
+                "\"#{text}\" names nothing"
+            )));
+        }
+        let parsed = crate::parse_reference(&text)?;
+        // The reference's own modifier applies to the last selector, as it has always applied to the
+        // last path segment; every earlier selector keeps the scope its own spelling gave it.
+        let scope = if index == last_part {
+            modifier.map_or(parsed.scope, MergedModifier::scope)
+        } else {
+            parsed.scope
+        };
+        selectors.push(Selector::Path {
+            raw: text,
+            segments: parsed.segments,
+            scope,
+        });
+    }
+
+    // Every selector but the last keeps the spelling it was written with — its modifier included, since
+    // that modifier belongs to that selector. The last one is spelled from its parsed path, with the
+    // reference's own modifier appended, which is where a modifier has always been canonicalised to.
+    let spellings: Vec<String> = selectors
+        .iter()
+        .enumerate()
+        .map(|(index, selector)| match selector {
+            Selector::Lines { raw, .. } => raw.clone(),
+            Selector::Path { raw, segments, .. } => {
+                if index == selectors.len() - 1 {
+                    segments.join("/")
+                } else {
+                    raw.clone()
+                }
+            }
+        })
+        .collect();
+    let canonical = format!(
+        "{}{}",
+        spellings.join(","),
+        modifier.map_or("", MergedModifier::spelling)
+    );
+
+    // A reference of one path selector carries a scope the resolver applies; in a mixed reference the
+    // reference's modifier belongs to the last path selector, and a line range has no scope at all.
+    let sole = if selectors.len() == 1 {
+        selectors.first()
+    } else {
+        None
+    };
+    let scope = match sole {
+        Some(Selector::Path { scope, .. }) => modifier.map_or(*scope, MergedModifier::scope),
+        _ => Scope::Declaration,
+    };
+    let segments = match sole {
+        Some(Selector::Path { segments, .. }) => segments.clone(),
+        _ => Vec::new(),
+    };
+    let warning = modifier.and_then(|modifier| modifier.warning(&canonical));
+
+    Ok(Reference {
+        raw: raw.to_string(),
+        canonical,
+        selectors,
+        segments,
+        scope,
+        warning,
+    })
+}
+
+/// A **1-based inclusive** line range: where a slice of text came from, or one selector's own bounds.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LineRange {
+    pub from: usize,
+    pub to: usize,
+}
+
+/// What a reference resolved to: the text, the parsed reference, the **1-based inclusive** line ranges
+/// each contribution came from, and the matcher that found it.
 #[derive(Clone, Debug)]
 pub struct Plan {
     pub text: String,
     pub reference: Reference,
+    /// The outermost bound of [`Plan::ranges`], so a host that only navigates once has one number.
     pub start_line: usize,
     pub end_line: usize,
+    /// One range per contribution, in the order the selectors were written, with adjacent ones merged —
+    /// so a reference that names two far-apart pieces highlights the two pieces and not the gap.
+    pub ranges: Vec<LineRange>,
+    /// The matcher that found the text: `region`, `declaration`, `property`, `condition`, `anchor`,
+    /// `lines` for a line range, or `multiple` when the reference had several selectors.
     pub kind: String,
 }
 
@@ -75,11 +587,21 @@ struct Hit {
 
 impl Hit {
     fn of(kind: &str, block: &BlockRef, line: Option<usize>) -> Self {
-        Hit { kind: kind.to_string(), block: Some(block.clone()), line, region: None }
+        Hit {
+            kind: kind.to_string(),
+            block: Some(block.clone()),
+            line,
+            region: None,
+        }
     }
 
     fn of_region(region: &Region) -> Self {
-        Hit { kind: "region".to_string(), block: None, line: None, region: Some(region.clone()) }
+        Hit {
+            kind: "region".to_string(),
+            block: None,
+            line: None,
+            region: Some(region.clone()),
+        }
     }
 }
 
@@ -92,35 +614,305 @@ pub fn resolve_section(
     Ok(plan_section(text, reference, lexer)?.text)
 }
 
-/// Resolve a section reference to text, the line span it came from, and the matcher that found it.
+/// Resolve a section reference to text, the line ranges it came from, and the matcher that found it.
+///
+/// A reference is one or more selectors (`add,L40-L44`): each contributes its own text, rendered under
+/// its **own** scope, and the texts are joined with a newline in the order the selectors were written.
+/// [`Plan::ranges`] says where each contribution came from and [`Plan::start_line`]/[`Plan::end_line`]
+/// are the outermost bounds of the whole selection.
 pub fn plan_section(text: &str, reference: &str, lexer: &dyn Lexer) -> Result<Plan, PlanError> {
-    let parsed = crate::parse_reference(reference)?;
+    let parsed = parse_selectors(reference)?;
     let source = text.replace("\r\n", "\n");
     let scan = scan_blocks(&source, lexer)?;
+    let source_units = units(&scan.lex.source);
 
-    let found = resolve_path(&parsed.segments, 0, &scan.root, false, None, &scan, lexer)?;
+    let mut parts: Vec<Part> = Vec::new();
+    for selector in &parsed.selectors {
+        match selector {
+            Selector::Lines { raw, from, to } => {
+                let picked = line_range_span(&scan.lex, *from, *to, raw)?;
+                parts.push(Part {
+                    text: picked.text,
+                    kind: "lines".to_string(),
+                    ranges: vec![picked.range],
+                });
+            }
+            Selector::Path {
+                segments, scope, ..
+            } => {
+                let found = resolve_path(segments, 0, &scan.root, false, None, &scan, lexer)?;
+                parts.push(resolve_part(&found, *scope, &scan, lexer, &source_units)?);
+            }
+        }
+    }
 
-    let (rendered, kind) = match &found.region {
+    let text = parts
+        .iter()
+        .map(|part| part.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let ranges = merge_ranges(&parts);
+    let kind = if parts.len() == 1 {
+        parts[0].kind.clone()
+    } else {
+        "multiple".to_string()
+    };
+    let start_line = ranges.iter().map(|range| range.from).min().unwrap_or(1);
+    let end_line = ranges.iter().map(|range| range.to).max().unwrap_or(1);
+
+    Ok(Plan {
+        text,
+        reference: parsed,
+        start_line,
+        end_line,
+        ranges,
+        kind,
+    })
+}
+
+/// One selector's contribution: its text, the matcher that found it, and the lines it came from.
+struct Part {
+    text: String,
+    kind: String,
+    ranges: Vec<LineRange>,
+}
+
+/// One path selector's contribution: render the hit under the selector's own scope, then say which
+/// lines the text came from.
+///
+/// The slice is not always the rendered text's own span: for a condition literal it is the header line
+/// the matcher cites, and for a comment anchor it is the anchor line — the text and the place it came
+/// from are two answers to two different questions.
+fn resolve_part(
+    found: &Hit,
+    scope: Scope,
+    scan: &Scan,
+    lexer: &dyn Lexer,
+    source_units: &[u16],
+) -> Result<Part, PlanError> {
+    let (rendered, kind, slice) = match &found.region {
         Some(region) => {
             let from = region.start_line + 1;
-            let to = region.end_line;
-            (span(&slice(&scan.lex.source_lines, from, to), from, to), "region".to_string())
+            let rendered = span(
+                &slice(&scan.lex.source_lines, from, region.end_line),
+                from,
+                region.end_line,
+            );
+            // The region's own span is the rendered slice's: the directive lines are not part of it,
+            // and the slice is exactly the lines between them.
+            let slice = LineRange {
+                from: rendered.from,
+                to: rendered.to,
+            };
+            (rendered, "region".to_string(), slice)
         }
         None => {
-            let block = found.block.clone().ok_or_else(|| {
-                SectionError::new("a match without a block")
-            })?;
-            (render_block(&block, parsed.scope, &scan.lex, lexer, &found.kind), found.kind.clone())
+            let block = found
+                .block
+                .clone()
+                .ok_or_else(|| SectionError::new("a match without a block"))?;
+            let rendered = render_block(&block, scope, &scan.lex, lexer, &found.kind);
+            let kind = found.kind.clone();
+            let slice = if kind == "condition" {
+                // The header line the matcher cites leads the block's own first line.
+                LineRange {
+                    from: found.line.unwrap_or(0) + 1,
+                    to: last_declaration_line(&block) + 1,
+                }
+            } else if kind == "anchor" {
+                let anchor_line = {
+                    let block_ref = block.borrow();
+                    block_ref
+                        .anchor
+                        .as_ref()
+                        .map(|anchor| anchor.line)
+                        .unwrap_or(block_ref.decl_line)
+                };
+                LineRange {
+                    from: anchor_line + 1,
+                    to: last_declaration_line(&block) + 1,
+                }
+            } else {
+                LineRange {
+                    from: rendered.from,
+                    to: rendered.to,
+                }
+            };
+            (rendered, kind, slice)
         }
     };
 
-    Ok(Plan {
+    // A rendering may prepend a line of its own invention — the `if` of a condition literal, the header
+    // of a chain segment — before the lines the reference names; the lead is the header line's own, and
+    // only the rest of the text belongs to the lines that follow.
+    let lead = head_lead(source_units, &scan.lex.starts, slice, &rendered.text);
+    let ranges = slice_ranges(slice, &units(&rendered.text), lead);
+    Ok(Part {
         text: rendered.text,
-        reference: parsed,
-        start_line: rendered.from,
-        end_line: rendered.to,
         kind,
+        ranges,
     })
+}
+
+/// How many UTF-16 code units of `rendered` are the source's own lines for `slice`, or 0 when the
+/// rendering prepends (or shortens) something of its own invention.
+fn head_lead(source: &[u16], starts: &[usize], slice: LineRange, rendered: &str) -> usize {
+    let head = source_slice(source, starts, slice);
+    if units(rendered).starts_with(head) {
+        head.len()
+    } else {
+        0
+    }
+}
+
+/// `source.slice(starts[slice.from - 1], starts[slice.to])`, in UTF-16 code units. The last line of the
+/// file has no start after it, and the slice then runs to the end.
+fn source_slice<'a>(source: &'a [u16], starts: &[usize], slice: LineRange) -> &'a [u16] {
+    let start = starts
+        .get(slice.from.saturating_sub(1))
+        .copied()
+        .unwrap_or(0)
+        .min(source.len());
+    let end = starts
+        .get(slice.to)
+        .copied()
+        .unwrap_or(source.len())
+        .min(source.len());
+    if start >= end {
+        &source[start..start]
+    } else {
+        &source[start..end]
+    }
+}
+
+/// Where one rendered slice came from: its line range, split in two when the rendering prepends a line
+/// of its own invention before the lines the reference names.
+fn slice_ranges(range: LineRange, text: &[u16], lead: usize) -> Vec<LineRange> {
+    if lead == 0 || lead >= text.len() {
+        return vec![range];
+    }
+    let lines_taken = text[lead..]
+        .iter()
+        .filter(|unit| **unit == b'\n' as u16)
+        .count()
+        + 1;
+    vec![
+        LineRange {
+            from: range.from,
+            to: range.from,
+        },
+        LineRange {
+            from: (range.from + 1).max(range.to.saturating_sub(lines_taken).saturating_add(1)),
+            to: range.to,
+        },
+    ]
+}
+
+/// The parts' ranges in order, merging the ones that touch or overlap.
+fn merge_ranges(parts: &[Part]) -> Vec<LineRange> {
+    let mut ranges: Vec<LineRange> = Vec::new();
+    for part in parts {
+        for range in &part.ranges {
+            match ranges.last_mut() {
+                Some(last) if range.from >= last.from && range.from <= last.to + 1 => {
+                    last.to = last.to.max(range.to);
+                }
+                _ => ranges.push(*range),
+            }
+        }
+    }
+    ranges
+}
+
+/// The last line of a block's declaration, for the slices above.
+fn last_declaration_line(block: &BlockRef) -> usize {
+    let block = block.borrow();
+    block
+        .end_line
+        .or(block.close_line)
+        .unwrap_or(block.decl_line)
+}
+
+/// A line-range slice: its text, and the range it names.
+struct PickedRange {
+    text: String,
+    range: LineRange,
+}
+
+/// The lines a line-range selector names, as text and as a span.
+///
+/// Lines are counted from 1 and columns from 1, both inclusive. A column is a character offset *within*
+/// its line, in UTF-16 code units, as every offset in this port is. Anything the file does not have is an
+/// error rather than a clamp — a range that silently became a different range is exactly the drift a
+/// reference to a line number is for.
+fn line_range_span(
+    lex: &Lex,
+    from: LinePoint,
+    to: Option<LinePoint>,
+    raw: &str,
+) -> Result<PickedRange, SectionError> {
+    let source_units = units(&lex.source);
+    let from_line = from.line;
+    let to_point = to.unwrap_or(from);
+    let to_line = to_point.line;
+
+    // `lines` is split on `\n`, so a file ending in a newline has a final empty entry: the file's last
+    // line is the last entry that is not that emptiness.
+    let total = if lex.source.is_empty() {
+        0
+    } else {
+        lex.lines.len()
+    };
+    if from_line > total || to_line > total {
+        return Err(SectionError::new(format!(
+            "\"#{raw}\": the file has {total} line(s)"
+        )));
+    }
+
+    let from_length = line_length(lex, from_line);
+    if let Some(column) = from.column {
+        if column - 1 >= from_length {
+            return Err(SectionError::new(format!(
+                "\"#{raw}\": line {from_line} has {from_length} character(s)"
+            )));
+        }
+    }
+
+    let start = lex.starts.get(from_line - 1).copied().unwrap_or(0)
+        + from.column.map_or(0, |column| column - 1);
+    let end = match to.and_then(|point| point.column) {
+        Some(column) => {
+            let to_length = line_length(lex, to_line);
+            if column - 1 >= to_length {
+                return Err(SectionError::new(format!(
+                    "\"#{raw}\": line {to_line} has {to_length} character(s)"
+                )));
+            }
+            // Both columns are inclusive, so the slice runs one past the character the second column
+            // names.
+            lex.starts.get(to_line - 1).copied().unwrap_or(0) + column
+        }
+        None => end_of_line(
+            &source_units,
+            lex.starts.get(to_line - 1).copied().unwrap_or(0),
+        ),
+    };
+
+    Ok(PickedRange {
+        text: slice_units(&lex.source, start, end),
+        range: LineRange {
+            from: from_line,
+            to: to_line,
+        },
+    })
+}
+
+/// The length of one 1-based line, in UTF-16 code units.
+fn line_length(lex: &Lex, line: usize) -> usize {
+    lex.lines
+        .get(line.saturating_sub(1))
+        .map(Vec::len)
+        .unwrap_or(0)
 }
 
 /// The text a single named declaration contributes, or `None` when the name declares nothing.
@@ -158,7 +950,9 @@ pub fn extract_declaration(
         ))
         .into());
     }
-    Ok(Some(render_declaration(&chosen[0], scope, &scan.lex, lexer).text))
+    Ok(Some(
+        render_declaration(&chosen[0], scope, &scan.lex, lexer).text,
+    ))
 }
 
 fn collect(scope: &BlockRef, name: &str, found: &mut Vec<BlockRef>) {
@@ -166,7 +960,11 @@ fn collect(scope: &BlockRef, name: &str, found: &mut Vec<BlockRef>) {
     for block in children {
         let (kind, block_name, body) = {
             let block_ref = block.borrow();
-            (block_ref.kind.clone(), block_ref.name.clone(), has_body(&block_ref))
+            (
+                block_ref.kind.clone(),
+                block_ref.name.clone(),
+                has_body(&block_ref),
+            )
         };
         let named = kind == "class" || kind == "method" || kind == "property";
         if named && block_name.as_deref() == Some(name) && body {
@@ -204,7 +1002,10 @@ fn resolve_path(
         return Err(SectionError::new(if index == 0 && last {
             format!("no \"#region {segment}\" found, and no section named \"{segment}\"")
         } else {
-            format!("no section named \"{segment}\" in \"{}\"", prev_name.unwrap_or(""))
+            format!(
+                "no section named \"{segment}\" in \"{}\"",
+                prev_name.unwrap_or("")
+            )
         })
         .into());
     }
@@ -231,7 +1032,15 @@ fn resolve_path(
             continue;
         }
         let block = candidate.block.clone().expect("a container has a block");
-        match resolve_path(segments, index + 1, &block, true, Some(&segment), scan, lexer) {
+        match resolve_path(
+            segments,
+            index + 1,
+            &block,
+            true,
+            Some(&segment),
+            scan,
+            lexer,
+        ) {
             Ok(hit) => return Ok(hit),
             Err(error) => {
                 failure.get_or_insert(error);
@@ -304,18 +1113,28 @@ fn match_segment(scope: &BlockRef, segment: &str, descended: bool) -> Result<Vec
     for kind_name in ["class", "method"] {
         let named = named(scope, kind_name, segment);
         if !named.is_empty() {
-            return Ok(named.iter().map(|block| Hit::of("declaration", block, None)).collect());
+            return Ok(named
+                .iter()
+                .map(|block| Hit::of("declaration", block, None))
+                .collect());
         }
     }
     let properties = named(scope, "property", segment);
     if !properties.is_empty() {
-        return Ok(properties.iter().map(|block| Hit::of("property", block, None)).collect());
+        return Ok(properties
+            .iter()
+            .map(|block| Hit::of("property", block, None))
+            .collect());
     }
 
     // 5 — condition literal: this scope's own condition, or a direct statement child.
     let own_conditions = {
         let scope_ref = scope.borrow();
-        if scope_ref.kind == "statement" { scope_ref.conditions.clone() } else { None }
+        if scope_ref.kind == "statement" {
+            scope_ref.conditions.clone()
+        } else {
+            None
+        }
     };
     if own_conditions
         .as_ref()
@@ -328,12 +1147,16 @@ fn match_segment(scope: &BlockRef, segment: &str, descended: bool) -> Result<Vec
     for child in scope.borrow().children.iter() {
         let (child_kind, child_conditions, child_line) = {
             let child_ref = child.borrow();
-            (child_ref.kind.clone(), child_ref.conditions.clone(), child_ref.decl_line)
+            (
+                child_ref.kind.clone(),
+                child_ref.conditions.clone(),
+                child_ref.decl_line,
+            )
         };
         if child_kind == "statement"
-            && child_conditions
-                .as_ref()
-                .is_some_and(|conditions| conditions.pasted.iter().any(|literal| literal == segment))
+            && child_conditions.as_ref().is_some_and(|conditions| {
+                conditions.pasted.iter().any(|literal| literal == segment)
+            })
         {
             conditions.push(Hit::of("condition", child, Some(child_line)));
         }
@@ -447,7 +1270,11 @@ fn render_block(
                     to: from.max(to) + 1,
                 };
             }
-            return span(&slice(&lex.source_lines, body_from + 1, close_line), body_from + 1, close_line);
+            return span(
+                &slice(&lex.source_lines, body_from + 1, close_line),
+                body_from + 1,
+                close_line,
+            );
         }
         return single(String::new(), decl_line);
     }
@@ -455,17 +1282,33 @@ fn render_block(
     if shared_close {
         if let (Some(close), Some(line_start)) = (close, lex.starts.get(first_line).copied()) {
             let raw = slice_units(&lex.source, line_start, close + 1);
-            let trimmed: Vec<String> =
-                raw.split('\n').map(|line| line.trim_end().to_string()).collect();
+            let trimmed: Vec<String> = raw
+                .split('\n')
+                .map(|line| line.trim_end().to_string())
+                .collect();
             return span(&trimmed, first_line, line_of(&lex.starts, close) + 1);
         }
     }
-    span(&slice(&lex.source_lines, first_line, last_line + 1), first_line, last_line + 1)
+    span(
+        &slice(&lex.source_lines, first_line, last_line + 1),
+        first_line,
+        last_line + 1,
+    )
 }
 
 /// The text one declaration contributes, under one scope.
 fn render_declaration(block: &BlockRef, scope: Scope, lex: &Lex, lexer: &dyn Lexer) -> Rendered {
-    let (decl_line, close_line, end_line, single_line, indented, expression, open_line, open, close) = {
+    let (
+        decl_line,
+        close_line,
+        end_line,
+        single_line,
+        indented,
+        expression,
+        open_line,
+        open,
+        close,
+    ) = {
         let block_ref = block.borrow();
         (
             block_ref.decl_line,
@@ -479,17 +1322,21 @@ fn render_declaration(block: &BlockRef, scope: Scope, lex: &Lex, lexer: &dyn Lex
             block_ref.close,
         )
     };
-    let end_line = end_line.or(close_line).unwrap_or(decl_line);
+    // The JavaScript's `range.endLine !== undefined ? range.endLine : range.closeLine`: a block
+    // with neither is a declaration with nothing to inject (a body-less member), and its slice is
+    // **empty** rather than the declaration's own line.
+    let end_line = end_line.or(close_line);
+    let to = end_line.map_or(1, |line| line + 1);
 
     if scope == Scope::Body {
         if single_line {
-            return span(&slice(&lex.source_lines, decl_line, end_line + 1), decl_line, end_line + 1);
+            return span(&slice(&lex.source_lines, decl_line, to), decl_line, to);
         }
         if indented {
             return span(
-                &slice(&lex.source_lines, decl_line + 1, end_line + 1),
+                &slice(&lex.source_lines, decl_line + 1, to),
                 decl_line + 1,
-                end_line + 1,
+                to,
             );
         }
         if let Some(expression) = expression {
@@ -498,13 +1345,22 @@ fn render_declaration(block: &BlockRef, scope: Scope, lex: &Lex, lexer: &dyn Lex
             let text = slice_units(&lex.source, expression, line_end);
             return single(text.trim(), line_of(&lex.starts, expression));
         }
-        if open_line == Some(end_line) {
+        if open_line == end_line {
+            let Some(open_line) = open_line else {
+                // Neither an opening line nor an end line: nothing to inject, and the anchor is
+                // the JavaScript's `null + 1` — the first line.
+                return single(String::new(), 0);
+            };
             if let (Some(open), Some(close)) = (open, close) {
                 let text = slice_units(&lex.source, open + 1, close);
-                return single(text.trim(), open_line.unwrap_or(decl_line));
+                return single(text.trim(), open_line);
             }
+            return single(String::new(), open_line);
         }
-        return span(&slice(&lex.source_lines, open_line.unwrap_or(decl_line) + 1, end_line), open_line.unwrap_or(decl_line) + 1, end_line);
+        // `lines.slice(openLine + 1, endLine)`: the closing brace's line is not part of the body.
+        let from = open_line.map_or(1, |line| line + 1);
+        let to = end_line.unwrap_or(0);
+        return span(&slice(&lex.source_lines, from, to), from, to);
     }
 
     let mut start = decl_line;
@@ -520,7 +1376,7 @@ fn render_declaration(block: &BlockRef, scope: Scope, lex: &Lex, lexer: &dyn Lex
             }
         }
     }
-    span(&slice(&lex.source_lines, start, end_line + 1), start, end_line + 1)
+    span(&slice(&lex.source_lines, start, to), start, to)
 }
 
 /// A rendered section from already-sliced lines. An inverted range is empty, and the span then names the
@@ -535,7 +1391,11 @@ fn span(sliced: &[String], from: usize, to: usize) -> Rendered {
 
 /// A one-line section.
 fn single(text: impl Into<String>, at: usize) -> Rendered {
-    Rendered { text: text.into(), from: at + 1, to: at + 1 }
+    Rendered {
+        text: text.into(),
+        from: at + 1,
+        to: at + 1,
+    }
 }
 
 /// `lines.slice(from, to)`, half-open and forgiving of odd ranges.
@@ -604,7 +1464,11 @@ fn annotation_start(lines: &[String], decl_line: usize, lexer: &dyn Lexer) -> us
         }
         depth += bracket_balance(line);
     }
-    if depth == 0 { start } else { usize::MAX }
+    if depth == 0 {
+        start
+    } else {
+        usize::MAX
+    }
 }
 
 /// The first line of the doc comment directly above `top`, or `usize::MAX`.
@@ -661,4 +1525,191 @@ fn is_doc_open(line: &str) -> bool {
         || trimmed.starts_with("///")
         || trimmed.starts_with("//!")
         || trimmed.starts_with("##")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::DefaultLexer;
+
+    fn canonical(raw: &str) -> String {
+        parse_selectors(raw)
+            .expect("a well-formed reference")
+            .canonical
+    }
+
+    /// The spelling the vectors do not carry: `canonical` is an answer the grammar owes, but the
+    /// corpus pins errors and warnings only, so it is asserted here.
+    #[test]
+    fn a_selector_list_keeps_each_selectors_own_spelling() {
+        assert_eq!("add-,render++", canonical("add-,render++"));
+        assert_eq!("a,b,c", canonical("a,b,c"));
+        assert_eq!(
+            "add,L40:2-L40:8,remove",
+            canonical("add,L40:2-L40:8,remove")
+        );
+        // A leading modifier is the whole reference's, and a range ignores it: it is canonicalised to
+        // the very end either way.
+        assert_eq!("L40-L44+", canonical("+L40-L44"));
+        // The two-segment and mid-path spellings still land on one path.
+        assert_eq!("a/b-", canonical("-a/b"));
+        assert_eq!("Cart/Line/render-", canonical("Cart/Line/-render"));
+    }
+
+    #[test]
+    fn the_reference_modifier_belongs_to_the_last_selector() {
+        let parsed = parse_selectors("getUsers++-").expect("a contradiction is a warning");
+        assert_eq!("getUsers++", parsed.canonical);
+        let warning = parsed.warning.expect("the contradiction is reported");
+        assert_eq!(
+            ("contradiction", "++", "-"),
+            (warning.kind, warning.kept, warning.dropped)
+        );
+        assert!(warning.message.contains("using \"#getUsers++\""));
+        assert_eq!(Scope::Documented, parsed.scope);
+
+        let Selector::Path {
+            segments, scope, ..
+        } = &parsed.selectors[0]
+        else {
+            panic!("a single path selector");
+        };
+        assert_eq!(vec!["getUsers".to_string()], *segments);
+        assert_eq!(Scope::Documented, *scope);
+    }
+
+    #[test]
+    fn every_selector_keeps_its_own_scope() {
+        // Two selectors that each say what they mean: the earlier one's `-` is its own, not the
+        // reference's, so there is nothing to contradict and the last one keeps its `++`.
+        let parsed = parse_selectors("add-,render++").expect("two selectors");
+        assert_eq!("add-,render++", parsed.canonical);
+        assert!(parsed.warning.is_none());
+        let scopes: Vec<&str> = parsed
+            .selectors
+            .iter()
+            .map(|selector| match selector {
+                Selector::Path { scope, .. } => scope.as_str(),
+                Selector::Lines { .. } => "lines",
+            })
+            .collect();
+        assert_eq!(vec!["body", "documented"], scopes);
+        assert_eq!(
+            Scope::Declaration,
+            parsed.scope,
+            "a mixed reference has no single scope"
+        );
+        assert!(
+            parsed.segments.is_empty(),
+            "only a sole path selector reports segments"
+        );
+    }
+
+    #[test]
+    fn a_range_takes_no_modifier() {
+        let parsed = parse_selectors("+L40-L44").expect("a leading modifier on a range is ignored");
+        assert_eq!("L40-L44+", parsed.canonical);
+        assert!(parsed.warning.is_none());
+        assert_eq!(Scope::Declaration, parsed.scope);
+        assert!(matches!(parsed.selectors[0], Selector::Lines { .. }));
+
+        for raw in ["L40-L44+", "L40-", "L40:x", "L0", "L44-L40"] {
+            assert!(
+                parse_selectors(raw).is_err(),
+                "{raw} is not a well-formed range"
+            );
+        }
+        assert_eq!(None, line_range_of("Lx").expect("`Lx` is an ordinary name"));
+        assert_eq!(None, line_range_of("add").expect("not a range prefix"));
+    }
+
+    #[test]
+    fn the_same_modifier_twice_is_an_error() {
+        for raw in ["a+++", "a---", "-a-"] {
+            let error = parse_selectors(raw).expect_err("two readings of one modifier");
+            assert_eq!(
+                format!("\"#{raw}\" carries more than one modifier"),
+                error.message()
+            );
+        }
+    }
+
+    #[test]
+    fn one_path_selector_reads_neither_a_list_nor_a_range() {
+        assert_eq!(
+            "\"#add,render\" has an empty selector",
+            crate::parse_reference("add,render")
+                .expect_err("a list is not one path")
+                .message()
+        );
+        assert_eq!(
+            "\"#L40\" is a line range, not a section path",
+            crate::parse_reference("L40")
+                .expect_err("a range is not a path")
+                .message()
+        );
+    }
+
+    /// The hard rule of this port: every offset counts UTF-16 code units, never `char`s. An astral
+    /// character is where the two disagree — the emoji is one `char` and two code units.
+    #[test]
+    fn a_line_column_counts_utf16_code_units() {
+        let source = "a\u{1F600}b\nsecond\n";
+        let plan =
+            plan_section(source, "L1:4", &DefaultLexer).expect("the last character of line 1");
+        assert_eq!("b", plan.text);
+        assert_eq!(LineRange { from: 1, to: 1 }, plan.ranges[0]);
+
+        // Four code units, not three: a `char` count would accept column 4 and this column 5.
+        let error = plan_section(source, "L1:5", &DefaultLexer).expect_err("past the line");
+        assert_eq!("\"#L1:5\": line 1 has 4 character(s)", error.to_string());
+    }
+
+    #[test]
+    fn a_line_range_is_verbatim_and_out_of_file_is_an_error() {
+        let source = "one\ntwo\nthree\n";
+        let plan = plan_section(source, "L2-L3", &DefaultLexer).expect("a range");
+        assert_eq!("two\nthree", plan.text);
+        assert_eq!(LineRange { from: 2, to: 3 }, plan.ranges[0]);
+        assert_eq!((2, 3), (plan.start_line, plan.end_line));
+        assert_eq!("lines", plan.kind);
+        // A column is inclusive, and no column on the second endpoint means the end of that line.
+        assert_eq!(
+            "wo",
+            plan_section(source, "L2:2-L2:3", &DefaultLexer)
+                .expect("columns")
+                .text
+        );
+        assert_eq!(
+            "wo\nthree",
+            plan_section(source, "L2:2-L3", &DefaultLexer)
+                .expect("to line end")
+                .text
+        );
+
+        // The file's lines are `["one","two","three",""]`: the trailing newline leaves an empty last
+        // line, so line 5 is the first one past the file.
+        let error = plan_section(source, "L5", &DefaultLexer).expect_err("past the end");
+        assert_eq!("\"#L5\": the file has 4 line(s)", error.to_string());
+        let error = plan_section(source, "L2:20", &DefaultLexer).expect_err("past the line");
+        assert_eq!("\"#L2:20\": line 2 has 3 character(s)", error.to_string());
+    }
+
+    #[test]
+    fn several_selectors_join_with_a_newline_and_keep_their_own_ranges() {
+        let source = "one\ntwo\nthree\nfours\n";
+        let plan = plan_section(source, "L1,L3", &DefaultLexer).expect("two ranges");
+        assert_eq!("one\nthree", plan.text);
+        assert_eq!("multiple", plan.kind);
+        assert_eq!(
+            vec![LineRange { from: 1, to: 1 }, LineRange { from: 3, to: 3 }],
+            plan.ranges
+        );
+        assert_eq!((1, 3), (plan.start_line, plan.end_line));
+
+        // Touching ranges are merged; a gap is not.
+        let touching = plan_section(source, "L1,L2", &DefaultLexer).expect("touching");
+        assert_eq!(vec![LineRange { from: 1, to: 2 }], touching.ranges);
+        assert_eq!("one\ntwo", touching.text);
+    }
 }

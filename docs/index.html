@@ -461,10 +461,32 @@ level = info</code></pre></li>
 </ul>
 </li>
 <li class="example" id="ex-23">
-<h2><span class="num">23</span>JSON — keys</h2>
+<h2><span class="num">23</span>Line numbers, and several pieces at once</h2>
+<p>A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them. <code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
+<p>A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file:</p>
+<p>The demo page's middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between.</p>
+<ul class="targets">
+<li class="target-item" id="t-23-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="23" data-from="8" data-to="14" data-ranges="8-14" aria-pressed="false" aria-controls="t-23-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L8-L14</span></button><pre class="snippet" id="t-23-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#L8-L14)</span><code>
+    // #region catalog
+    /** The catalog, kept as an explicit region directive. */
+    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };
+    // #endregion
+
+    private final List&lt;Item&gt; items = new ArrayList&lt;&gt;();</code></pre></li>
+<li class="target-item" id="t-23-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="23" data-from="7" data-to="50" data-ranges="7-7,32-36,50-50" aria-pressed="false" aria-controls="t-23-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L7,++toString,L50</span></button><pre class="snippet" id="t-23-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#L7,++toString,L50)</span><code>public class Inventory {
+    /** Summarise the inventory. */
+    @Override
+    public String toString() {
+        return items.size() + &quot; item(s)&quot;;
+    }
+}</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-24">
+<h2><span class="num">24</span>JSON — keys</h2>
 <p>JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by dotted paths.</p>
 <ul class="targets">
-<li class="target-item" id="t-23-1"><button class="target" type="button" data-file="samples/api.json" data-section="23" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-23-1-snippet"><span class="chip-file">api.json</span><span class="chip-ref">#name,server.port</span></button><pre class="snippet" id="t-23-1-snippet"><span class="marker">[samples/api.json](./samples/api.json#name,server.port)</span><code>{
+<li class="target-item" id="t-24-1"><button class="target" type="button" data-file="samples/api.json" data-section="24" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-24-1-snippet"><span class="chip-file">api.json</span><span class="chip-ref">#name,server.port</span></button><pre class="snippet" id="t-24-1-snippet"><span class="marker">[samples/api.json](./samples/api.json#name,server.port)</span><code>{
   &quot;name&quot;: &quot;cart-api&quot;,
   &quot;server&quot;: {
     &quot;port&quot;: 8080
@@ -796,10 +818,32 @@ port = <span class="tok-n">8080</span></code></pre>
 level = info</code></pre>
 </section>
 <section class="md-section" data-md-section="23">
-<h2 data-md-from="445" data-md-to="445">JSON — keys</h2>
-<p data-md-from="447" data-md-to="448">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by dotted paths.</p>
-<p class="md-marker" data-marker="t-23-1"><a href="./samples/api.json#name,server.port">samples/api.json</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-23-1" data-md-from="452" data-md-to="459"><code class="language-json">{
+<h2 data-md-from="445" data-md-to="445">Line numbers, and several pieces at once</h2>
+<p data-md-from="447" data-md-to="453">A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them. <code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
+<p class="md-marker" data-marker="t-23-1"><a href="./samples/Inventory.java#L8-L14">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-1" data-md-from="457" data-md-to="465"><code class="language-java">
+    <span class="tok-c">// #region catalog</span>
+    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
+    <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };
+    <span class="tok-c">// #endregion</span>
+
+    <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">List</span>&lt;<span class="tok-t">Item</span>&gt; items = <span class="tok-k">new</span> <span class="tok-t">ArrayList</span>&lt;&gt;();</code></pre>
+<p data-md-from="467" data-md-to="470">A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file:</p>
+<p class="md-marker" data-marker="t-23-2"><a href="./samples/Inventory.java#L7,++toString,L50">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-2" data-md-from="474" data-md-to="482"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
+    <span class="tok-c">/** Summarise the inventory. */</span>
+    <span class="tok-a">@Override</span>
+    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
+        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
+    }
+}</code></pre>
+<p data-md-from="484" data-md-to="486">The demo page's middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between.</p>
+</section>
+<section class="md-section" data-md-section="24">
+<h2 data-md-from="488" data-md-to="488">JSON — keys</h2>
+<p data-md-from="490" data-md-to="491">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by dotted paths.</p>
+<p class="md-marker" data-marker="t-24-1"><a href="./samples/api.json#name,server.port">samples/api.json</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-24-1" data-md-from="495" data-md-to="502"><code class="language-json">{
   <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,
   <span class="tok-s">&quot;server&quot;</span>: {
     <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>

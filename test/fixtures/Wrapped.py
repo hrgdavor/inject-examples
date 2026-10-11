@@ -1,0 +1,9 @@
+class Wrapped:
+    def render(
+            self,
+            name: str,
+            quantity: int) -> str:
+        return f"{name} x{quantity}"
+
+    def label(self) -> str:
+        return self.name

@@ -31,8 +31,11 @@ file, so a sample can show a slice of a big source file without duplicating it:
 ```
 
 What the name may be depends on the file's type: a `#region` directive, a
-method or inner class by name, or — for `.json`, which has no comments — a list
-of keys. See [Region rules by file type](#region-rules-by-file-type).
+method or inner class by name, an explicit line range when a file has no
+structure to name (`#L40-L44`), or — for `.json`, which has no comments — a list
+of keys. Several selectors may be named at once with a comma, so one marker can
+inject several pieces. See
+[Region rules by file type](#region-rules-by-file-type).
 
 No dependencies. Node 18+. Works as a CLI and as a library.
 
@@ -165,6 +168,13 @@ the reference may say — and what comes back — is decided by the file's
 claims the file's extension. Five rules ship — JSON, YAML, TOML, INI and the
 `code` fallback; the library takes more.
 
+A reference is a comma-separated list of **selectors**, and every rule reads it
+that way: the pieces are resolved and injected in the order they were written.
+One selector is the ordinary case of a list of one, and what it may say is the
+rule's business — a name or a line range for code, a key path for a config
+format. `#add,remove` injects two methods; `#add,L40-L44` injects a method and
+the lines beside it.
+
 ### Code — the default rule
 
 One rule covers every type no other rule claims: source code, `.md`, `.txt`,
@@ -201,6 +211,12 @@ unique, and so must declaration names — two methods named `add` are an error,
 exactly as two `#region add`s are; wrap one in `#region` comments to pick it.
 A class name beats a same-named constructor, and nothing matching at all is an
 error (`--lenient` reports it and leaves the block as written).
+
+A header may span lines: a wrapped parameter list, a wrapped `throws` clause, a
+class's type parameters and `implements` clause on their own lines are all one
+declaration, because the matchers follow the header to the `{` or `;` that ends
+it. A wrapped *call* stays a call — `#map` resolves the method, never the
+`map(\n  1, 2);` inside another method.
 
 The match is not a parser: it reads declaration-shaped lines and counts brackets
 over text whose comments and string literals are blanked, so a `}` inside a
@@ -282,6 +298,47 @@ spelled out in [doc/section-matching.md](./doc/section-matching.md). Matching
 lives in a single dependency-free module,
 [lib/section.mjs](./lib/section.mjs), which other projects can import directly
 (see [lib/README.md](./lib/README.md)).
+
+#### Line ranges, and several pieces in one reference
+
+Semantic targeting is the point of this tool, but not every file has structure
+to target: a config fragment, a log, a table in a comment. A selector may
+therefore be a **line range** instead of a name. `L<line>` is one line,
+`L<line>:<column>` starts at a column, and `L<line>-L<line>` is a range; lines
+and columns count from 1, both ends are inclusive, and an endpoint with no
+column runs to the end of its line:
+
+| Reference | Injected text |
+| --- | --- |
+| `#L12-L14` | lines 12, 13 and 14, verbatim |
+| `#L13` | line 13 alone |
+| `#L13:9` | line 13 from its ninth character to the end of the line |
+| `#L4:8-L4:22` | from the eighth character of line 4 to its twenty-second |
+
+```markdown
+[test/fixtures/Example.java](./test/fixtures/Example.java#L12-L14)
+```
+
+A range that names lines the file does not have is an error — `#L31` in a
+30-line file, `#L2:1` on a blank line — never a silent clamp, because a range
+that quietly became a different range is exactly the drift this tool exists to
+prevent. A range takes no modifier of its own (`#L40+` is malformed: the `+`
+would have to be read as part of the range), while a modifier in front of the
+whole reference belongs to the reference and is ignored by a range, as it is by
+a `#region`.
+
+Because a reference is a comma-separated list of selectors, several pieces come
+in one injection, in the order they were written, and a name and a range mix
+freely:
+
+```markdown
+[test/fixtures/Example.java](./test/fixtures/Example.java#+toString,L16-L20)
+```
+
+The pieces are joined with a newline and injected as one block, and a host that
+navigates is told about every piece — `planSection` returns a `ranges` list, one
+entry per selector, so a page can highlight the two places a reference names
+rather than everything between them.
 
 ### JSON — its own rule
 
@@ -596,10 +653,11 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 | `findMarkers(lines)` / `parseMarker(line)` | Discover markers |
 | `fenceRanges(lines)` | The fenced blocks in a document |
 | `resolveMarker(marker, read, rule?)` | The text a marker stands for, resolved by the file's type |
+| `planMarker(marker, read, rule?)` | That text plus the section warning and the `ranges` each selector came from |
 | `extractRegion(text, name)` / `regionDirective(line)` | Region directive parsing |
 | `ruleFor(path, rules?)` | The region rule that resolves a reference in `path` |
 | `REGION_RULES` / `CODE_RULE` / `JSON_RULE` / `YAML_RULE` / `TOML_RULE` / `INI_RULE` | The built-in rules; `code` is the fallback for every unclaimed type |
-| `extractCodeRegion(text, region)` | The default rule: a region directive, or a named declaration |
+| `extractCodeRegion(text, region)` | The default rule: a region directive, a named declaration, or a line range |
 | `extractDeclaration(text, name, scope?)` | The text of one declaration, or `null`; `scope` is the `-`/`+`/`++` |
 | `extractJsonRegion(text, region)` | The `.json` rule: dotted key paths, rendered as valid JSON |
 | `extractYamlRegion(text, region)` | The `.yaml` rule: a dotted key path, rendered with its ancestors |
@@ -647,8 +705,11 @@ still has no runtime dependencies, and `files` does not ship `tools/`.
   selection of keys has to be re-printed to stay valid JSON; `.yaml`, `.toml`
   and `.ini` references are dotted paths too, rendered with the ancestors that
   hold the key so the block stands on its own. Every other type uses the code
-  rule, which injects verbatim — a region's lines, or a matched declaration from
-  its first line through its closing brace.
+  rule, which injects verbatim — a region's lines, a matched declaration from
+  its first line through its closing brace, or an explicit line range. A
+  line-range selector belongs to the code rule alone: a data format renders its
+  selection, so there is no slice of lines for it to name, and
+  `#L40-L44` in a `.json` file is an error rather than a silent nothing.
 - **Duplicated markers** in one document are an error, not a silent double
   injection.
 - **No markers at all** is an error, because it usually means the file argument
@@ -741,11 +802,11 @@ module:
 
 | Port | Where | Gate | State |
 | --- | --- | --- | --- |
-| Rust | [`rust/section`](./rust/section) | `cargo test` | parse, mask and shape layers; the scanner driver and resolution to come |
-| Java | [`java/section`](./java/section) | `mvn test` | complete — all 124 vectors, the language table and the lexical corpus included |
+| Rust | [`rust/section`](./rust/section) | `cargo test` | complete — the grammar and resolution layers, every resolution vector, every mask and every declaration shape |
+| Java | [`java/section`](./java/section) | `mvn test` | complete — all 162 vectors, the language table and the lexical corpus included |
 
 Both read [`test/vectors/section-vectors.json`](./test/vectors/section-vectors.json)
-— the same 124 vectors the JavaScript gate uses — directly, rather than keeping a
+— the same 162 vectors the JavaScript gate uses — directly, rather than keeping a
 generated copy, and both fail if a vector is neither asserted nor counted, so a
 layer still to come stays visible instead of silently skipped. Both read the
 lexical corpus too — [`test/vectors/lexical-vectors.json`](./test/vectors/lexical-vectors.json),

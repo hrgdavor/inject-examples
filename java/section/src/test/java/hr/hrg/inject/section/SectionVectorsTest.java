@@ -76,6 +76,19 @@ class SectionVectorsTest {
         return "\"" + value.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t") + "\"";
     }
 
+    /** The ranges a plan produced, in the vectors' own {@code [[from,to],…]} shape, for a message. */
+    private static String describe(SectionResolver.Plan plan) {
+        StringBuilder out = new StringBuilder("[");
+        for (int i = 0; i < plan.ranges().size(); i++) {
+            if (i > 0) {
+                out.append(',');
+            }
+            out.append('[').append(plan.ranges().get(i).from())
+                    .append(',').append(plan.ranges().get(i).to()).append(']');
+        }
+        return out.append(']').toString();
+    }
+
     @Test
     void everyVectorMatchesThisImplementation() throws IOException {
         JsonNode vectors = vectors();
@@ -130,6 +143,27 @@ class SectionVectorsTest {
                     String kind = text(vector, "kind");
                     if (kind != null && !kind.equals(plan.kind())) {
                         failures.add(name + ": kind " + quote(plan.kind()) + ", want " + quote(kind));
+                    }
+                    // `ranges` is where each selector's contribution came from — one line range per
+                    // selector, merged when they touch — and it is a newer field, so it is asserted
+                    // whenever the vector carries it. A host that highlights two far-apart selectors
+                    // reads this and not the gap between them.
+                    JsonNode ranges = vector.get("ranges");
+                    if (ranges != null && !ranges.isNull()) {
+                        if (ranges.size() != plan.ranges().size()) {
+                            failures.add(name + ": " + plan.ranges().size() + " range(s) "
+                                    + describe(plan) + ", want " + ranges.size() + " " + ranges);
+                        } else {
+                            for (int i = 0; i < ranges.size(); i++) {
+                                JsonNode want = ranges.get(i);
+                                SectionResolver.Range got = plan.ranges().get(i);
+                                if (want.get(0).asInt() != got.from()
+                                        || want.get(1).asInt() != got.to()) {
+                                    failures.add(name + ": range " + i + " ["
+                                            + got.from() + "," + got.to() + "], want " + want);
+                                }
+                            }
+                        }
                     }
                 }
             } catch (SectionReferenceException | SectionError error) {

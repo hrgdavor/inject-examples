@@ -64,8 +64,27 @@ pub const STATEMENT_BEFORE: [&str; 10] = [
 
 /// Words that are never a declaration's name, however they are spelled.
 pub const NOT_A_NAME: [&str; 21] = [
-    "if", "for", "while", "switch", "catch", "return", "new", "do", "else", "throw", "await", "yield",
-    "typeof", "delete", "void", "in", "of", "instanceof", "super", "this", "with",
+    "if",
+    "for",
+    "while",
+    "switch",
+    "catch",
+    "return",
+    "new",
+    "do",
+    "else",
+    "throw",
+    "await",
+    "yield",
+    "typeof",
+    "delete",
+    "void",
+    "in",
+    "of",
+    "instanceof",
+    "super",
+    "this",
+    "with",
 ];
 
 /// Whether `name` is a keyword rather than a declaration's name.
@@ -100,8 +119,18 @@ fn is_word_char(character: char) -> bool {
     character.is_ascii_alphanumeric() || character == '_' || character == '$'
 }
 
+/// Whether `text` opens with `needle`, case-insensitively — `needle` is always an ASCII spelling, so
+/// ASCII case folding is the JavaScript's `/i` without `/u`.
+///
+/// Compared character by character, never by a byte slice: a line may hold any UTF-8, and slicing
+/// `text[..needle.len()]` would panic inside a multi-byte character.
 fn starts_with_ignore_case(text: &str, needle: &str) -> bool {
-    text.len() >= needle.len() && text[..needle.len()].eq_ignore_ascii_case(needle)
+    let mut characters = text.chars();
+    needle.chars().all(|wanted| {
+        characters
+            .next()
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(&wanted))
+    })
 }
 
 /// A `\b` boundary before `at`, where `\w` is `[A-Za-z0-9_]`.

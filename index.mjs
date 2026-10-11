@@ -9,9 +9,11 @@
  *
  * What `#<name>` means depends on the file's type: each type has one
  * rule, and the reference is handed to the rule that claims the file's
- * extension. A code file resolves a region directive, or a method or inner
- * class by name; a `.json` file, which has no comments to hang a directive on,
- * resolves a list of keys. See `REGION_RULES` and `ruleFor`.
+ * extension. A code file resolves a region directive, a method or inner
+ * class by name, or an explicit line range (`#L40:12-L44:3`); a `.json` file,
+ * which has no comments to hang a directive on, resolves a list of keys. Every
+ * rule reads a comma-separated list of selectors, so `#add,L40-L44` is one
+ * more selector wherever it is written. See `REGION_RULES` and `ruleFor`.
  *
  * This module is pure: it reads only through the `readFile` you hand it, so it
  * is safe to unit-test and to embed. `cli.mjs` is the thin executable wrapper.
@@ -30,6 +32,7 @@ import {
     masked,
     commentsIn,
     extractDeclaration,
+    parseSelectors,
 } from './lib/section.mjs';
 import { lexerFor } from './src/js/scanner/lexers.js';
 
@@ -182,6 +185,10 @@ export { extractDeclaration };
  * comma-separated. The selected values are rendered as valid JSON — one
  * object, braces and all — in the order they were named. An array keeps only
  * the elements named, in order, so `keywords.0` is a one-element array.
+ *
+ * The comma is the composition contract the whole tool shares: a code
+ * reference reads it the same way, as one more selector
+ * (`#add,L40-L44`); what differs is only what a rule does with the pieces.
  */
 export function extractJsonRegion(text, reference) {
     const paths = reference.split(',').map((path) => path.trim()).filter((path) => path !== '');
@@ -715,19 +722,46 @@ export function resolveMarker(marker, read, rule = ruleFor(marker.path)) {
  * interface returns a string, so the warning rides alongside it here rather
  * than through `resolveMarker`, which stays string-only for its tests.
  *
+ * `ranges` is the line span of each selector the reference named, for the code
+ * rule — the same answer `planSection` gives, so a host that highlights or
+ * navigates does not have to find the text again. A rule that *renders* its
+ * selection (JSON, YAML, TOML, INI) answers `null`: its selection is not a byte
+ * slice of the file.
+ *
  * @param {{ path: string, reference: string | null }} marker
  * @param {(relativePath: string) => string} read resolves a path to its text
  * @param {{ name: string, resolve: (text: string, reference: string, path: string) => string }} [rule]
- * @returns {{ text: string, warning: object | null }}
+ * @returns {{ text: string, warning: object | null,
+ *            ranges: Array<{ from: number, to: number }> | null }}
  */
 export function planMarker(marker, read, rule = ruleFor(marker.path)) {
     const text = read(marker.path);
-    if (marker.reference === null) return { text: normalize(text), warning: null };
+    if (marker.reference === null) return { text: normalize(text), warning: null, ranges: null };
     if (rule === CODE_RULE) {
         const plan = planSection(text, marker.reference, lexerFor(marker.path));
-        return { text: plan.text, warning: plan.reference.warning };
+        return { text: plan.text, warning: plan.reference.warning, ranges: plan.ranges };
     }
-    return { text: rule.resolve(text, marker.reference, marker.path), warning: null };
+    rejectLineRange(marker.reference, rule);
+    return { text: rule.resolve(text, marker.reference, marker.path), warning: null, ranges: null };
+}
+
+/**
+ * A line range is a code rule's syntax: it names lines of a file that is
+ * injected verbatim. A rule that renders its selection — JSON, YAML, TOML, INI —
+ * has no such slice to hand back, so `#L40-L44` in one of those files is a
+ * mistake worth reporting rather than a selection rendered into source of the
+ * format that would not mean anything.
+ *
+ * @param {string} reference
+ * @param {{ name: string }} rule
+ */
+function rejectLineRange(reference, rule) {
+    const line = parseSelectors(reference).selectors.find((selector) => selector.kind === 'lines');
+    if (line) {
+        throw new SectionReferenceError(
+            `"#${line.raw}" is a line range, which only the code rule reads; "${rule.name}" reads keys`,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

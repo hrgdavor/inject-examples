@@ -442,6 +442,49 @@ port = 8080
 level = info
 ```
 
+## Line numbers, and several pieces at once
+
+A reference may name lines directly instead of a block, which is the tool for a
+file whose structure the matchers cannot see — a config fragment, a log, a table
+in a comment. `#L<line>` is one line, `#L<line>:<column>` starts at a column, and
+`#L40-L44` / `#L40:12-L44:3` are ranges; lines and columns are counted from 1 and
+the two ends are inclusive, exactly as an editor shows them. `Inventory.java`
+lines 8-14 are the blank line under the class header and the field below the
+`catalog` region:
+
+[samples/Inventory.java](./samples/Inventory.java#L8-L14)
+
+```java
+
+    // #region catalog
+    /** The catalog, kept as an explicit region directive. */
+    static final String[] CATALOG = { "bolt", "nut", "washer" };
+    // #endregion
+
+    private final List<Item> items = new ArrayList<>();
+```
+
+A comma puts several selectors in one reference, and the pieces are injected in
+the order they were written — a semantic name and a line range mix freely. The
+class opening, then the documented `toString` and its body, then the last line of
+the file:
+
+[samples/Inventory.java](./samples/Inventory.java#L7,++toString,L50)
+
+```java
+public class Inventory {
+    /** Summarise the inventory. */
+    @Override
+    public String toString() {
+        return items.size() + " item(s)";
+    }
+}
+```
+
+The demo page's middle column highlights each piece on its own, so the lines
+between them stay unlit — a click lands on the two places the reference names,
+not on everything between.
+
 ## JSON — keys
 
 JSON renders a selection of keys as valid JSON, in the order they were named, with

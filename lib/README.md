@@ -22,7 +22,7 @@ Copy `lib/section.mjs` into your tree (it has no imports to follow), or depend
 on the package and import the subpath:
 
 ```js
-import { resolveSection, parseReference } from '@hrg/inject-examples/lib/section.mjs';
+import { resolveSection, parseSelectors } from '@hrg/inject-examples/lib/section.mjs';
 ```
 
 The per-type lexers are a second exported subpath, so a consumer does not have
@@ -39,6 +39,10 @@ You hand it the file's text and a reference; it hands you the text or throws:
 const code = readFileOf('Example.java', 'utf8');
 resolveSection(code, 'Cart/Line/render-');
 // -> '            return name + " x" + quantity;'
+
+// Lines instead of a name, and two selectors in one reference.
+resolveSection(code, 'L12-L14');
+resolveSection(code, 'Cart/Line/render-,L1-L3');
 ```
 
 ## Public surface
@@ -46,8 +50,9 @@ resolveSection(code, 'Cart/Line/render-');
 | Export | Kind | What it does |
 | --- | --- | --- |
 | `resolveSection(text, reference, lexer?)` | function | The text a reference stands for. Throws `SectionReferenceError` on a malformed reference, a plain `Error` on a well-formed one that matches nothing. |
-| `planSection(text, reference, lexer?)` | function | `{ text, reference }` — the same, plus the parsed reference and any contradiction warning. |
-| `parseReference(raw)` | function | The parser: `{ raw, canonical, segments, scope, warning }`. Throws `SectionReferenceError` on a grammar error. |
+| `planSection(text, reference, lexer?)` | function | `{ text, reference, startLine, endLine, ranges, kind }` — the same, plus the parsed reference, the 1-based line range of every selector it named, and any contradiction warning. |
+| `parseSelectors(raw)` | function | The parser for a whole reference: one or more comma-separated selectors, each a path or a line range (`L40:12-L44:3`). Returns `{ raw, canonical, selectors, segments, scope, warning }`. |
+| `parseReference(raw)` | function | The parser for one *path* selector: `{ raw, canonical, segments, scope, warning, modifiers }`. Throws on a comma, on a line range, and on a grammar error. |
 | `scanBlocks(text, path?, lexer?)` | function | The block scanner: `{ root, blocks, regions, anchors, lex }`. Pure data; the matcher's front end. |
 | `extractDeclaration(text, name, scope?)` | function | The named declaration, or `null`. Single name, any depth; never matches a `#region` directive. |
 | `masked(text)` | function | Comments and string literals blanked to spaces, length and newline offsets preserved. |

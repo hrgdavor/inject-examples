@@ -1,12 +1,15 @@
 //! File-section matching — the Zig twin of `lib/section.mjs`.
 //!
-//! A reference (`#<name>`) is a slash-separated path of segments. Each segment
-//! names something inside the scope the previous one selected: a `#region`
-//! directive, a class-like or method declaration, a property, a statement's
-//! condition literal, or a block marked by a leading comment. What comes back is
-//! decided by the *scope modifier* on the last segment — the declaration, its
-//! body alone (`-`), the declaration with its annotations (`+`), or those with
-//! the doc comment above them (`++`).
+//! A reference (`#<name>`) is one or more selectors separated by `,`. A selector
+//! is either a slash-separated path of segments — each naming something inside
+//! the scope the previous one selected: a `#region` directive, a class-like or
+//! method declaration, a property, a statement's condition literal, or a block
+//! marked by a leading comment — or an explicit line range (`L40:12-L44:3`),
+//! which selects verbatim lines and consults no matcher. What a path selection
+//! comes back as is decided by its *scope modifier*: the declaration, its body
+//! alone (`-`), the declaration with its annotations (`+`), or those with the doc
+//! comment above them (`++`). The reference's own leading or trailing modifier
+//! belongs to its last selector.
 //!
 //! The language-specific half of a scan is injected as a lexer: what a lexer
 //! owns is *lexical* — blanking comments and string literals, locating the
@@ -35,6 +38,21 @@ pub const Scope = enum { declaration, body, annotated, documented };
 pub const MOD_NONE: Str = &js.lit("-");
 pub const MOD_SINGLE: Str = &js.lit("+");
 pub const MOD_DOUBLE: Str = &js.lit("++");
+
+/// One endpoint of a line range; `column` is 1-based, or null for the whole
+/// line.
+pub const LinePoint = struct { line: usize, column: ?usize = null };
+
+/// A line range as a selector writes it: `L40`, `L40:12`, `L40-L44`,
+/// `L40:12-L44:3`. Both endpoints are inclusive.
+pub const SelectorRange = struct { from: LinePoint, to: ?LinePoint = null };
+
+/// One selector of a reference: a semantic path, resolved by the matcher
+/// precedence and the sibling-first walk, or explicit lines, which select
+/// verbatim lines and consult no matcher.
+pub const PathSelector = struct { raw: Str, segments: []Str, scope: Scope };
+pub const LineSelector = struct { raw: Str, from: LinePoint, to: ?LinePoint = null };
+pub const Selector = union(enum) { path: PathSelector, lines: LineSelector };
 
 /// A JS `throw` carried out as a value, exactly as `Failure` does for
 /// `index.mjs`: `message` is what the CLI prints. `grammar` marks a
@@ -65,9 +83,18 @@ pub const Error = error{ Failed, Grammar } || Allocator.Error;
 
 /// A parsed reference, plus the contradiction warning a `+` against a `-`
 /// raises (§11: it resolves to the wider reading, and the CLI reports it).
+///
+/// A reference is one or more selectors. A reference of one `path` selector
+/// keeps every field the single-reference grammar ever had — `segments` and
+/// `scope` describe it. A reference of one `lines` selector reports no path
+/// (`segments` is empty) and a `declaration` scope, because a line range has no
+/// name and no modifier of its own; the selectors carry the ranges.
 pub const Reference = struct {
     raw: Str,
     canonical: Str,
+    /// The selectors in the order written. Null from `parseReference`, which is
+    /// the single-path-selector reader, exactly as the JS leaves it null.
+    selectors: ?[]const Selector = null,
     segments: []Str,
     scope: Scope,
     warning: ?Warning = null,
@@ -136,14 +163,9 @@ fn extractLeadingModifier(
 
 const Trailing = struct { name: Str, tokens: []Str };
 
-/// `extractTrailingModifier`: a run of `+`/`-` at the end of a name, tokenised
-/// so `++` counts as one modifier and `-` as another.
-fn extractTrailingModifier(alloc: Allocator, name: Str) !Trailing {
-    var i = name.len;
-    while (i > 0 and (name[i - 1] == '+' or name[i - 1] == '-')) i -= 1;
-    if (i == name.len) return .{ .name = name, .tokens = &.{} };
-
-    const run = name[i..];
+/// `tokenizeModifierRun`: a run of `+`/`-`, read left to right, so `++` is one
+/// modifier and `a++-` is the two tokens `++ -`.
+fn tokenizeModifierRun(alloc: Allocator, run: Str) ![]Str {
     var tokens = std.ArrayList(Str).empty;
     var at: usize = 0;
     while (at < run.len) {
@@ -155,13 +177,178 @@ fn extractTrailingModifier(alloc: Allocator, name: Str) !Trailing {
             at += 1;
         } else break;
     }
-    return .{ .name = name[0..i], .tokens = try tokens.toOwnedSlice(alloc) };
+    return tokens.toOwnedSlice(alloc);
+}
+
+/// `extractTrailingModifier`: a run of `+`/`-` at the end of a name, tokenised
+/// so `++` counts as one modifier and `-` as another.
+fn extractTrailingModifier(alloc: Allocator, name: Str) !Trailing {
+    var i = name.len;
+    while (i > 0 and (name[i - 1] == '+' or name[i - 1] == '-')) i -= 1;
+    if (i == name.len) return .{ .name = name, .tokens = &.{} };
+    return .{ .name = name[0..i], .tokens = try tokenizeModifierRun(alloc, name[i..]) };
+}
+
+const Detached = struct { modifier: ?Str, remainder: Str };
+
+/// `detachLeadingModifier`: the longest prefix of `raw` that is a modifier run.
+fn detachLeadingModifier(raw: Str) Detached {
+    if (js.startsWith(raw, MOD_DOUBLE)) return .{ .modifier = MOD_DOUBLE, .remainder = raw[2..] };
+    if (js.startsWith(raw, MOD_SINGLE)) return .{ .modifier = MOD_SINGLE, .remainder = raw[1..] };
+    if (js.startsWith(raw, MOD_NONE)) return .{ .modifier = MOD_NONE, .remainder = raw[1..] };
+    return .{ .modifier = null, .remainder = raw };
+}
+
+/// `modifierSpelling`: the spelling a merged modifier takes at the end of a
+/// canonical reference. A contradiction keeps the reading that won, which is
+/// already the `modifier` this port stores.
+fn modifierSpelling(modifier: ?Str) Str {
+    return modifier orelse &.{};
+}
+
+const Merged = struct { modifier: ?Str = null, contradicted: bool = false };
+
+/// `mergeModifiers`: combine the modifier tokens one selector carries into the
+/// single modifier it has, or fail when they cannot be combined.
+///
+/// `+` against `-` is the one contradiction: the annotation reading wins, and
+/// the caller reports it once. The same modifier twice is malformed.
+fn mergeModifiers(
+    alloc: Allocator,
+    modifiers: []const Str,
+    raw: Str,
+    failure: *Failure,
+) Error!Merged {
+    if (modifiers.len == 0) return .{};
+    if (modifiers.len == 1) return .{ .modifier = modifiers[0] };
+
+    var positives: usize = 0;
+    var negatives: usize = 0;
+    for (modifiers) |entry| {
+        if (entry[0] == '+') positives += 1 else negatives += 1;
+    }
+    if (positives > 1 or negatives > 1) {
+        return failure.grammarMessage(try js.format(
+            alloc,
+            "\"#{s}\" carries more than one modifier",
+            .{@as(Str, raw)},
+        ));
+    }
+    for (modifiers) |entry| {
+        if (js.eql(entry, MOD_DOUBLE)) return .{ .modifier = MOD_DOUBLE, .contradicted = true };
+    }
+    return .{ .modifier = MOD_SINGLE, .contradicted = true };
+}
+
+fn isDigitUnit(unit: ?u16) bool {
+    const digit = unit orelse return false;
+    return digit >= '0' and digit <= '9';
+}
+
+/// `LINE_RANGE_PREFIX`: does this selector at least begin like a line range?
+fn isLineRangePrefix(raw: Str) bool {
+    return raw.len >= 2 and raw[0] == 'L' and isDigitUnit(raw[1]);
+}
+
+/// `LINE_RANGE_FULL`, read by hand: `L<point>` and `L<point>-L<point>`, and
+/// nothing else. Null when the text is not one of those two forms.
+fn parseLineRange(raw: Str) ?SelectorRange {
+    var at: usize = 0;
+    const first = parseLinePoint(raw, &at) orelse return null;
+    if (at < raw.len and raw[at] == '-') {
+        at += 1;
+        const second = parseLinePoint(raw, &at) orelse return null;
+        // A second `-` is neither an endpoint nor the range's other end.
+        if (at != raw.len) return null;
+        return .{ .from = first, .to = second };
+    }
+    if (at != raw.len) return null;
+    return .{ .from = first, .to = null };
+}
+
+/// One `L<line>` or `L<line>:<column>` endpoint; `at` advances past it.
+fn parseLinePoint(raw: Str, at: *usize) ?LinePoint {
+    var index = at.*;
+    if (index >= raw.len or raw[index] != 'L') return null;
+    index += 1;
+    if (!isDigitUnit(if (index < raw.len) raw[index] else null)) return null;
+
+    const line_start = index;
+    while (index < raw.len and isDigitUnit(raw[index])) index += 1;
+    const line = js.parseDigitRun(raw[line_start..index]);
+
+    var column: ?usize = null;
+    if (index < raw.len and raw[index] == ':') {
+        index += 1;
+        if (!isDigitUnit(if (index < raw.len) raw[index] else null)) return null;
+        const column_start = index;
+        while (index < raw.len and isDigitUnit(raw[index])) index += 1;
+        column = js.parseDigitRun(raw[column_start..index]);
+    }
+
+    at.* = index;
+    return .{ .line = line, .column = column };
+}
+
+/// `lineRangeOf`: read `raw` as a line-range selector, or null when it is not
+/// one. Fails when the text claims to be a line range and is not one — `L40-`,
+/// `L40:x`, `L0`, `L5-L2`, and a range carrying a modifier — because a
+/// reference that opens `L<digit>` is a line range or a typo, never a name.
+fn lineRangeOf(alloc: Allocator, raw: Str, failure: *Failure) Error!?SelectorRange {
+    if (!isLineRangePrefix(raw)) return null;
+
+    const malformed = js.format(
+        alloc,
+        "\"#{s}\" is not a line range; write L<line> or L<line>:<column>",
+        .{@as(Str, raw)},
+    );
+    const range = parseLineRange(raw) orelse return failure.grammarMessage(try malformed);
+
+    const from_zero = range.from.line < 1 or
+        (range.from.column != null and range.from.column.? < 1);
+    const to_zero = if (range.to) |to|
+        to.line < 1 or (to.column != null and to.column.? < 1)
+    else
+        false;
+    if (from_zero or to_zero) {
+        return failure.grammarMessage(try js.format(
+            alloc,
+            "\"#{s}\" counts lines and columns from 1",
+            .{@as(Str, raw)},
+        ));
+    }
+    if (range.to) |to| {
+        const backwards = to.line < range.from.line or
+            (to.line == range.from.line and to.column != null and range.from.column != null and
+                to.column.? < range.from.column.?);
+        if (backwards) {
+            return failure.grammarMessage(try js.format(
+                alloc,
+                "\"#{s}\" ends before it starts",
+                .{@as(Str, raw)},
+            ));
+        }
+    }
+
+    return range;
 }
 
 /// `parseReference`: the grammar of `#<reference>`, its canonical spelling and
-/// the contradiction warning.
+/// the contradiction warning. This is the **single path selector** reader: a
+/// comma and a line range are not a path, and are reported as such.
 pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Reference {
     if (raw.len == 0) return failure.grammarMessage(try js.format(alloc, "\"#\" names nothing", .{}));
+    if (js.indexOfUnit(raw, ',') != null) {
+        return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty selector", .{raw}));
+    }
+    if (isLineRangePrefix(raw)) {
+        _ = try lineRangeOf(alloc, raw, failure); // fails when the range is malformed
+        return failure.grammarMessage(try js.format(
+            alloc,
+            "\"#{s}\" is a line range, not a section path",
+            .{raw},
+        ));
+    }
 
     var detached: ?Str = null;
     var remainder = raw;
@@ -310,6 +497,209 @@ fn splitSlash(alloc: Allocator, text: Str) ![]Str {
     }
     try parts.append(alloc, text[start..]);
     return parts.toOwnedSlice(alloc);
+}
+
+/// `remainder.split(',')` — the selector separator.
+fn splitComma(alloc: Allocator, text: Str) ![]Str {
+    var parts = std.ArrayList(Str).empty;
+    var start: usize = 0;
+    while (js.indexOfUnit(text[start..], ',')) |offset| {
+        try parts.append(alloc, text[start .. start + offset]);
+        start += offset + 1;
+    }
+    try parts.append(alloc, text[start..]);
+    return parts.toOwnedSlice(alloc);
+}
+
+/// `/^[\w$]/` — does this text at least open a name?
+fn canOpenName(text: Str) bool {
+    if (text.len == 0) return false;
+    const unit = text[0];
+    return js.isAsciiWord(unit) or unit == '$';
+}
+
+/// `/^[\w$/+-]/` — what a selector may open with. What cannot even open a name
+/// (`@x`) names nothing; anything else is read by the single-selector grammar.
+fn canOpenSelector(text: Str) bool {
+    if (text.len == 0) return false;
+    const unit = text[0];
+    return js.isAsciiWord(unit) or unit == '$' or unit == '/' or unit == '+' or unit == '-';
+}
+
+/// The length of `segments.join('/')`, the part of a canonical spelling the
+/// segments account for; the rest is the modifier run.
+fn joinedSegmentsLen(segments: []const Str) usize {
+    var total: usize = 0;
+    for (segments, 0..) |segment, index| {
+        if (index > 0) total += 1;
+        total += segment.len;
+    }
+    return total;
+}
+
+/// `parseSelectors`: read a whole reference as its selectors, or fail.
+///
+/// A reference is one or more selectors separated by `,`: each is either a
+/// semantic path (`Cart/Line/render-`) or a line range (`L40:12-L44:3`). A
+/// single path selector is the degenerate case and keeps the canonical spelling,
+/// the segments and the scope `parseReference` always gave it.
+///
+/// A leading or trailing modifier of the whole reference belongs to the **last**
+/// selector, exactly as it belonged to the last path segment before; a modifier
+/// written on a selector's own path is that selector's and nobody else's. A line
+/// range has no modifier of its own and takes none.
+pub fn parseSelectors(alloc: Allocator, raw: Str, failure: *Failure) Error!Reference {
+    if (raw.len == 0) return failure.grammarMessage(try js.format(alloc, "\"#\" names nothing", .{}));
+
+    const leading = detachLeadingModifier(raw);
+    if (leading.remainder.len == 0) {
+        return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
+    }
+
+    const parts = try splitComma(alloc, leading.remainder);
+    for (parts) |part| {
+        if (js.trim(part).len == 0) {
+            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty selector", .{raw}));
+        }
+    }
+    const last_index = parts.len - 1;
+
+    // The reference's own modifier: the leading one, the trailing one, or both.
+    // It is collected separately from a selector's own run because only it can
+    // reach the last selector's path (`-a/b` is `a/b-`).
+    var reference_modifiers = std.ArrayList(Str).empty;
+    if (leading.modifier) |modifier| try reference_modifiers.append(alloc, modifier);
+
+    // The trailing run of the last selector is the reference's own. For a path
+    // the run is taken both from the selector as written *and* from the path it
+    // parses to, so a run written further up the path (`a-/b++`) is still part
+    // of the reference's modifier and still contradicts a leading one. A line
+    // range is read first and on its own: `lineRangeOf` rejects the ranges that
+    // only look like one, and a range takes no modifier at all.
+    const last_text = js.trim(parts[last_index]);
+    if (try lineRangeOf(alloc, last_text, failure) == null) {
+        const written = try extractTrailingModifier(alloc, last_text);
+        const parsed_last: ?Reference = if (canOpenName(written.name))
+            try parseReference(alloc, written.name, failure)
+        else
+            null;
+        const suffix: Str = if (parsed_last != null and parsed_last.?.segments.len > 0)
+            parsed_last.?.canonical[joinedSegmentsLen(parsed_last.?.segments)..]
+        else
+            &.{};
+        for (written.tokens) |token| try reference_modifiers.append(alloc, token);
+        for (try tokenizeModifierRun(alloc, suffix)) |token| try reference_modifiers.append(alloc, token);
+    }
+
+    const merged = try mergeModifiers(alloc, reference_modifiers.items, raw, failure);
+    const modifier = merged.modifier;
+
+    var selectors = std.ArrayList(Selector).empty;
+    for (parts, 0..) |part, index| {
+        const trimmed = js.trim(part);
+
+        // A selector that opens `L<digit>` is a line range, and is read as one
+        // before anything is stripped from it: a range takes no modifier at all.
+        if (index == last_index or isLineRangePrefix(trimmed)) {
+            const text = if (index == last_index) last_text else trimmed;
+            if (try lineRangeOf(alloc, text, failure)) |range| {
+                try selectors.append(alloc, .{ .lines = .{
+                    .raw = trimmed,
+                    .from = range.from,
+                    .to = range.to,
+                } });
+                continue;
+            }
+        }
+
+        // The last selector is read without the runs that are the reference's
+        // own, so the reference's modifier and the selector's are compared
+        // rather than counted twice.
+        const text = if (index == last_index)
+            (try extractTrailingModifier(alloc, trimmed)).name
+        else
+            trimmed;
+
+        // A path is a name. What cannot even open a name — `@x` — names nothing;
+        // anything else is read by the single-selector grammar, whose own errors
+        // (`/a` has an empty path segment, `a/+b` is a misplaced modifier) quote
+        // the selector and are the ones a user needs to see.
+        if (!canOpenSelector(text)) {
+            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{text}));
+        }
+        const parsed = try parseReference(alloc, text, failure);
+        // The reference's own modifier applies to the last selector, as it has
+        // always applied to the last path segment; every earlier selector keeps
+        // the scope its own spelling gave it.
+        const scope: Scope = if (index == last_index and modifier != null)
+            scopeFromModifier(modifier)
+        else
+            parsed.scope;
+        try selectors.append(alloc, .{ .path = .{
+            .raw = text,
+            .segments = parsed.segments,
+            .scope = scope,
+        } });
+    }
+
+    // Every selector but the last keeps the spelling it was written with — its
+    // modifier included, since that modifier belongs to that selector. The last
+    // one is spelled from its parsed path, with the reference's own modifier
+    // appended, which is where a modifier has always been canonicalised to.
+    var canonical = std.ArrayList(u16).empty;
+    for (selectors.items, 0..) |selector, index| {
+        if (index > 0) try canonical.append(alloc, ',');
+        switch (selector) {
+            .lines => |line| try canonical.appendSlice(alloc, line.raw),
+            .path => |path| {
+                if (index == selectors.items.len - 1) {
+                    for (path.segments, 0..) |segment, at| {
+                        if (at > 0) try canonical.append(alloc, '/');
+                        try canonical.appendSlice(alloc, segment);
+                    }
+                } else try canonical.appendSlice(alloc, path.raw);
+            },
+        }
+    }
+    try canonical.appendSlice(alloc, modifierSpelling(modifier));
+    const canonical_owned = try canonical.toOwnedSlice(alloc);
+
+    // A reference of one path selector carries a scope the resolver applies; in
+    // a mixed reference the reference's modifier belongs to the last path
+    // selector, and a line range has no scope at all.
+    var segments: []Str = &.{};
+    var scope: Scope = .declaration;
+    if (selectors.items.len == 1) switch (selectors.items[0]) {
+        .path => |path| {
+            segments = path.segments;
+            scope = if (modifier != null) scopeFromModifier(modifier) else path.scope;
+        },
+        .lines => {},
+    };
+
+    var warning: ?Reference.Warning = null;
+    if (merged.contradicted) {
+        warning = .{
+            .kept = modifier.?,
+            .dropped = MOD_NONE,
+            .canonical = canonical_owned,
+            .message = &.{},
+        };
+        warning.?.message = try js.format(
+            alloc,
+            "\"{s}\" contradicts \"{s}\"; using \"#{s}\"",
+            .{ modifier.?, MOD_NONE, canonical_owned },
+        );
+    }
+
+    return .{
+        .raw = raw,
+        .canonical = canonical_owned,
+        .selectors = try selectors.toOwnedSlice(alloc),
+        .segments = segments,
+        .scope = scope,
+        .warning = warning,
+    };
 }
 
 // ===========================================================================
@@ -640,6 +1030,13 @@ fn matchingBracket(text: Str, open: usize, closer: u16) ?usize {
     return null;
 }
 
+/// A declaration's header as a slice of the mask: the line the declaration
+/// starts on, or the several a wrapped parameter list spans, through the `{` or
+/// `;` that ends the header — **including** it. (The JavaScript window also
+/// carries the last line it reached and a reader for the line an offset sits
+/// on; no caller reads either.)
+const Header = struct { start: usize, end: usize };
+
 fn braceBody(mask: Str, starts: []const usize, open: usize) ?Span {
     const close = matchingBracket(mask, open, '}') orelse return null;
     return .{
@@ -650,15 +1047,18 @@ fn braceBody(mask: Str, starts: []const usize, open: usize) ?Span {
     };
 }
 
+/// A body span, or null when the member has no body to inject (an interface or
+/// `abstract` method). `header` is the declaration's header as a slice of the
+/// mask — one line, or the several a wrapped parameter list spans — ending at
+/// the `{` or `;` that ends it.
 fn bodySpan(
     mask: Str,
     lines: []const Str,
     starts: []const usize,
     decl_line: usize,
-    header_from: usize,
+    header: Header,
 ) ?Span {
-    const line_end = endOfLine(mask, starts[decl_line]);
-    const rest = mask[header_from..@max(header_from, line_end)];
+    const rest = mask[header.start..@max(header.start, header.end)];
 
     // The earliest of `{`, `;` and `=>`.
     const Terminator = struct { at: usize, kind: enum { brace, none, arrow } };
@@ -708,11 +1108,71 @@ fn bodySpan(
     if (first.kind == .arrow) {
         const after = rest[first.at + 2 ..];
         if (js.indexOfUnit(after, '{')) |offset| {
-            return braceBody(mask, starts, header_from + first.at + 2 + offset);
+            return braceBody(mask, starts, header.start + first.at + 2 + offset);
         }
-        return .{ .expression = header_from + first.at + 2 };
+        return .{ .expression = header.start + first.at + 2 };
     }
-    return braceBody(mask, starts, header_from + first.at);
+    return braceBody(mask, starts, header.start + first.at);
+}
+
+/// How far a declaration's header may run past the line it starts on.
+const HEADER_LINES = 200;
+
+/// The header of a declaration that starts on `line`: the mask from that line's
+/// first character through the `{` or `;` that ends the header, **including** it.
+///
+/// A wrapped parameter list is formatting, so the header of a member may span
+/// lines — but only while the text could still be a header. It ends at the first
+/// `{` or `;` met with every bracket closed, and stops at the blank line or the
+/// code line that proves it ended without one (a body-less interface method, a
+/// declaration the mask cut short). Counting every bracket — `(`, `[`, `{`, `<`
+/// — is what makes a wrapped parameter list, a wrapped generic list and a
+/// wrapped `throws` clause one rule; a `{` inside the header's own brackets (a
+/// lambda default, an array initialiser) is not the body's brace, because a
+/// bracket is open.
+fn headerWindow(facts: Facts, line: usize) Header {
+    const mask_lines = facts.mask_lines;
+    const starts = facts.starts;
+    const last = @min(mask_lines.len - 1, line + HEADER_LINES - 1);
+    const window_start = starts[line];
+
+    var depth: isize = 0;
+    var index = line;
+    while (index <= last) : (index += 1) {
+        const text = mask_lines[index];
+        const from = starts[index];
+        const continues = depth > 0 or headerContinues(text);
+
+        var column: usize = 0;
+        while (column < text.len) : (column += 1) {
+            const unit = text[column];
+            if (depth == 0 and (unit == '{' or unit == ';')) {
+                return .{ .start = window_start, .end = from + column + 1 };
+            }
+            if (unit == '(' or unit == '[' or unit == '{' or unit == '<') {
+                depth += 1;
+            } else if (unit == ')' or unit == ']' or unit == '}' or unit == '>') {
+                depth -= 1;
+            }
+            if (depth < 0) return .{ .start = window_start, .end = from + column + 1 };
+        }
+        depth = @max(0, depth);
+        // A line that is blank, or that opened nothing the next line could
+        // continue, ends a header that never found its brace — and the caller
+        // then finds no body to inject, which is the honest answer for a
+        // body-less declaration.
+        if (!continues) return .{ .start = window_start, .end = from + text.len };
+    }
+    return .{ .start = window_start, .end = window_start + mask_lines[line].len };
+}
+
+/// `/[(,;]\s*$/` — whether the next line could continue a header this one ends.
+fn headerContinues(text: Str) bool {
+    var at = text.len;
+    while (at > 0 and js.isWhitespace(text[at - 1])) at -= 1;
+    if (at == 0) return false;
+    const unit = text[at - 1];
+    return unit == '(' or unit == ',' or unit == ';';
 }
 
 /// A body closed by a terminator keyword line (`end` in Ruby, `End` in VB),
@@ -804,6 +1264,12 @@ fn matchDeclarationKeyword(line: Str) ?KeywordMatch {
     return null;
 }
 
+/// `[^\w$.]` — the one separator character `(^|[^\w$.])` may consume before a
+/// name. (Not `\b`: the name patterns also accept a leading `$`.)
+fn isSeparatorUnit(unit: u16) bool {
+    return !(js.isAsciiWord(unit) or unit == '$' or unit == '.');
+}
+
 const CallMatch = struct { name_at: usize, paren: usize };
 
 /// `(^|[^\w$.])name\s*\(` — the next call-shaped mention of `name`, from `from`.
@@ -813,7 +1279,7 @@ fn nextCallMatch(line: Str, name: Str, from: usize) ?CallMatch {
     while (js.indexOf(line[at..], name)) |offset| {
         const start = at + offset;
         at = start + 1;
-        if (start > 0 and (js.isAsciiWord(line[start - 1]) or line[start - 1] == '$' or line[start - 1] == '.')) continue;
+        if (start > 0 and !isSeparatorUnit(line[start - 1])) continue;
         const after = start + name.len;
         if (after < line.len and (js.isAsciiWord(line[after]) or line[after] == '$')) continue;
         var scan = after;
@@ -823,7 +1289,10 @@ fn nextCallMatch(line: Str, name: Str, from: usize) ?CallMatch {
     return null;
 }
 
-const AssignedMatch = struct { end: usize };
+/// A hit of the assigned pattern: the end of the whole `const name = …` match,
+/// and where that match begins — the window reading compares the text before
+/// the match to the return-type prefix, and the head is part of the match.
+const AssignedMatch = struct { start: usize, end: usize };
 
 /// `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?name\b(?:\s*:\s*[^=\n]+)?\s*=\s*(?:async\s+)?`.
 fn nextAssignedMatch(line: Str, name: Str, from: usize) ?AssignedMatch {
@@ -832,7 +1301,7 @@ fn nextAssignedMatch(line: Str, name: Str, from: usize) ?AssignedMatch {
     while (js.indexOf(line[at..], name)) |offset| {
         const start = at + offset;
         at = start + 1;
-        if (start > 0 and (js.isAsciiWord(line[start - 1]) or line[start - 1] == '$' or line[start - 1] == '.')) continue;
+        if (start > 0 and !isSeparatorUnit(line[start - 1])) continue;
         const after = start + name.len;
         if (after < line.len and js.isAsciiWord(line[after])) continue;
 
@@ -852,28 +1321,62 @@ fn nextAssignedMatch(line: Str, name: Str, from: usize) ?AssignedMatch {
             scan += async_kw.len;
             while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
         }
-        return .{ .end = scan };
+        return .{ .start = assignedMatchStart(line, start), .end = scan };
     }
     return null;
+}
+
+/// Where the assigned pattern's whole match begins for a name found at
+/// `name_at`. The pattern is `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?name…`, so
+/// the match begins at the `const`/`let`/`var` head's own separator — or at
+/// offset 0 when the head, or the name itself, opens the text — and otherwise
+/// at the one separator character just before the name.
+fn assignedMatchStart(text: Str, name_at: usize) usize {
+    const heads = [_][]const u8{ "const ", "let ", "var " };
+    for (heads) |head| {
+        if (name_at < head.len) continue;
+        if (!js.eqlBytes(text[name_at - head.len .. name_at], head)) continue;
+        const head_start = name_at - head.len;
+        if (head_start == 0) return 0;
+        if (isSeparatorUnit(text[head_start - 1])) return head_start - 1;
+    }
+    return if (name_at == 0) 0 else name_at - 1;
 }
 
 const Declaration = struct {
     kind: Kind,
     name: Str,
-    header_from: usize,
+    /// The header the body reader slices: where the name's own shape ends,
+    /// through the `{` or `;` that ends the declaration's header.
+    header: Header,
 };
 
-/// Whether a masked line declares `name`, and where its header ends.
+/// Whether a masked line declares `name`, and the header window its body is
+/// read from.
+///
+/// The declaration is read from its own line whenever that line says everything
+/// there is to say, which is the only shape the matcher ever had to read. A
+/// header that wraps — a parameter list, a generic list, a `throws` clause — is
+/// not readable that way, because the closing bracket sits on a later line; for
+/// those, {@link declarationAcross} reads the header window instead. The line's
+/// own reading is what decides *whether* there is a declaration at all — a bare
+/// name that merely appears inside a wrapped construct must not become one — and
+/// the window is only asked where it ends.
+///
+/// `header` is the line's window when the caller has one; the wrapped reading
+/// needs it, and without one the window is the line itself.
 fn declarationOn(
     alloc: Allocator,
+    facts: Facts,
     masked_line: Str,
     start: usize,
     name: Str,
-    declarations: []const syntaxes.Declaration,
+    header: ?Header,
 ) !?Declaration {
     if (name.len == 0 or isNotAName(name)) return null;
+    const window = header orelse Header{ .start = start, .end = start + masked_line.len };
 
-    for (declarations) |entry| {
+    for (facts.declarations) |entry| {
         const hit = entry.match(masked_line) orelse continue;
         if (!js.eql(hit.name, name)) continue;
         return .{
@@ -883,13 +1386,20 @@ fn declarationOn(
                 .property => .property,
             },
             .name = name,
-            .header_from = start + hit.header_from,
+            .header = .{ .start = start + hit.header_from, .end = window.end },
         };
     }
 
     if (matchDeclarationKeyword(masked_line)) |keyword| {
         if (js.eql(keyword.name, name)) {
-            return .{ .kind = .class, .name = name, .header_from = start + keyword.index + keyword.length };
+            return .{
+                .kind = .class,
+                .name = name,
+                .header = .{
+                    .start = start + keyword.index + keyword.length,
+                    .end = window.end,
+                },
+            };
         }
     }
 
@@ -902,7 +1412,17 @@ fn declarationOn(
         const prefix = try withFuncReceiver(alloc, before);
         if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or startsWithStatementBefore(prefix))) continue;
         const close = matchingBracket(masked_line, hit.paren, ')') orelse continue;
-        return .{ .kind = .method, .name = name, .header_from = start + close + 1 };
+        return .{
+            .kind = .method,
+            .name = name,
+            .header = .{ .start = start + close + 1, .end = window.end },
+        };
+    }
+
+    if (window.end > start + masked_line.len) {
+        // The header continues past this line, so the closing bracket a wrapped
+        // parameter list put there is only visible to the whole-window reading.
+        return declarationAcross(alloc, facts, window, name);
     }
 
     from = 0;
@@ -912,9 +1432,59 @@ fn declarationOn(
         const arrow = js.indexOf(rest, &js.lit("=>"));
         const keyword = functionKeywordEnd(rest);
         if (arrow != null and (keyword == null or arrow.? < keyword.?)) {
-            return .{ .kind = .method, .name = name, .header_from = start + hit.end + arrow.? };
+            const header_from = start + hit.end + arrow.?;
+            return .{ .kind = .method, .name = name, .header = .{ .start = header_from, .end = window.end } };
         }
-        if (keyword) |end| return .{ .kind = .method, .name = name, .header_from = start + hit.end + end };
+        if (keyword) |end| {
+            const header_from = start + hit.end + end;
+            return .{ .kind = .method, .name = name, .header = .{ .start = header_from, .end = window.end } };
+        }
+    }
+    return null;
+}
+
+/// The same matchers, run over the whole header window instead of one line.
+///
+/// The window exists because a wrapped parameter list closes its bracket on a
+/// later line, and the matchers compare the text before a name to a return type
+/// / modifier list — so the name is looked for where it is written, and the
+/// brackets are matched across the lines that hold them. `name(` must still open
+/// the name, and the window still ends at the `{` or `;` that ends the header,
+/// so a name appearing inside a wrapped argument list is not a declaration.
+fn declarationAcross(alloc: Allocator, facts: Facts, header: Header, name: Str) !?Declaration {
+    const text = facts.mask[header.start..@max(header.start, header.end)];
+    const starts = facts.starts;
+    const mask_lines = facts.mask_lines;
+
+    var from: usize = 0;
+    while (nextCallMatch(text, name, from)) |hit| {
+        from = hit.name_at + 1;
+        // The prefix is the name's **own line** before the name, so a wrapped
+        // receiver or return type on an earlier line is not part of it.
+        const column = hit.name_at;
+        const line = lineOf(starts, header.start + column);
+        const before = mask_lines[line][0 .. header.start + column - starts[line]];
+        const prefix = try withFuncReceiver(alloc, before);
+        if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or startsWithStatementBefore(prefix))) continue;
+        // The bracket is matched inside the window's own text: `matchingBracket`
+        // counts from the index it is given, so an absolute offset would read
+        // the wrong bracket.
+        if (matchingBracket(text, hit.paren, ')') == null) continue;
+        return .{ .kind = .method, .name = name, .header = header };
+    }
+
+    var assigned_from: usize = 0;
+    while (nextAssignedMatch(text, name, assigned_from)) |hit| {
+        assigned_from = hit.end;
+        const column = hit.start;
+        const line = lineOf(starts, header.start + column);
+        const before = mask_lines[line][0 .. header.start + column - starts[line]];
+        const prefix = js.trim(before);
+        if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or startsWithStatementBefore(prefix))) continue;
+        const rest = text[hit.end..];
+        if (js.indexOf(rest, &js.lit("=>")) != null or functionKeywordEnd(rest) != null) {
+            return .{ .kind = .method, .name = name, .header = header };
+        }
     }
     return null;
 }
@@ -1073,7 +1643,10 @@ const Build = struct {
             if (matchDeclarationKeyword(mask_line)) |keyword| {
                 if (!isNotAName(keyword.name)) {
                     const header_from = start + keyword.index + keyword.length;
-                    const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, header_from);
+                    const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, .{
+                        .start = header_from,
+                        .end = headerWindow(self.facts, i).end,
+                    });
                     const block = try alloc.create(Block);
                     block.* = makeBlock(.class, keyword.name, i);
                     applySpan(block, span);
@@ -1086,7 +1659,7 @@ const Build = struct {
             }
 
             if (try methodDeclOn(self, mask_line, i, start)) |found| {
-                const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, found.header_from);
+                const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, found.header);
                 const block = try alloc.create(Block);
                 block.* = makeBlock(.method, found.name, i);
                 applySpan(block, span);
@@ -1187,7 +1760,10 @@ fn declaredHere(
         const span: ?Span = if (entry.end_kw) |word| blk: {
             const body = keywordBody(self.facts.lines, line, word) orelse break :blk null;
             break :blk Span{ .open_line = body.open_line, .close_line = body.close_line };
-        } else bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, line, start + found.hit.header_from);
+        } else bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, line, .{
+            .start = start + found.hit.header_from,
+            .end = start + mask_line.len,
+        });
 
         const block = try alloc.create(Block);
         block.* = makeBlock(switch (entry.kind) {
@@ -1225,11 +1801,16 @@ fn isNotAType(word: Str) bool {
 fn methodDeclOn(self: *Build, mask_line: Str, line: usize, start: usize) Error!?Declaration {
     const alloc = self.facts.alloc;
 
+    // The declaration's header, and the lines it spans (a wrapped parameter
+    // list is one header over several lines). Computed once per line, and only
+    // for a name that is read as a declaration.
+    var header: ?Header = null;
+
     // A bare `name(` mention: the generic scan picks the name, `declarationOn`
     // confirms it and the body decides whether it is a call or a declaration.
     var at: usize = 0;
     while (at < mask_line.len) : (at += 1) {
-        if (at > 0 and (js.isAsciiWord(mask_line[at - 1]) or mask_line[at - 1] == '$' or mask_line[at - 1] == '.')) continue;
+        if (at > 0 and !isSeparatorUnit(mask_line[at - 1])) continue;
         if (!js.isIdentStart(mask_line[at])) continue;
         const name_start = at;
         var scan = at + 1;
@@ -1241,23 +1822,35 @@ fn methodDeclOn(self: *Build, mask_line: Str, line: usize, start: usize) Error!?
         const prefix = try withFuncReceiver(alloc, mask_line[0..name_start]);
         if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or startsWithStatementBefore(prefix))) continue;
 
-        const found = (try declarationOn(alloc, mask_line, start, name, self.facts.declarations)) orelse continue;
+        // The window is the wrapped reading's, and only a `name(` written on
+        // this line is read that way; a name the line spells only as an
+        // assignment is read from the line itself, as `buildScope` does.
+        const is_call = if (nextCallMatch(mask_line, name, name_start)) |hit| hit.name_at == name_start else false;
+        if (is_call and header == null) header = headerWindow(self.facts, line);
+        const found = (try declarationOn(
+            alloc,
+            self.facts,
+            mask_line,
+            start,
+            name,
+            if (is_call) header else null,
+        )) orelse continue;
         if (found.kind != .method) continue;
 
-        const is_call = if (nextCallMatch(mask_line, name, name_start)) |hit| hit.name_at == name_start else false;
         // A bare `foo();` call is not a declaration; an assigned function
         // carries a prefix (the `=`), so it always counts.
         if (is_call and prefix.len == 0) {
-            if (bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, line, found.header_from) == null) continue;
+            if (bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, line, found.header) == null) continue;
         }
         return found;
     }
 
-    // The assigned form: `const name = (…) => …`, `name = function …`.
+    // The assigned form: `const name = (…) => …`, `name = function …`. The
+    // line's own spelling is complete or it is nothing, so no window is asked.
     var assigned_from: usize = 0;
     while (assignedCandidate(mask_line, assigned_from)) |candidate| {
         assigned_from = candidate.name_end;
-        const found = (try declarationOn(alloc, mask_line, start, candidate.name, self.facts.declarations)) orelse continue;
+        const found = (try declarationOn(alloc, self.facts, mask_line, start, candidate.name, null)) orelse continue;
         if (found.kind != .method) continue;
         return found;
     }
@@ -2072,26 +2665,75 @@ fn docCommentStart(lines: []const Str, top: usize) ?usize {
     return null;
 }
 
-/// The text one declaration contributes, under one scope.
+/// A rendered section: the text, and the **1-based inclusive line range** it
+/// came from (`from`/`to`), which is what a host navigates to.
+const Render = struct { text: []u16, from: usize, to: usize };
+
+/// A 1-based inclusive line range of the source, as `planSection` reports it.
+pub const LineSpan = struct { from: usize, to: usize };
+
+/// `lines.slice(fromLine, toLine + 1)`, an empty slice when the bounds are
+/// inverted, as JavaScript's `slice` is.
+fn sliceLines(alloc: Allocator, lines: []const Str, from_line: usize, to_line: usize) ![]u16 {
+    if (to_line < from_line or from_line >= lines.len) return alloc.dupe(u16, &.{});
+    const end = @min(to_line + 1, lines.len);
+    return js.joinLines(alloc, lines[from_line..end]);
+}
+
+/// `span`: the slice's own lines, with the 1-based bounds of the slice.
+fn renderSpan(alloc: Allocator, lines: []const Str, from_line: usize, to_line: usize) !Render {
+    return .{
+        .text = try sliceLines(alloc, lines, from_line, to_line),
+        .from = from_line + 1,
+        .to = @max(from_line, to_line) + 1,
+    };
+}
+
+/// `single`: a one-line section, both bounds on that line (0-based).
+fn single(text: []u16, at: usize) Render {
+    return .{ .text = text, .from = at + 1, .to = at + 1 };
+}
+
+/// The text one declaration contributes, under one scope, and where it is.
+///
+/// `end_line` is the declaration's last line, and null when it has none to
+/// name — a member a language writes without a body, whose header may still
+/// wrap. The JavaScript reads that as `endLine + 1` and `Math.max(fromLine,
+/// endLine)`, where `null + 1` is 1 and `null` is 0, so the slice is empty
+/// unless the declaration opens the file; `end_line orelse 0` is the same
+/// coercion.
 fn renderDeclaration(
     alloc: Allocator,
     lines: []const Str,
     source: Str,
+    starts: []const usize,
     block: *Block,
-    end_line: usize,
+    end_line: ?usize,
     scope: Scope,
     annotations: []const syntaxes.Annotation,
-) ![]u16 {
+) !Render {
+    const last = end_line orelse 0;
     if (scope == .body) {
-        if (block.single_line) return js.joinLines(alloc, lines[block.decl_line .. end_line + 1]);
-        if (block.indented) return js.joinLines(alloc, lines[block.decl_line + 1 .. end_line + 1]);
+        if (block.single_line) return renderSpan(alloc, lines, block.decl_line, last);
+        if (block.indented) return renderSpan(alloc, lines, block.decl_line + 1, last);
         if (block.expression) |expression| {
-            return alloc.dupe(u16, js.trim(source[expression..endOfLine(source, expression)]));
+            return single(
+                try alloc.dupe(u16, js.trim(source[expression..endOfLine(source, expression)])),
+                lineOf(starts, expression),
+            );
         }
-        if (block.open_line.? == end_line) {
-            return alloc.dupe(u16, js.trim(source[block.open.? + 1 .. block.close.?]));
+        if (block.open_line == end_line) {
+            // A block with no braces at all (`void add(int x);`) reaches this
+            // with both offsets unset: `null + 1` and `null` make an empty
+            // single-line span on line 1.
+            const open = block.open orelse 0;
+            const close = block.close orelse 0;
+            return single(
+                try alloc.dupe(u16, js.trim(source[@min(open + 1, close)..close])),
+                block.open_line orelse 0,
+            );
         }
-        return js.joinLines(alloc, lines[block.open_line.? + 1 .. end_line]);
+        return renderSpan(alloc, lines, block.open_line.? + 1, last - 1);
     }
 
     var first = block.decl_line;
@@ -2101,7 +2743,7 @@ fn renderDeclaration(
             if (docCommentStart(lines, first)) |documented| first = documented;
         }
     }
-    return js.joinLines(alloc, lines[first .. end_line + 1]);
+    return renderSpan(alloc, lines, first, last);
 }
 
 /// `/;\s*$/` — a trailing semicolon and the spaces before it.
@@ -2115,19 +2757,28 @@ fn stripSemicolon(text: Str) Str {
     return text[0..end];
 }
 
-/// The text `block` contributes under `scope`.
+/// The text `block` contributes under `scope`, and the lines it came from.
 fn renderBlock(
     alloc: Allocator,
     block: *Block,
     scope: Scope,
     match_kind: HitKind,
     facts: Facts,
-) ![]u16 {
+) !Render {
     const is_anchor = match_kind == .anchor or match_kind == .condition;
     const end_line = block.end_line orelse block.close_line orelse block.decl_line;
 
     if (!is_anchor and (block.kind == .class or block.kind == .method)) {
-        return renderDeclaration(alloc, facts.lines, facts.source, block, end_line, scope, facts.annotations);
+        return renderDeclaration(
+            alloc,
+            facts.lines,
+            facts.source,
+            facts.starts,
+            block,
+            block.end_line orelse block.close_line,
+            scope,
+            facts.annotations,
+        );
     }
     if (!is_anchor and block.kind == .property) {
         if (scope == .body) {
@@ -2135,10 +2786,13 @@ fn renderBlock(
             if (js.indexOfUnit(facts.source[line_start..], '=')) |offset| {
                 const eq = line_start + offset;
                 const line_end = endOfLine(facts.source, line_start);
-                return alloc.dupe(u16, js.trim(stripSemicolon(facts.source[eq + 1 .. line_end])));
+                return single(
+                    try alloc.dupe(u16, js.trim(stripSemicolon(facts.source[eq + 1 .. line_end]))),
+                    block.decl_line,
+                );
             }
         }
-        return alloc.dupe(u16, js.trimEnd(facts.lines[block.decl_line]));
+        return single(try alloc.dupe(u16, js.trimEnd(facts.lines[block.decl_line])), block.decl_line);
     }
 
     const anchor_line: ?usize = if (block.anchor) |anchor| anchor.line else null;
@@ -2148,9 +2802,20 @@ fn renderBlock(
         const base = block.open_line orelse 0;
         const body_from = if (anchor_line) |line| @max(base, line) else base;
         if (body_from >= last_line) {
-            return alloc.dupe(u16, js.trim(facts.source[block.open.? + 1 .. block.close.?]));
+            // The slice is trimmed, so the span has to account for the blank
+            // lines the trim removed at either end.
+            const raw = facts.source[block.open.? + 1 .. block.close.?];
+            const skipped = raw.len - js.trimStart(raw).len;
+            const dropped = raw.len - js.trimEnd(raw).len;
+            const from = lineOf(facts.starts, block.open.? + 1 + skipped);
+            const to = lineOf(facts.starts, block.close.? - dropped);
+            return .{
+                .text = try alloc.dupe(u16, js.trim(raw)),
+                .from = from + 1,
+                .to = @max(from, to) + 1,
+            };
         }
-        return js.joinLines(alloc, facts.lines[body_from + 1 .. last_line]);
+        return renderSpan(alloc, facts.lines, body_from + 1, last_line - 1);
     }
 
     // A non-final chain segment (`if … } else if …`) shares its closing `}`
@@ -2159,9 +2824,13 @@ fn renderBlock(
         const text = facts.source[facts.starts[first_line] .. block.close.? + 1];
         const split = try js.splitLines(alloc, text);
         for (split) |*line| line.* = js.trimEnd(line.*);
-        return js.joinLines(alloc, split);
+        return .{
+            .text = try js.joinLines(alloc, split),
+            .from = first_line + 1,
+            .to = lineOf(facts.starts, block.close.?) + 1,
+        };
     }
-    return js.joinLines(alloc, facts.lines[first_line .. last_line + 1]);
+    return renderSpan(alloc, facts.lines, first_line, last_line);
 }
 
 // --- declarations and the plan ---------------------------------------------
@@ -2218,8 +2887,20 @@ fn extractDeclarationFromScan(
         ));
     }
     const block = chosen[0];
-    const end_line = block.end_line orelse block.close_line orelse block.decl_line;
-    return try renderDeclaration(alloc, scan.facts.lines, scan.facts.source, block, end_line, scope, scan.facts.annotations);
+    // `endLine !== undefined ? endLine : closeLine` — a body-less member leaves
+    // both unset, and `renderDeclaration` reads that as "no last line".
+    const end_line = block.end_line orelse block.close_line;
+    const rendered = try renderDeclaration(
+        alloc,
+        scan.facts.lines,
+        scan.facts.source,
+        scan.facts.starts,
+        block,
+        end_line,
+        scope,
+        scan.facts.annotations,
+    );
+    return rendered.text;
 }
 
 fn hasBody(block: *Block) bool {
@@ -2238,10 +2919,135 @@ fn walkNamed(alloc: Allocator, scope: *Block, name: Str, found: *std.ArrayList(*
     }
 }
 
-pub const Plan = struct { text: []u16, reference: Reference };
+/// What one selector contributed: its text, its kind, and where it came from.
+const Part = struct { text: []u16, kind: PlanKind, ranges: []const LineSpan };
+
+/// The kind of a plan: a single selector's kind, or `multiple` for several.
+pub const PlanKind = enum { region, declaration, property, condition, anchor, lines, multiple };
+
+pub const Plan = struct {
+    text: []u16,
+    reference: Reference,
+    start_line: usize,
+    end_line: usize,
+    ranges: []const LineSpan,
+    kind: PlanKind,
+};
+
+/// The last line of a block's declaration, for the spans the plan reports.
+fn lastDeclarationLine(block: *Block) usize {
+    if (block.end_line) |line| return line;
+    if (block.close_line) |line| return line;
+    return block.decl_line;
+}
+
+/// `sliceRanges`: where one rendered slice came from.
+///
+/// A slice is one line range in almost every case, and `lead` is what makes it
+/// more than one: a rendering may *prepend* a line of its own invention (the
+/// `if` of a condition literal, the header of a chain segment) before the lines
+/// the reference names, and then the lead belongs to the header line and the
+/// rest to the lines that follow.
+fn sliceRanges(
+    alloc: Allocator,
+    range: LineSpan,
+    text: Str,
+    lead: usize,
+) ![]const LineSpan {
+    if (lead == 0 or lead >= text.len) return alloc.dupe(LineSpan, &.{range});
+
+    const rest = text[lead..];
+    var lines_taken: usize = 1;
+    for (rest) |unit| {
+        if (unit == '\n') lines_taken += 1;
+    }
+    const tail_from = if (range.to + 1 >= lines_taken) range.to + 1 - lines_taken else 0;
+    const out = try alloc.alloc(LineSpan, 2);
+    out[0] = .{ .from = range.from, .to = range.from };
+    out[1] = .{ .from = @max(range.from + 1, tail_from), .to = range.to };
+    return out;
+}
+
+/// The source text of a slice's own lines, the `head` a rendered text may lead
+/// with; `str.slice`'s clamping included — an offset past the last line's start
+/// behaves as `undefined` does in JavaScript.
+fn headOf(source: Str, starts: []const usize, slice: LineSpan) Str {
+    const start = if (slice.from >= 1 and slice.from - 1 < starts.len) starts[slice.from - 1] else 0;
+    const end = if (slice.to < starts.len) starts[slice.to] else source.len;
+    return js.clampSlice(source, start, end);
+}
+
+/// `lineRangeSpan`: the lines a line-range selector names, as text and as a span.
+///
+/// Lines are counted from 1 and columns from 1, both inclusive. Anything the
+/// file does not have is an error rather than a clamp — a range that silently
+/// became a different range is exactly the drift a reference to a line number
+/// is for.
+fn lineRangeSpan(
+    alloc: Allocator,
+    facts: Facts,
+    from: LinePoint,
+    to: ?LinePoint,
+    raw: Str,
+    failure: *Failure,
+) Error!struct { text: []u16, range: LineSpan } {
+    const source = facts.source;
+    const lines = facts.lines;
+    const starts = facts.starts;
+    const from_line = from.line;
+    const to_point = to orelse from;
+    const to_line = to_point.line;
+
+    // `lines` is split on `\n`, so a file ending in a newline has a final empty
+    // entry: the file's last line is the last entry that is not that emptiness.
+    const total: usize = if (source.len == 0) 0 else lines.len;
+    if (from_line > total or to_line > total) {
+        return failure.set(try js.format(
+            alloc,
+            "\"#{s}\": the file has {d} line(s)",
+            .{ raw, total },
+        ));
+    }
+    if (from.column) |column| {
+        if (column - 1 >= lines[from_line - 1].len) {
+            return failure.set(try js.format(
+                alloc,
+                "\"#{s}\": line {d} has {d} character(s)",
+                .{ raw, from_line, lines[from_line - 1].len },
+            ));
+        }
+    }
+
+    const start = starts[from_line - 1] + (if (from.column) |column| column - 1 else 0);
+    const end: usize = if (to != null and to.?.column != null) blk: {
+        const column = to.?.column.?;
+        if (column - 1 >= lines[to_line - 1].len) {
+            return failure.set(try js.format(
+                alloc,
+                "\"#{s}\": line {d} has {d} character(s)",
+                .{ raw, to_line, lines[to_line - 1].len },
+            ));
+        }
+        // Both columns are inclusive, so the slice runs one past the character
+        // the second column names.
+        break :blk starts[to_line - 1] + column;
+    } else endOfLine(source, starts[to_line - 1]);
+
+    return .{
+        .text = try alloc.dupe(u16, source[start..end]),
+        .range = .{ .from = from_line, .to = to_line },
+    };
+}
 
 /// Resolve a section reference to text, exposing the reference and any
 /// contradiction warning. `resolveSection` is `planSection(...).text`.
+///
+/// A reference is one or more selectors (`add,L40-L44`): each contributes its
+/// own text, and the texts are joined with a newline in the order the selectors
+/// were written. `ranges` says where each contribution came from — one line
+/// range per selector, so a reference that names two far-apart pieces highlights
+/// the two pieces and not the gap between them — and `start_line`/`end_line` are
+/// the outermost bounds of the whole selection.
 pub fn planSection(
     alloc: Allocator,
     text: Str,
@@ -2249,17 +3055,116 @@ pub fn planSection(
     lexer: ?lexers.Lexer,
     failure: *Failure,
 ) Error!Plan {
-    const ref = try parseReference(alloc, reference, failure);
+    const ref = try parseSelectors(alloc, reference, failure);
     const scan = try scanBlocks(alloc, text, lexer);
-    const final = try resolvePath(alloc, ref.segments, 0, scan.root, false, null, failure);
+    const facts = scan.facts;
 
-    const out_text: []u16 = if (final.region) |region| blk: {
-        break :blk try js.joinLines(alloc, scan.facts.lines[region.start_line + 1 .. region.end_line]);
-    } else blk: {
-        break :blk try renderBlock(alloc, final.block.?, ref.scope, final.kind, scan.facts);
+    var parts = std.ArrayList(Part).empty;
+    for (ref.selectors.?) |selector| {
+        switch (selector) {
+            .lines => |line| {
+                const picked = try lineRangeSpan(alloc, facts, line.from, line.to, line.raw, failure);
+                const ranges = try alloc.alloc(LineSpan, 1);
+                ranges[0] = picked.range;
+                try parts.append(alloc, .{ .text = picked.text, .kind = .lines, .ranges = ranges });
+            },
+            .path => |path| {
+                // Resolve every segment but the last to a container, retrying
+                // same-named candidates, then take the final segment's first
+                // match in walk order as the selection.
+                const final = try resolvePath(alloc, path.segments, 0, scan.root, false, null, failure);
+
+                var rendered: Render = undefined;
+                var slice: LineSpan = undefined;
+                var kind: PlanKind = undefined;
+                if (final.region) |region| {
+                    rendered = try renderSpan(alloc, facts.lines, region.start_line + 1, region.end_line - 1);
+                    // The region's own span is the rendered slice's: the directive
+                    // lines are not part of it, and the slice is exactly the lines
+                    // between them.
+                    slice = .{ .from = rendered.from, .to = rendered.to };
+                    kind = .region;
+                } else {
+                    const block = final.block.?;
+                    rendered = try renderBlock(alloc, block, path.scope, final.kind, facts);
+                    kind = switch (final.kind) {
+                        .declaration => .declaration,
+                        .property => .property,
+                        .condition => .condition,
+                        .anchor => .anchor,
+                        .region => .region,
+                    };
+                    if (final.kind == .condition) {
+                        // The header line the matcher cites is rendered ahead of
+                        // the block's own first line; it is the slice's first.
+                        slice = .{ .from = final.header_line.? + 1, .to = lastDeclarationLine(block) + 1 };
+                    } else if (final.kind == .anchor) {
+                        const anchor_line = if (block.anchor) |anchor| anchor.line else block.decl_line;
+                        slice = .{ .from = anchor_line + 1, .to = lastDeclarationLine(block) + 1 };
+                    } else {
+                        slice = .{ .from = rendered.from, .to = rendered.to };
+                    }
+                }
+
+                // A rendering may prepend a line of its own invention — the `if`
+                // of a condition literal, the brace line of a body that opens
+                // below its header — before the lines the span names, so the
+                // span is only exact for the part of the text that matches the
+                // source; the lead is the header line's own.
+                const head = headOf(facts.source, facts.starts, slice);
+                const lead: usize = if (js.startsWith(rendered.text, head)) head.len else 0;
+                try parts.append(alloc, .{
+                    .text = rendered.text,
+                    .kind = kind,
+                    .ranges = try sliceRanges(alloc, slice, rendered.text, lead),
+                });
+            },
+        }
+    }
+
+    const joined = try joinPartTexts(alloc, parts.items);
+
+    // Merge the adjacent pieces, so a reference that names two lines side by
+    // side reports one range rather than two.
+    var ranges = std.ArrayList(LineSpan).empty;
+    for (parts.items) |part| {
+        for (part.ranges) |range| {
+            if (ranges.items.len > 0) {
+                const last = &ranges.items[ranges.items.len - 1];
+                if (range.from >= last.from and range.from <= last.to + 1) {
+                    last.to = @max(last.to, range.to);
+                    continue;
+                }
+            }
+            try ranges.append(alloc, range);
+        }
+    }
+
+    var low: usize = std.math.maxInt(usize);
+    var high: usize = 0;
+    for (ranges.items) |range| {
+        low = @min(low, range.from);
+        high = @max(high, range.to);
+    }
+
+    return .{
+        .text = joined,
+        .reference = ref,
+        .start_line = if (ranges.items.len > 0) low else 1,
+        .end_line = if (ranges.items.len > 0) high else 1,
+        .ranges = try ranges.toOwnedSlice(alloc),
+        .kind = if (parts.items.len == 1) parts.items[0].kind else .multiple,
     };
+}
 
-    return .{ .text = out_text, .reference = ref };
+/// `parts.map((part) => part.text).join('\n')`.
+fn joinPartTexts(alloc: Allocator, parts: []const Part) ![]u16 {
+    var out = std.ArrayList(u16).empty;
+    for (parts, 0..) |part, index| {
+        if (index > 0) try out.append(alloc, '\n');
+        try out.appendSlice(alloc, part.text);
+    }
+    return out.toOwnedSlice(alloc);
 }
 
 /// The text a section reference stands for.
@@ -2278,6 +3183,10 @@ pub fn resolveSection(
 // ===========================================================================
 
 const testing = std.testing;
+
+/// A `*Failure` for a parse that is expected to succeed; only a failing call
+/// ever writes to it.
+var scratch_failure = Failure{};
 
 fn expectUnits(alloc: Allocator, expected: []const u8, actual: Str) !void {
     const want = try js.utf8Decode(alloc, expected);
@@ -2359,6 +3268,388 @@ test "parseReference warns when a + contradicts a -" {
     }
 }
 
+test "parseSelectors reads a reference as a comma-separated list of selectors" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const cases = [_]struct { raw: []const u8, canonical: []const u8, scope: Scope }{
+        .{ .raw = "L40", .canonical = "L40", .scope = .declaration },
+        .{ .raw = "L40:12", .canonical = "L40:12", .scope = .declaration },
+        .{ .raw = "L40-L44", .canonical = "L40-L44", .scope = .declaration },
+        .{ .raw = "L40:12-L44:3", .canonical = "L40:12-L44:3", .scope = .declaration },
+        .{ .raw = "add,render", .canonical = "add,render", .scope = .declaration },
+        // Each selector's own modifier is that selector's; two selectors that
+        // each say what they mean do not contradict one another.
+        .{ .raw = "add-,render++", .canonical = "add-,render++", .scope = .declaration },
+        .{ .raw = "add,L40-L44", .canonical = "add,L40-L44", .scope = .declaration },
+        .{ .raw = "L40-L44,add-", .canonical = "L40-L44,add-", .scope = .declaration },
+        .{ .raw = "L40,L50-L52", .canonical = "L40,L50-L52", .scope = .declaration },
+        // A comma between selectors is structure, not part of a name.
+        .{ .raw = "L40, L50", .canonical = "L40,L50", .scope = .declaration },
+    };
+    for (cases) |case| {
+        const raw = try js.utf8Decode(alloc, case.raw);
+        var failure = Failure{};
+        const reference = try parseSelectors(alloc, raw, &failure);
+        try expectUnits(alloc, case.canonical, reference.canonical);
+        try testing.expectEqual(case.scope, reference.scope);
+        try testing.expect(reference.warning == null);
+    }
+
+    // The reference's own modifier — leading or trailing the whole thing —
+    // binds to the last selector: `+add,render` is `add,render+`.
+    {
+        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "+add,render"), &scratch_failure);
+        try expectUnits(alloc, "add,render+", reference.canonical);
+        try testing.expectEqual(Scope.declaration, reference.scope);
+        try testing.expectEqual(@as(usize, 2), reference.selectors.?.len);
+        try testing.expectEqual(Scope.declaration, reference.selectors.?[0].path.scope);
+        try testing.expectEqual(Scope.annotated, reference.selectors.?[1].path.scope);
+    }
+    try testing.expectEqual(
+        Scope.annotated,
+        (try parseSelectors(alloc, try js.utf8Decode(alloc, "+add"), &scratch_failure)).scope,
+    );
+    try testing.expectEqual(
+        Scope.declaration,
+        (try parseSelectors(alloc, try js.utf8Decode(alloc, "add,render+"), &scratch_failure)).scope,
+    );
+
+    // A single path selector keeps every field the single-reference grammar had.
+    {
+        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "Cart/Line/render-"), &scratch_failure);
+        try testing.expectEqual(@as(usize, 3), reference.segments.len);
+        try expectUnits(alloc, "Cart", reference.segments[0]);
+        try expectUnits(alloc, "render", reference.segments[2]);
+        try testing.expectEqual(Scope.body, reference.scope);
+        try testing.expectEqual(@as(usize, 1), reference.selectors.?.len);
+    }
+    // A list of selectors is not one path.
+    try testing.expectEqual(
+        @as(usize, 0),
+        (try parseSelectors(alloc, try js.utf8Decode(alloc, "add,render"), &scratch_failure)).segments.len,
+    );
+
+    // A line-range selector carries the range it names, and no path.
+    {
+        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "L40:12-L44:3"), &scratch_failure);
+        try testing.expectEqual(@as(usize, 0), reference.segments.len);
+        const line = reference.selectors.?[0].lines;
+        try testing.expectEqual(@as(usize, 40), line.from.line);
+        try testing.expectEqual(@as(?usize, 12), line.from.column);
+        try testing.expectEqual(@as(usize, 44), line.to.?.line);
+        try testing.expectEqual(@as(?usize, 3), line.to.?.column);
+    }
+    try testing.expect(
+        (try parseSelectors(alloc, try js.utf8Decode(alloc, "L40"), &scratch_failure)).selectors.?[0].lines.to == null,
+    );
+
+    // A modifier in front of the whole reference is the reference's own, and a
+    // line range ignores it.
+    {
+        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "+L40"), &scratch_failure);
+        try expectUnits(alloc, "L40+", reference.canonical);
+        try testing.expect(reference.selectors.?[0] == .lines);
+    }
+
+    // `Lx` never claimed to be a range (no digit), so it stays a name.
+    {
+        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "Lx"), &scratch_failure);
+        try testing.expectEqual(@as(usize, 1), reference.segments.len);
+        try expectUnits(alloc, "Lx", reference.segments[0]);
+    }
+}
+
+test "parseSelectors rejects the malformed ranges and empty selectors" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const cases = [_]struct { raw: []const u8, message: []const u8 }{
+        .{ .raw = "L40-", .message = "\"#L40-\" is not a line range; write L<line> or L<line>:<column>" },
+        .{ .raw = "L40:x", .message = "\"#L40:x\" is not a line range; write L<line> or L<line>:<column>" },
+        .{ .raw = "L40:x-L44", .message = "\"#L40:x-L44\" is not a line range; write L<line> or L<line>:<column>" },
+        .{ .raw = "L40-L44:", .message = "\"#L40-L44:\" is not a line range; write L<line> or L<line>:<column>" },
+        // A range has nothing for a modifier to select, and its own `-` is
+        // already spoken for, so a modifier written *on* the range is not one.
+        .{ .raw = "L40-L44+", .message = "\"#L40-L44+\" is not a line range; write L<line> or L<line>:<column>" },
+        .{ .raw = "L40-L44-", .message = "\"#L40-L44-\" is not a line range; write L<line> or L<line>:<column>" },
+        .{ .raw = "L40+", .message = "\"#L40+\" is not a line range; write L<line> or L<line>:<column>" },
+        .{ .raw = "L0", .message = "\"#L0\" counts lines and columns from 1" },
+        .{ .raw = "L40:0", .message = "\"#L40:0\" counts lines and columns from 1" },
+        .{ .raw = "L1:0", .message = "\"#L1:0\" counts lines and columns from 1" },
+        .{ .raw = "L44-L40", .message = "\"#L44-L40\" ends before it starts" },
+        .{ .raw = "L40:5-L40:2", .message = "\"#L40:5-L40:2\" ends before it starts" },
+        .{ .raw = "L40-L44:0", .message = "\"#L40-L44:0\" counts lines and columns from 1" },
+        // A comma joins selectors, so an empty one is an error, not a name.
+        .{ .raw = "add,", .message = "\"#add,\" has an empty selector" },
+        .{ .raw = ",add", .message = "\"#,add\" has an empty selector" },
+        .{ .raw = "add,,render", .message = "\"#add,,render\" has an empty selector" },
+    };
+    for (cases) |case| {
+        const raw = try js.utf8Decode(alloc, case.raw);
+        var failure = Failure{};
+        try testing.expectError(error.Failed, parseSelectors(alloc, raw, &failure));
+        try testing.expect(failure.grammar);
+        try expectUnits(alloc, case.message, failure.message);
+    }
+
+    // `parseReference` is the single path selector reader: a comma and a range
+    // are not a path, and are reported as such.
+    {
+        var failure = Failure{};
+        try testing.expectError(
+            error.Failed,
+            parseReference(alloc, try js.utf8Decode(alloc, "a,b"), &failure),
+        );
+        try expectUnits(alloc, "\"#a,b\" has an empty selector", failure.message);
+    }
+    {
+        var failure = Failure{};
+        try testing.expectError(
+            error.Failed,
+            parseReference(alloc, try js.utf8Decode(alloc, "L40-L44"), &failure),
+        );
+        try expectUnits(alloc, "\"#L40-L44\" is a line range, not a section path", failure.message);
+    }
+    {
+        var failure = Failure{};
+        try testing.expectError(
+            error.Failed,
+            parseReference(alloc, try js.utf8Decode(alloc, "L40-"), &failure),
+        );
+        try expectUnits(alloc, "\"#L40-\" is not a line range; write L<line> or L<line>:<column>", failure.message);
+    }
+}
+
+/// The plan for one reference over one fixture, with the fixture's lexer.
+fn planFor(alloc: Allocator, source: Str, reference: []const u8, path: []const u8) Error!Plan {
+    var failure = Failure{};
+    const plan = try planSection(
+        alloc,
+        source,
+        try js.utf8Decode(alloc, reference),
+        lexers.lexerFor(try js.utf8Decode(alloc, path)),
+        &failure,
+    );
+    return plan;
+}
+
+/// The failure message one reference produces over one fixture.
+fn planFailure(alloc: Allocator, source: Str, reference: []const u8, path: []const u8) !Str {
+    var failure = Failure{};
+    _ = planSection(
+        alloc,
+        source,
+        try js.utf8Decode(alloc, reference),
+        lexers.lexerFor(try js.utf8Decode(alloc, path)),
+        &failure,
+    ) catch |err| switch (err) {
+        error.Failed, error.Grammar => return failure.message,
+        else => |other| return other,
+    };
+    return error.ExpectedAFailure;
+}
+
+fn expectPlanText(alloc: Allocator, expected: []const u8, plan: Plan) !void {
+    try expectUnits(alloc, expected, plan.text);
+}
+
+test "line ranges select the lines they name, byte for byte" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const example_text = vectors.sourceOf("test/fixtures/Example.java") orelse return error.MissingFixture;
+    const example = try js.utf8Decode(alloc, example_text);
+
+    // The two readings of the same three lines must agree exactly — that is the
+    // whole point of being allowed to write a line number at all.
+    try expectPlanText(
+        alloc,
+        "    public String toString() {\n        return String.join(\",\", items);\n    }",
+        try planFor(alloc, example, "L12-L14", "x.java"),
+    );
+    try expectUnits(
+        alloc,
+        "    public String toString() {\n        return String.join(\",\", items);\n    }",
+        (try planFor(alloc, example, "L12-L14", "x.java")).text,
+    );
+    try testing.expectEqualSlices(
+        u16,
+        (try planFor(alloc, example, "toString", "x.java")).text,
+        (try planFor(alloc, example, "L12-L14", "x.java")).text,
+    );
+    try testing.expectEqualSlices(
+        u16,
+        (try planFor(alloc, example, "toString-", "x.java")).text,
+        (try planFor(alloc, example, "L13", "x.java")).text,
+    );
+    try expectPlanText(
+        alloc,
+        "package example;\n\nimport java.util.ArrayList;",
+        try planFor(alloc, example, "L1-L3", "x.java"),
+    );
+
+    // A column is an offset within its line, counted from 1, and the range runs
+    // to the end of its last line when that end names no column. Columns are
+    // inclusive at both ends, so `L13:9-L13:14` is exactly `return`.
+    try expectPlanText(alloc, "java.util.List", try planFor(alloc, example, "L4:8-L4:21", "x.java"));
+    try expectPlanText(
+        alloc,
+        "return String.join(\",\", items);",
+        try planFor(alloc, example, "L13:9", "x.java"),
+    );
+    try expectPlanText(alloc, "return", try planFor(alloc, example, "L13:9-L13:14", "x.java"));
+    try expectPlanText(alloc, "package", try planFor(alloc, example, "L1:1-L1:7", "x.java"));
+
+    // The plan says where the text came from, which is what a host navigates to.
+    {
+        const plan = try planFor(alloc, example, "L12-L14", "x.java");
+        try testing.expectEqual(PlanKind.lines, plan.kind);
+        try testing.expectEqual(@as(usize, 12), plan.start_line);
+        try testing.expectEqual(@as(usize, 14), plan.end_line);
+        try testing.expectEqual(@as(usize, 1), plan.ranges.len);
+        try testing.expectEqual(@as(usize, 12), plan.ranges[0].from);
+        try testing.expectEqual(@as(usize, 14), plan.ranges[0].to);
+    }
+
+    // Anything the file does not have is an error, never a clamp.
+    try expectUnits(
+        alloc,
+        "\"#L31\": the file has 30 line(s)",
+        try planFailure(alloc, example, "L31", "x.java"),
+    );
+    try expectUnits(
+        alloc,
+        "\"#L29-L31\": the file has 30 line(s)",
+        try planFailure(alloc, example, "L29-L31", "x.java"),
+    );
+    try expectUnits(
+        alloc,
+        "\"#L13:100\": line 13 has 39 character(s)",
+        try planFailure(alloc, example, "L13:100", "x.java"),
+    );
+    try expectUnits(
+        alloc,
+        "\"#L2:1\": line 2 has 0 character(s)",
+        try planFailure(alloc, example, "L2:1", "x.java"),
+    );
+}
+
+test "several selectors inject in order, each from its own lines" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const example_text = vectors.sourceOf("test/fixtures/Example.java") orelse return error.MissingFixture;
+    const example = try js.utf8Decode(alloc, example_text);
+
+    const method = (try planFor(alloc, example, "toString", "x.java")).text;
+    const package_lines = (try planFor(alloc, example, "L1-L3", "x.java")).text;
+
+    {
+        const plan = try planFor(alloc, example, "toString,L1-L3", "x.java");
+        try testing.expectEqual(PlanKind.multiple, plan.kind);
+        try testing.expectEqualSlices(u16, method, plan.text[0..method.len]);
+        try testing.expectEqual(@as(usize, 2), plan.ranges.len);
+        try testing.expectEqual(@as(usize, 12), plan.ranges[0].from);
+        try testing.expectEqual(@as(usize, 14), plan.ranges[0].to);
+        try testing.expectEqual(@as(usize, 1), plan.ranges[1].from);
+        try testing.expectEqual(@as(usize, 3), plan.ranges[1].to);
+        try testing.expectEqual(@as(usize, 1), plan.start_line);
+        try testing.expectEqual(@as(usize, 14), plan.end_line);
+    }
+
+    // The pieces are independent: two of them may overlap or sit in any order.
+    {
+        const plan = try planFor(alloc, example, "L1-L3,L12-L14", "x.java");
+        try testing.expectEqualSlices(
+            u16,
+            try js.concat(alloc, &.{ package_lines, try js.utf8Decode(alloc, "\n"), method }),
+            plan.text,
+        );
+    }
+
+    // A broken piece is an error, and names the piece that broke.
+    try expectUnits(
+        alloc,
+        "no \"#region missing\" found, and no section named \"missing\"",
+        try planFailure(alloc, example, "toString,missing", "x.java"),
+    );
+
+    // A modifier belongs to the last selector when it is the reference's own —
+    // leading or trailing the whole reference — and to its own selector when it
+    // is written on that selector's path, which is where it was written.
+    const line_body = (try planFor(alloc, example, "Line-", "x.java")).text;
+    const line_plain = (try planFor(alloc, example, "Line", "x.java")).text;
+    const line_annotated = (try planFor(alloc, example, "Line+", "x.java")).text;
+    const to_string_annotated = (try planFor(alloc, example, "toString+", "x.java")).text;
+
+    try testing.expectEqualSlices(
+        u16,
+        try js.concat(alloc, &.{ method, try js.utf8Decode(alloc, "\n"), line_annotated }),
+        (try planFor(alloc, example, "+toString,Line", "x.java")).text,
+    );
+    try testing.expectEqualSlices(
+        u16,
+        try js.concat(alloc, &.{ method, try js.utf8Decode(alloc, "\n"), line_body }),
+        (try planFor(alloc, example, "-toString,Line", "x.java")).text,
+    );
+    try testing.expectEqualSlices(
+        u16,
+        try js.concat(alloc, &.{ method, try js.utf8Decode(alloc, "\n"), line_body }),
+        (try planFor(alloc, example, "toString,Line-", "x.java")).text,
+    );
+    try testing.expectEqualSlices(
+        u16,
+        try js.concat(alloc, &.{ to_string_annotated, try js.utf8Decode(alloc, "\n"), line_plain }),
+        (try planFor(alloc, example, "toString+,Line", "x.java")).text,
+    );
+
+    // The scope of a mixed reference is only meaningful per selector.
+    {
+        const plan = try planFor(alloc, example, "+toString,Line", "x.java");
+        try testing.expectEqual(Scope.declaration, plan.reference.scope);
+        try testing.expectEqual(@as(usize, 0), plan.reference.segments.len);
+    }
+}
+
+test "every selection reports the lines it came from, regions included" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // The span is not an extra search for the text: it is the slice the text was
+    // made from, so a region reports the lines *between* its directives — the
+    // directive lines are not part of the selection — and a line range reports
+    // exactly what was asked for.
+    const source = try js.utf8Decode(alloc, "line1\n// #region r\naaa\nbbb\n// #endregion\nline6");
+
+    const region = try planFor(alloc, source, "r", "x.java");
+    try expectPlanText(alloc, "aaa\nbbb", region);
+    try testing.expectEqual(PlanKind.region, region.kind);
+    try testing.expectEqual(@as(usize, 1), region.ranges.len);
+    try testing.expectEqual(@as(usize, 3), region.ranges[0].from);
+    try testing.expectEqual(@as(usize, 4), region.ranges[0].to);
+    try testing.expectEqual(@as(usize, 3), region.start_line);
+    try testing.expectEqual(@as(usize, 4), region.end_line);
+
+    {
+        const plan = try planFor(alloc, source, "L3-L4", "x.java");
+        try testing.expectEqual(@as(usize, 1), plan.ranges.len);
+        try testing.expectEqual(@as(usize, 3), plan.ranges[0].from);
+        try testing.expectEqual(@as(usize, 4), plan.ranges[0].to);
+    }
+    {
+        const plan = try planFor(alloc, source, "L2-L3", "x.java");
+        try testing.expectEqual(@as(usize, 1), plan.ranges.len);
+        try testing.expectEqual(@as(usize, 2), plan.ranges[0].from);
+        try testing.expectEqual(@as(usize, 3), plan.ranges[0].to);
+    }
+}
+
 test "regionDirective accepts the common comment spellings" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -2410,8 +3701,10 @@ test "the golden section vectors" {
         const reference = try js.utf8Decode(alloc, case.reference);
 
         if (case.input == null) {
-            // A parse-only probe: the grammar, and the warning it carries.
-            if (parseReference(alloc, reference, &failure)) |parsed| {
+            // A parse-only probe: the grammar, and the warning it carries. The
+            // reference grammar is `parseSelectors` — one path selector,
+            // several, or a line range; `parseReference` reads one path only.
+            if (parseSelectors(alloc, reference, &failure)) |parsed| {
                 if (case.warning) |expected| {
                     const warning = parsed.warning orelse {
                         std.debug.print("{s}: expected a warning\n", .{case.name});
@@ -2461,6 +3754,48 @@ test "the golden section vectors" {
                 };
                 try expectUnits(alloc, expected_warning.kept, warning.kept);
                 try expectUnits(alloc, expected_warning.dropped, warning.dropped);
+            }
+
+            // The span, the pieces and the kind are part of the answer, not
+            // decoration: a host navigates to the spans and explains itself with
+            // the kind, so the corpus pins them beside the bytes. `ranges` is
+            // one entry per selector — the whole point of a reference that names
+            // several pieces — and a host that only wants the outer bounds reads
+            // `start_line`/`end_line`.
+            if (case.start_line) |want| {
+                if (plan.start_line != @as(usize, @intCast(want))) {
+                    std.debug.print("{s}: start_line {d}, want {d}\n", .{ case.name, plan.start_line, want });
+                    return error.SpanMismatch;
+                }
+            }
+            if (case.end_line) |want| {
+                if (plan.end_line != @as(usize, @intCast(want))) {
+                    std.debug.print("{s}: end_line {d}, want {d}\n", .{ case.name, plan.end_line, want });
+                    return error.SpanMismatch;
+                }
+            }
+            if (plan.ranges.len != case.ranges.len) {
+                std.debug.print("{s}: {d} range(s), want {d}\n", .{
+                    case.name, plan.ranges.len, case.ranges.len,
+                });
+                return error.RangesMismatch;
+            }
+            for (plan.ranges, case.ranges) |actual, want| {
+                if (actual.from != @as(usize, @intCast(want.from)) or actual.to != @as(usize, @intCast(want.to))) {
+                    std.debug.print("{s}: range {d}-{d}, want {d}-{d}\n", .{
+                        case.name, actual.from, actual.to, want.from, want.to,
+                    });
+                    return error.RangesMismatch;
+                }
+            }
+            if (case.kind) |expected_kind| {
+                const actual_kind: []const u8 = @tagName(plan.kind);
+                if (!std.mem.eql(u8, actual_kind, @tagName(expected_kind))) {
+                    std.debug.print("{s}: kind {s}, want {s}\n", .{
+                        case.name, actual_kind, @tagName(expected_kind),
+                    });
+                    return error.KindMismatch;
+                }
             }
         } else |err| {
             if (err != error.Failed) return err;

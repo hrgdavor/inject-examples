@@ -448,7 +448,7 @@ test('section-matching: contradictory modifiers resolve to the dominant reading'
 // parseReference unit tests (step 4 of plan/section-matching)
 // ---------------------------------------------------------------------------
 
-import { parseReference, isSingleSegment, finalSegment, SectionReferenceError, masked, commentsIn, scanBlocks } from './lib/section.mjs';
+import { parseReference, parseSelectors, isSingleSegment, finalSegment, SectionReferenceError, masked, commentsIn, scanBlocks } from './lib/section.mjs';
 import { resolveSection, planSection } from './lib/section.mjs';
 
 // Group 1: canonicalisation of single-segment references
@@ -585,6 +585,423 @@ test('parseReference: error messages quote raw reference', () => {
         () => parseReference('Cart/-Line/render'),
         /"#Cart\/-Line\/render"/
     );
+});
+
+// ---------------------------------------------------------------------------
+// The reference as a list of selectors: multiple ranges are general, and a
+// line range is the selector that names lines instead of a block.
+// ---------------------------------------------------------------------------
+
+test('parseSelectors: a reference is a comma-separated list of selectors', () => {
+    const cases = [
+        ['L40', 'L40', 'declaration'],
+        ['L40:12', 'L40:12', 'declaration'],
+        ['L40-L44', 'L40-L44', 'declaration'],
+        ['L40:12-L44:3', 'L40:12-L44:3', 'declaration'],
+        ['add,render', 'add,render', 'declaration'],
+        // Each selector's own modifier is that selector's, and two selectors
+        // that each say what they mean do not contradict one another.
+        ['add-,render++', 'add-,render++', 'declaration'],
+        ['add,L40-L44', 'add,L40-L44', 'declaration'],
+        ['L40-L44,add-', 'L40-L44,add-', 'declaration'],
+        ['L40,L50-L52', 'L40,L50-L52', 'declaration'],
+        // A comma between selectors is structure, not part of a name: whitespace
+        // around it is irrelevant, exactly as it is around a JSON key path.
+        ['L40, L50', 'L40,L50', 'declaration'],
+    ];
+    for (const [raw, canonical, scope] of cases) {
+        const reference = parseSelectors(raw);
+        assert.equal(reference.canonical, canonical, `${raw}: canonical`);
+        assert.equal(reference.scope, scope, `${raw}: scope`);
+        assert.equal(reference.warning, null, `${raw}: no warning`);
+    }
+
+    // The reference's own modifier — leading or trailing the whole thing —
+    // binds to the last selector: `+add,render` is `add,render+`. A modifier
+    // written on a selector's path stays where it was written.
+    assert.equal(parseSelectors('+add,render').canonical, 'add,render+');
+    assert.equal(parseSelectors('+add,render').scope, 'declaration',
+        'a list has no single scope of its own');
+    assert.deepEqual(parseSelectors('+add,render').selectors.map((s) => s.scope),
+        ['declaration', 'annotated'], 'the last selector takes the reference modifier');
+    assert.equal(parseSelectors('+add').scope, 'annotated', 'one selector does carry it');
+    assert.equal(parseSelectors('add,render+').scope, 'declaration');
+    assert.deepEqual(parseSelectors('add,render').segments, [],
+        'a list of selectors is not one path');
+
+    // A single path selector keeps every field the single-reference grammar had.
+    const sole = parseSelectors('Cart/Line/render-');
+    assert.deepEqual(sole.segments, ['Cart', 'Line', 'render']);
+    assert.equal(sole.scope, 'body');
+    assert.equal(sole.selectors.length, 1);
+    assert.equal(sole.selectors[0].kind, 'path');
+
+    // A line-range selector carries the range it names, and no path.
+    const range = parseSelectors('L40:12-L44:3');
+    assert.deepEqual(range.segments, []);
+    assert.deepEqual(range.selectors, [{
+        kind: 'lines', raw: 'L40:12-L44:3',
+        from: { line: 40, column: 12 }, to: { line: 44, column: 3 },
+    }]);
+    assert.deepEqual(parseSelectors('L40').selectors[0].to, null, 'one line needs no other end');
+});
+
+test('parseSelectors: a line range is malformed, or has a modifier, but never a name', () => {
+    assert.throws(() => parseSelectors('L40-'), /is not a line range/);
+    assert.throws(() => parseSelectors('L40:x'), /is not a line range/);
+    assert.throws(() => parseSelectors('L40:x-L44'), /is not a line range/);
+    assert.throws(() => parseSelectors('L40-L44:'), /is not a line range/);
+    assert.throws(() => parseSelectors('L0'), /counts lines and columns from 1/);
+    assert.throws(() => parseSelectors('L40:0'), /counts lines and columns from 1/);
+    assert.throws(() => parseSelectors('L44-L40'), /ends before it starts/);
+    assert.throws(() => parseSelectors('L40:5-L40:2'), /ends before it starts/);
+
+    // A range has nothing for a modifier to select, and its own `-` is already
+    // spoken for, so a modifier written *on* the range — where it would have to
+    // be read as part of the range — is not a range at all.
+    assert.throws(() => parseSelectors('L40-L44+'), /is not a line range/);
+    assert.throws(() => parseSelectors('L40-L44-'), /is not a line range/);
+    assert.throws(() => parseSelectors('L40+'), /is not a line range/);
+    // The message names the selector that is wrong, not the whole reference.
+    assert.throws(() => parseSelectors('a,L40+'), /"#L40\+" is not a line range/);
+
+    // A modifier in front of the whole reference is a different matter: it is
+    // the reference's own, and a line range ignores it, exactly as a `#region`
+    // ignores one — there is nothing about lines for a modifier to widen.
+    assert.equal(parseSelectors('+L40').canonical, 'L40+');
+    assert.equal(parseSelectors('+L40').selectors[0].kind, 'lines');
+    assert.equal(extractCodeRegion(EXAMPLE, '+L12-L14'), extractCodeRegion(EXAMPLE, 'L12-L14'));
+
+    // A comma joins selectors, so an empty one is an error, not a name.
+    assert.throws(() => parseSelectors('add,'), /has an empty selector/);
+    assert.throws(() => parseSelectors(',add'), /has an empty selector/);
+    assert.throws(() => parseSelectors('add,,render'), /has an empty selector/);
+
+    // `Lx` never claimed to be a range (no digit), so it stays a name that
+    // simply matches nothing — the reading a port must not turn into an error.
+    assert.deepEqual(parseSelectors('Lx').segments, ['Lx']);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'Lx'), /no "#region Lx" found/);
+});
+
+// ---------------------------------------------------------------------------
+// A declaration whose header does not fit on one line
+// ---------------------------------------------------------------------------
+//
+// Wrapping a parameter list is ordinary formatting, not an exotic spelling: the
+// signature line ends with the opening `(`, the parameters follow on their own
+// lines, and the `)` may share a line with the body's `{` or have a line to
+// itself. The matcher reads lines, so this is the shape it has to follow past the
+// end of the line the declaration starts on. The failure it guards against is not
+// a wrong slice but *no match at all*: the name is visible in the file, and a
+// reference to it must resolve.
+
+const WRAPPED_JAVA = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Wrapped.java');
+const WRAPPED_CLASS = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/WrappedClass.java');
+const WRAPPED_KOTLIN = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Wrapped.kt');
+const WRAPPED_TS = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Wrapped.ts');
+const WRAPPED_PYTHON = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Wrapped.py');
+const WRAPPED_GO = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Wrapped.go');
+
+test('a wrapped parameter list is still a declaration', () => {
+    // The whole declaration: from the line the header starts on through its
+    // closing brace, parameters and all.
+    const render = extractCodeRegion(WRAPPED_JAVA, 'render');
+    assert.match(render, /^    public String render\(/m,
+        'the selection starts at the declaration, not at its first parameter');
+    assert.match(render, /^\s+String name,$/m, 'the wrapped parameters are included');
+    assert.match(render, /^\s+int quantity\) \{$/m);
+    assert.match(render, /return name \+ " x" \+ quantity;$/m);
+    assert.equal(render, WRAPPED_JAVA.slice(
+        WRAPPED_JAVA.indexOf('    public String render('),
+        WRAPPED_JAVA.indexOf('\n    }\n', WRAPPED_JAVA.indexOf('    public String render(')) + '\n    }'.length,
+    ), 'the declaration is the file\'s own bytes');
+
+    // The body alone: the signature (wrapped across lines) is dropped whole, and
+    // the span still starts after the `{` of the closing line.
+    const body = extractCodeRegion(WRAPPED_JAVA, 'render-');
+    assert.equal(body, '        return name + " x" + quantity;');
+    const plan = planSection(WRAPPED_JAVA, 'render-', lexerFor('Wrapped.java'));
+    assert.deepEqual(plan.ranges, [{ from: 9, to: 9 }]);
+
+    // A wrapped signature with a generic method's type parameters, and the same
+    // declaration reached through its class scope.
+    assert.equal(extractCodeRegion(WRAPPED_JAVA, 'Wrapped/render'), render);
+    const widest = extractCodeRegion(WRAPPED_JAVA, 'widest');
+    assert.match(widest, /^    public <T extends Comparable<T>> T widest\(/m);
+    assert.match(widest, /^\s+T right\) \{$/m);
+    assert.match(widest, /left\.compareTo\(right\)/);
+
+    // A `throws` clause on its own line is part of the header, and a parameter
+    // list that closes on a line of its own still ends at the body's brace.
+    const store = extractCodeRegion(WRAPPED_JAVA, 'store');
+    assert.match(store, /^\s+int quantity\)$/m, 'the `)` has a line to itself');
+    assert.match(store, /^\s+throws IllegalStateException \{$/m);
+    assert.match(store, /this\.name = name;/);
+
+    // The `+` scope reaches the annotation above a header that wraps, and the
+    // body scope starts after the brace the wrapped header ends on.
+    assert.match(extractCodeRegion(WRAPPED_JAVA, 'toString+'), /^    @Override\n    public String toString\(/m);
+    assert.equal(extractCodeRegion(WRAPPED_JAVA, 'store-'), '        this.name = name;');
+});
+
+test('a wrapped header is a gap in more than one language', () => {
+    // Kotlin: the `)` carries the return type, and a one-expression function has
+    // an `=` body rather than braces.
+    const kotlin = extractCodeRegion(WRAPPED_KOTLIN, 'render');
+    assert.match(kotlin, /^    fun render\($/m);
+    assert.match(kotlin, /^\s+quantity: Int$/m);
+    assert.match(kotlin, /^\s+\): String \{$/m);
+    assert.match(kotlin, /return "\$name x\$quantity"/);
+    assert.equal(extractCodeRegion(WRAPPED_KOTLIN, 'render-'), '        return "$name x$quantity"');
+
+    // TypeScript: the class itself resolves, and so do the members whose
+    // parameters wrap.
+    assert.match(extractCodeRegion(WRAPPED_TS, 'Wrapped'), /^export class Wrapped \{$/m);
+    const add = extractCodeRegion(WRAPPED_TS, 'add');
+    assert.match(add, /^    add\($/m);
+    assert.match(add, /^\s+item: string,$/m);
+    assert.match(add, /^\s+\): void \{$/m);
+    assert.match(add, /this\.items\.push\(item\);/);
+
+    // Python and Go wrap the same way, and their bodies are found by other
+    // rules entirely — indentation, and a brace on the line after the `)`.
+    const python = extractCodeRegion(WRAPPED_PYTHON, 'Wrapped/render');
+    assert.match(python, /^    def render\($/m);
+    assert.match(python, /^\s+quantity: int\) -> str:$/m);
+    assert.match(python, /return f"\{name\} x\{quantity\}"/);
+    assert.equal(extractCodeRegion(WRAPPED_PYTHON, 'Wrapped/render-'),
+        '        return f"{name} x{quantity}"');
+    assert.equal(extractCodeRegion(WRAPPED_PYTHON, 'label'),
+        '    def label(self) -> str:\n        return self.name');
+
+    const go = extractCodeRegion(WRAPPED_GO, 'Add');
+    assert.match(go, /^func Add\($/m);
+    assert.match(go, /^\s+item string,$/m);
+    assert.match(go, /^\) \[\]string \{$/m);
+    assert.match(go, /return append\(items, item\)/);
+    assert.equal(extractCodeRegion(WRAPPED_GO, 'Plain'),
+        'func Plain(items []string) int {\n\treturn len(items)\n}');
+});
+
+test('a wrapped class header is a declaration too', () => {
+    // The class line is two lines longer than the rule of thumb allows: the type
+    // parameters, the `extends` and the `implements` each get their own line, and
+    // the body only opens after them.
+    const wrapped = extractCodeRegion(WRAPPED_CLASS, 'Wrapped');
+    assert.match(wrapped, /^public class Wrapped<$/m);
+    assert.match(wrapped, /^\s+U extends CharSequence>$/m);
+    assert.match(wrapped, /^\s+implements Renderer<T> \{$/m);
+    assert.match(wrapped, /public T best\(/);
+
+    // The member whose parameters wrap is reachable through that class scope,
+    // and by its own name.
+    assert.equal(extractCodeRegion(WRAPPED_CLASS, 'Wrapped/best'), extractCodeRegion(WRAPPED_CLASS, 'best'));
+    assert.match(extractCodeRegion(WRAPPED_CLASS, 'best'), /^\s+T right\) \{$/m);
+});
+
+test('an enum whose constants take their own lines is a declaration too', () => {
+    // Java puts an enum's constants before the body's `{`, one per line and
+    // usually ending on a comma — so the declaration only ends at the brace,
+    // several lines below the line it starts on, exactly as a wrapped parameter
+    // list does.
+    const source = readFileSync(new URL('test/fixtures/Enum.java', import.meta.url), 'utf8');
+    const all = extractCodeRegion(source, 'OrgFeature');
+    assert.match(all, /^public enum OrgFeature \{$/m);
+    assert.match(all, /^\s+CHAT_AUDIO;$/m);
+    // The constants are not members, and what follows them is: the body is
+    // otherwise an ordinary class body.
+    assert.match(all, /private final String label;/);
+    assert.match(all, /^\s+public String label\(\) \{$/m);
+
+    // A nested enum is a member of the outer one, and its own members resolve
+    // through it.
+    assert.match(extractCodeRegion(source, 'OrgFeature/Tier'), /^\s+FREE\(0\),$/m);
+    assert.equal(extractCodeRegion(source, 'OrgFeature/Tier/rank'), extractCodeRegion(source, 'OrgFeature/rank'));
+    assert.throws(() => extractCodeRegion(source, 'OrgFeature/CALL'),
+        /no section named "CALL" in "OrgFeature"/, 'a constant is not a member');
+});
+
+test('a wrapped header does not invent declarations', () => {
+    // A call whose arguments wrap is still a call: without a body there is
+    // nothing to inject, and `calls/wrappedCall` must keep failing.
+    const source = [
+        'class Svc {',
+        '    void run() {',
+        '        wrappedCall(',
+        '            1,',
+        '            2);',
+        '    }',
+        '',
+        '    void wrappedCall(',
+        '            int a,',
+        '            int b) {',
+        '        work();',
+        '    }',
+        '}',
+    ].join('\n');
+    assert.equal(extractCodeRegion(source, 'wrappedCall'),
+        '    void wrappedCall(\n            int a,\n            int b) {\n        work();\n    }');
+    // The call inside `run` is reached only by naming its scope, and it is a
+    // call, not a declaration there: nothing is injected for it.
+    assert.throws(() => extractCodeRegion(source, 'run/wrappedCall'),
+        /no section named "wrappedCall" in "run"/);
+
+    // The same source with the wrapped call removed: the declaration is the only
+    // one there, and a matcher that followed a header because it *saw* a name
+    // would have found one anyway. What must not happen is the opposite — a call
+    // whose arguments wrap becoming a declaration, which the line reading
+    // prevents (`calls/wrappedCall` above) even though the window holds a
+    // plausible header.
+    const noCall = source.replace(/        wrappedCall\(\n            1,\n            2\);\n/, '');
+    assert.equal(extractCodeRegion(noCall, 'wrappedCall'),
+        '    void wrappedCall(\n            int a,\n            int b) {\n        work();\n    }');
+
+    // A body-less member still has nothing to inject, however its header wraps:
+    // the name is matched, and what it contributes is nothing at all.
+    const iface = ['interface I {', '    void bar(', '            int x);', '    void baz() {', '        work();', '    }', '}'].join('\n');
+    assert.equal(extractCodeRegion(iface, 'baz'), '    void baz() {\n        work();\n    }');
+    assert.equal(extractCodeRegion(iface, 'bar'), '', 'a declaration with no body injects nothing');
+});
+
+test('line ranges select the lines they name, byte for byte', () => {
+    const expected = '    public String toString() {\n'
+        + '        return String.join(",", items);\n'
+        + '    }';
+
+    // The two readings of the same three lines must agree exactly — that is the
+    // whole point of being allowed to write a line number at all.
+    assert.equal(extractCodeRegion(EXAMPLE, 'L12-L14'), extractCodeRegion(EXAMPLE, 'toString'));
+    assert.equal(extractCodeRegion(EXAMPLE, 'L12-L14'), expected);
+    assert.equal(extractCodeRegion(EXAMPLE, 'L13'), extractCodeRegion(EXAMPLE, 'toString-'));
+    assert.equal(extractCodeRegion(EXAMPLE, 'L1-L3'), 'package example;\n\nimport java.util.ArrayList;');
+
+    // A column is an offset within its line, counted from 1, and the range runs
+    // to the end of its last line when that end names no column. Columns are
+    // inclusive at both ends, so `L13:9-L13:14` is exactly `return`.
+    assert.equal(extractCodeRegion(EXAMPLE, 'L4:8-L4:21'), 'java.util.List');
+    assert.equal(extractCodeRegion(EXAMPLE, 'L13:9'), 'return String.join(",", items);');
+    assert.equal(extractCodeRegion(EXAMPLE, 'L13:9-L13:14'), 'return');
+    assert.equal(extractCodeRegion(EXAMPLE, 'L1:1-L1:7'), 'package');
+
+    // The plan says where the text came from, which is what a host navigates to.
+    const plan = planSection(EXAMPLE, 'L12-L14', lexerFor('x.java'));
+    assert.equal(plan.kind, 'lines');
+    assert.equal(plan.startLine, 12);
+    assert.equal(plan.endLine, 14);
+    assert.deepEqual(plan.ranges, [{ from: 12, to: 14 }]);
+
+    // Anything the file does not have is an error, never a clamp: a range that
+    // silently became a different range is the drift this tool exists to stop.
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'L31'), /"#L31": the file has 30 line\(s\)/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'L29-L31'), /the file has 30 line\(s\)/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'L13:100'), /line 13 has 39 character\(s\)/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'L2:1'), /line 2 has 0 character\(s\)/);
+});
+
+test('several selectors inject in order, each from its own lines', () => {
+    const plan = planSection(EXAMPLE, 'toString,L1-L3', lexerFor('x.java'));
+    assert.equal(plan.kind, 'multiple');
+    assert.equal(plan.text, extractCodeRegion(EXAMPLE, 'toString') + '\n' + 'package example;\n\nimport java.util.ArrayList;');
+    assert.deepEqual(plan.ranges, [{ from: 12, to: 14 }, { from: 1, to: 3 }]);
+    assert.equal(plan.startLine, 1, 'the span is the outermost bounds of every piece');
+    assert.equal(plan.endLine, 14);
+
+    // The pieces are independent: two of them may overlap or sit in any order.
+    assert.equal(extractCodeRegion(EXAMPLE, 'L1-L3,L12-L14'),
+        'package example;\n\nimport java.util.ArrayList;\n' + extractCodeRegion(EXAMPLE, 'toString'));
+
+    // A broken piece is an error, and names the piece that broke.
+    assert.throws(
+        () => extractCodeRegion(EXAMPLE, 'toString,missing'),
+        /no "#region missing" found, and no section named "missing"/,
+    );
+
+    // A modifier belongs to the last selector when it is the reference's own —
+    // leading or trailing the whole reference — and to its own selector when it
+    // is written on that selector's path, which is where it was written.
+    // A modifier belongs to the last selector when it is the reference's own —
+    // leading or trailing the whole reference — and to its own selector when it
+    // is written on that selector's path, which is where it was written.
+    assert.equal(extractCodeRegion(EXAMPLE, '+toString,Line'),
+        extractCodeRegion(EXAMPLE, 'toString') + '\n' + extractCodeRegion(EXAMPLE, 'Line+'));
+    assert.equal(extractCodeRegion(EXAMPLE, '-toString,Line'),
+        extractCodeRegion(EXAMPLE, 'toString') + '\n' + extractCodeRegion(EXAMPLE, 'Line-'));
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString,Line-'),
+        extractCodeRegion(EXAMPLE, 'toString') + '\n' + extractCodeRegion(EXAMPLE, 'Line-'));
+
+    // The reference's own modifier makes the *last* selector carry it; a
+    // selector that writes its own keeps it, and the two are compared rather
+    // than counted twice.
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString+,Line'),
+        extractCodeRegion(EXAMPLE, 'toString+') + '\n' + extractCodeRegion(EXAMPLE, 'Line'));
+});
+
+test('every selection reports the lines it came from, regions included', () => {
+    // The span is not an extra search for the text: it is the slice the text was
+    // made from, so a region reports the lines *between* its directives — the
+    // directive lines are not part of the selection — and a line range reports
+    // exactly what was asked for.
+    const source = ['line1', '// #region r', 'aaa', 'bbb', '// #endregion', 'line6'].join('\n');
+    const region = planSection(source, 'r');
+    assert.deepEqual(region.ranges, [{ from: 3, to: 4 }]);
+    assert.equal(region.text, 'aaa\nbbb');
+    assert.equal(region.startLine, 3);
+    assert.equal(region.endLine, 4);
+
+    assert.deepEqual(planSection(source, 'L3-L4').ranges, [{ from: 3, to: 4 }]);
+    assert.deepEqual(planSection(source, 'L2-L3').ranges, [{ from: 2, to: 3 }]);
+});
+
+test('the line-range reading is a code rule reading, not a data rule one', () => {
+    const json = '{"name": "x", "port": 8080}';
+    const yaml = 'server:\n  port: 8080\n';
+
+    // A data rule renders its selection; there is no slice of lines to hand
+    // back, so a line range there is a mistake with a message of its own.
+    assert.throws(() => resolveMarker({ path: 'a.json', reference: 'L1' }, reader({ 'a.json': json })),
+        /only the code rule reads; "json" reads keys/);
+    assert.throws(() => resolveMarker({ path: 'a.yaml', reference: 'server,L1' }, reader({ 'a.yaml': yaml })),
+        /only the code rule reads; "yaml" reads keys/);
+
+    // The comma is still the data rules' own contract: several keys, one block.
+    assert.equal(resolveMarker({ path: 'a.json', reference: 'name' }, reader({ 'a.json': json })),
+        '{\n  "name": "x"\n}');
+});
+
+test('planMarker carries the ranges of the code rule, and none for a rendered rule', () => {
+    const files = { 'a.java': EXAMPLE, 'a.json': '{"a": 1}' };
+
+    const code = planMarker({ path: 'a.java', reference: 'L12-L14' }, reader(files));
+    assert.deepEqual(code.ranges, [{ from: 12, to: 14 }], 'a host can navigate without searching');
+    assert.equal(code.text, extractCodeRegion(EXAMPLE, 'L12-L14'));
+
+    assert.equal(planMarker({ path: 'a.json', reference: 'a' }, reader(files)).ranges, null,
+        'a rendered selection is not a byte slice of its file');
+    assert.equal(planMarker({ path: 'a.java', reference: null }, reader(files)).ranges, null,
+        'a whole file is every line, and the document already knows that');
+});
+
+test('a line range and a multi-selector reference survive a document round trip', () => {
+    const doc = [
+        '# Doc',
+        '',
+        '[a.java](./a.java#L1-L3,toString-)',
+        '',
+        '```',
+        '',
+        '```',
+        '',
+    ].join('\n');
+    const files = { 'a.java': EXAMPLE };
+
+    const first = updateDocument(doc, { readFile: reader(files), gitignore: false });
+    assert.equal(first.changed, true);
+    assert.equal(first.results[0].content,
+        'package example;\n\nimport java.util.ArrayList;\n        return String.join(",", items);');
+    assert.ok(first.text.includes('```java'), 'a bare fence is given the file language');
+
+    const second = updateDocument(first.text, { readFile: reader(files), gitignore: false });
+    assert.equal(second.changed, false, 'the second pass writes nothing');
 });
 
 // ---------------------------------------------------------------------------
@@ -2757,13 +3174,37 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
 
             assert.ok(example.from >= 1 && example.to <= file.lines.length,
                 `${example.raw}: the range is inside ${file.path}`);
-            const highlighted = file.lines.slice(example.from - 1, example.to).join('\n');
-            assert.equal(example.to - example.from + 1, example.text.split('\n').length,
-                `${example.raw}: the range spans the injected lines`);
-            assert.ok(highlighted.startsWith(example.text),
-                `${example.raw}: the highlighted lines are exactly the injected text`);
-            assert.ok(html.includes(`data-from="${example.from}" data-to="${example.to}"`),
-                `${example.raw}: the range travels to the page`);
+            for (const [from, to] of example.ranges) {
+                assert.ok(from >= 1 && to <= file.lines.length && from <= to,
+                    `${example.raw}: range ${from}-${to} is inside ${file.path}`);
+            }
+            assert.equal(example.ranges[0][0], example.from, `${example.raw}: from is the first range`);
+            assert.equal(example.ranges[example.ranges.length - 1][1], example.to,
+                `${example.raw}: to is the last range`);
+            assert.ok(html.includes(`data-ranges="${example.ranges.map((r) => r.join('-')).join(',')}"`),
+                `${example.raw}: the ranges travel to the page`);
+
+            if (example.ranges.length === 1) {
+                const [from, to] = example.ranges[0];
+                const highlighted = file.lines.slice(from - 1, to).join('\n');
+                assert.equal(to - from + 1, example.text.split('\n').length,
+                    `${example.raw}: the range spans the injected lines`);
+                assert.ok(highlighted.includes(example.text),
+                    `${example.raw}: the highlighted lines are exactly the injected text`);
+                continue;
+            }
+
+            // Several selectors are several pieces: the injected text is the
+            // pieces joined, in the order the reference named them, and no
+            // range covers the gap between two of them.
+            const pieces = example.ranges.map(([from, to]) => file.lines.slice(from - 1, to).join('\n'));
+            assert.equal(example.text, pieces.join('\n'),
+                `${example.raw}: the pieces joined are the injected text`);
+            assert.ok(pieces.every((piece) => example.text.includes(piece)),
+                `${example.raw}: every piece is part of the injected text`);
+            assert.ok(example.ranges.every(([from, to], index) => index === 0
+                || from > example.ranges[index - 1][1]),
+                `${example.raw}: the pieces are separate ranges, in file order`);
         }
     }
 
@@ -3046,7 +3487,10 @@ test('section vectors match a live implementation call', () => {
     for (const c of vectors) {
         let ref = null;
         let parseErr = null;
-        try { ref = parseReference(c.reference); } catch (e) { parseErr = e; }
+        // The reference grammar is `parseSelectors`: one path selector, several,
+        // or a line range. `parseReference` is the single-path-selector reading,
+        // and the rows that are not that are the errors it reports.
+        try { ref = parseSelectors(c.reference); } catch (e) { parseErr = e; }
 
         // Warnings are the parser's own; compare the projected fields.
         const liveWarning = ref && ref.warning
@@ -3064,11 +3508,22 @@ test('section vectors match a live implementation call', () => {
         // are parse-only probes (both null) whose value is the parsed warning.
         if (c.text !== null) {
             assert.equal(c.error, null, `${c.name}: exactly one of text/error`);
-            assert.equal(resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference, lexerFor(c.input)), c.text,
-                `${c.name}: text`);
+            const plan = planSection(readFileSync(join(root, c.input), 'utf8'), c.reference, lexerFor(c.input));
+            assert.equal(plan.text, c.text, `${c.name}: text`);
+            // The span and the pieces are part of the answer: a host navigates
+            // to them, and `ranges` is what tells it there are two places to go.
+            assert.equal(plan.startLine, c.startLine, `${c.name}: startLine`);
+            assert.equal(plan.endLine, c.endLine, `${c.name}: endLine`);
+            assert.deepEqual(plan.ranges.map((range) => [range.from, range.to]), c.ranges,
+                `${c.name}: ranges`);
+            assert.equal(plan.kind, c.kind, `${c.name}: kind`);
         } else if (c.error !== null) {
             assert.throws(() => resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference, lexerFor(c.input)),
                 (e) => { assert.equal(e.message, c.error, `${c.name}: error message`); return true; });
+        } else if (c.input !== null) {
+            // A resolution row with neither text nor error cannot exist: every
+            // resolution answers with one of the two.
+            assert.fail(`${c.name}: a resolution vector must carry text or an error`);
         }
     }
 });

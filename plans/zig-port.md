@@ -85,10 +85,10 @@ pull request.
 
 | Gate | Command | What it proves |
 | --- | --- | --- |
-| JavaScript suite | `node --test test.mjs` | 153 tests: the shipped behaviour, the docs, the demo page, the language table, the two corpora |
+| JavaScript suite | `node --test test.mjs` | 161 tests: the shipped behaviour, the docs, the demo page, the language table, the two corpora |
 | Vectors drift | `node tools/section-vectors.mjs --check` | the golden corpus still describes the JavaScript implementation |
 | Lexical vectors drift | `node tools/lexical-vectors.mjs --check` | the mask and shape corpus still describes the JavaScript implementation |
-| Ported suite | `zig build test` | 55 Zig tests, including both conformance corpora |
+| Ported suite | `zig build test` | 61 Zig tests, including both conformance corpora |
 | Zig corpus drift | `node tools/zig-vectors.mjs --check` | `src/section_vectors.zig` still describes both corpora |
 | Differential | `node tools/compare-zig.mjs` | JS vs Zig, byte for byte: stdout, stderr, exit code and every rewritten file, over the edge-case corpus, a reference corpus that resolves every construct each lexer exists for (including the hard spellings), and a seeded fuzzer |
 | Java port | `mvn test` (in `java/section`) | the same corpora, read directly: every resolution vector, every mask and every declaration shape |
@@ -148,7 +148,11 @@ change `lib/section.mjs` and `src/section.zig` together, add or update the vecto
 [tools/section-vectors.mjs](./../tools/section-vectors.mjs), regenerate the JavaScript and the Zig
 corpora (`node tools/section-vectors.mjs`, `node tools/zig-vectors.mjs`), then run every gate —
 `node test.mjs`, `zig build test`, `node tools/compare-zig.mjs`, `mvn test`, `cargo test`.
-**A semantics change that is not in the JavaScript first does not land.**
+**A semantics change that is not in the JavaScript first does not land.** When the change moves
+what a resolution *answers* — `text`, `ranges`, `startLine`/`endLine` or `kind` — the vector
+generator carries the new field into `src/section_vectors.zig` too, so the Zig conformance test
+asserts it beside the bytes and not only in the JavaScript suite; the Java and Rust ports read the
+same JSON directly and pick the field up without a regeneration.
 
 **A change to the CLI** (a flag, a message, an exit code): `cli.mjs` and `src/main.zig` in the
 same change, with `node tools/compare-zig.mjs` as the check.
