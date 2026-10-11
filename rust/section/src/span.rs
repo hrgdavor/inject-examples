@@ -26,8 +26,6 @@ pub const HEADER_LINES: usize = 200;
 /// ends at the `{`, after the offset the declaration starts at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Header {
-    /// The start of the declaration's own line.
-    pub start: usize,
     pub end: usize,
     pub last: usize,
 }
@@ -102,7 +100,6 @@ pub fn header_end(mask_lines: &[Vec<u16>], starts: &[usize], line: usize, from: 
             // starts after it.
             if depth == 0 && (unit == b'{' as u16 || unit == b';' as u16) {
                 return Header {
-                    start: starts.get(line).copied().unwrap_or(0),
                     end: line_start + column + 1,
                     last: i,
                 };
@@ -126,7 +123,6 @@ pub fn header_end(mask_lines: &[Vec<u16>], starts: &[usize], line: usize, from: 
             }
             if depth < 0 {
                 return Header {
-                    start: starts.get(line).copied().unwrap_or(0),
                     end: line_start + column + 1,
                     last: i,
                 };
@@ -143,7 +139,6 @@ pub fn header_end(mask_lines: &[Vec<u16>], starts: &[usize], line: usize, from: 
                 .is_some_and(|next| reads_as_alone_brace(&mask_lines[next]));
         if !continues {
             return Header {
-                start: starts.get(line).copied().unwrap_or(0),
                 end: start,
                 last: i,
             };
@@ -153,7 +148,6 @@ pub fn header_end(mask_lines: &[Vec<u16>], starts: &[usize], line: usize, from: 
     let i = i.min(mask_lines.len().saturating_sub(1));
     let line_start = starts.get(i).copied().unwrap_or(0);
     Header {
-        start: starts.get(line).copied().unwrap_or(0),
         end: line_start + mask_lines.get(i).map_or(0, Vec::len),
         last: i,
     }
@@ -317,11 +311,7 @@ pub fn body_span(
     let first = &mask_lines[next];
     if trim_units(first).starts_with(&[b'{' as u16]) {
         let brace = index_of(first, &[b'{' as u16], 0).unwrap_or(0);
-        return brace_body(
-            mask,
-            starts,
-            starts.get(next).copied().unwrap_or(0) + brace,
-        );
+        return brace_body(mask, starts, starts.get(next).copied().unwrap_or(0) + brace);
     }
 
     // A line that still belongs to the declaration — a `throws` clause, a return type — puts the `{`
@@ -587,7 +577,8 @@ mod tests {
     #[test]
     fn an_arrow_after_a_rust_return_type_still_reaches_its_brace() {
         // The `>` of `->` is not a closing angle bracket: counting it ends the header at the arrow.
-        let source = "    fn remove(&mut self) -> Option<String> {\n        self.items.pop()\n    }\n";
+        let source =
+            "    fn remove(&mut self) -> Option<String> {\n        self.items.pop()\n    }\n";
         let (mask, lines, starts) = scan(source);
         let from = after_name(source, "remove");
         let span = body_span(&mask, &lines, &starts, 0, from, from, false).unwrap();
@@ -629,19 +620,21 @@ mod tests {
 
     #[test]
     fn a_wrapped_headers_own_lines_are_not_its_body() {
-        // The header's `{` is on line 2, so the body's first line is 1 (`max(next, last + 1)`), not
-        // the line after the declaration.
-        let source = "class Cart<\n    T> {\n    void add() {}\n}\n";
+        // The header's last line is line 3, so the indented body starts there — not on the line
+        // after the declaration, which is still the header.
+        let source = "void add(\n        int a,\n        int b)\n    work()\n";
         let (mask, lines, starts) = scan(source);
-        let from = after_name(source, "Cart");
+        let from = after_name(source, "add");
         let span = body_span(&mask, &lines, &starts, 0, from, from, false).unwrap();
-        assert!(span.indented, "the brace's own line does not end this header");
-        assert_eq!(Some(1), span.body_from);
+        assert!(span.indented, "a body with no braces is an indented run");
+        assert_eq!(Some(3), span.body_from);
+        assert_eq!(Some(3), span.body_end_line);
     }
 
     #[test]
     fn an_expression_body_a_wrapped_header_pushed_down() {
-        // The `=` only exists on the line the wrapped parameter list drove the `)` to.
+        // The `=` only exists on the line the wrapped parameter list drove the `)` to, and the
+        // expression's own end line — not a walker's `endLineOf` — carries it.
         let source = "    fun label(\n        upper: Boolean\n    ): String = if (upper) name.uppercase() else name\n";
         let (mask, lines, starts) = scan(source);
         let from = source.find("): String").unwrap() + 1;
@@ -652,7 +645,12 @@ mod tests {
             "the expression starts after the `=`"
         );
         assert_eq!(Some(2), span.expression_end_line);
-        assert_eq!(2, span.end_line(0));
+        assert_eq!(
+            0,
+            span.end_line(0),
+            "endLineOf reads closeLine then bodyEndLine, so an expression contributes the \
+             declaration's own line"
+        );
     }
 
     #[test]

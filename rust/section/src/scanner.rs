@@ -269,12 +269,12 @@ fn assigned_head(tail: &[u16]) -> Option<usize> {
         probe += 1;
     }
     if tail.get(probe) == Some(&(b':' as u16)) {
-        // A type annotation, up to the first `=`.
+        // A type annotation, up to the first `=` — and never across a line, as `[^=\n]+` reads it.
         let mut after = probe + 1;
         while after < tail.len() && is_blank_unit(tail[after]) {
             after += 1;
         }
-        while after < tail.len() && tail[after] != b'=' as u16 {
+        while after < tail.len() && tail[after] != b'=' as u16 && tail[after] != b'\n' as u16 {
             after += 1;
         }
         at = after;
@@ -476,7 +476,13 @@ fn build_scope(
                     let name_at = start + masked_line.find(&entry.name).unwrap_or(0);
                     let at = start + entry.header_from;
                     let opened = match lex.mask.get(at) {
-                        Some(unit) if *unit == b'{' as u16 || *unit == b' ' as u16 || *unit == b'\t' as u16 => Some(at),
+                        Some(unit)
+                            if *unit == b'{' as u16
+                                || *unit == b' ' as u16
+                                || *unit == b'\t' as u16 =>
+                        {
+                            Some(at)
+                        }
                         _ if at > 0 && lex.mask.get(at - 1) == Some(&(b'{' as u16)) => Some(at - 1),
                         _ => None,
                     };

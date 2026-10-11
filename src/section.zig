@@ -1395,7 +1395,7 @@ fn keywordBody(lines: []const Str, decl_line: usize, word: Str) ?struct { open_l
         if (text.len == 0) continue;
         if (indentWidth(lines[index]) > indent) continue;
         if (js.eql(text, word)) return .{ .open_line = decl_line, .close_line = index };
-        if (text.len > word.len and js.startsWith(text, word) and js.isWhitespace(text[word.len])) {
+        if (text.len > word.len and js.startsWith(text, word) and text[word.len] == ' ') {
             return .{ .open_line = decl_line, .close_line = index };
         }
         return null; // a dedent that is not the terminator
@@ -1517,14 +1517,18 @@ fn nextAssignedMatch(line: Str, name: Str, from: usize) ?AssignedMatch {
         if (after < line.len and js.isAsciiWord(line[after])) continue;
 
         var scan = after;
-        // An optional type annotation, `: Type`, and never a newline.
-        if (scan < line.len and line[scan] == ':') {
-            scan += 1;
-            while (scan < line.len and line[scan] != '=' and line[scan] != '\n') scan += 1;
+        // An optional type annotation, `\s*:\s*[^=\n]+`, and never a newline.
+        var colon = scan;
+        while (colon < line.len and js.isWhitespace(line[colon])) colon += 1;
+        if (colon < line.len and line[colon] == ':') {
+            var typed = colon + 1;
+            while (typed < line.len and js.isWhitespace(line[typed])) typed += 1;
+            const first = typed;
+            while (typed < line.len and line[typed] != '=') typed += 1;
+            if (typed > first) scan = typed;
         }
         while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
         if (scan >= line.len or line[scan] != '=') continue;
-        if (scan + 1 < line.len and line[scan + 1] == '=') continue;
         scan += 1;
         while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
         const async_kw = &js.lit("async");
@@ -1578,12 +1582,16 @@ const Declaration = struct {
 /// line's own reading is what decides *whether* there is a declaration at all —
 /// a bare name that merely appears inside a wrapped construct must not become
 /// one.
+///
+/// `across` is the JavaScript's `lex !== null`: the assigned-name scan passes no
+/// lexer, so its candidates are never read across lines.
 fn declarationOn(
     alloc: Allocator,
     facts: Facts,
     masked_line: Str,
     start: usize,
     name: Str,
+    across: bool,
 ) !?Declaration {
     if (name.len == 0 or isNotAName(name)) return null;
 
@@ -1618,7 +1626,9 @@ fn declarationOn(
 
     // The parameter list may close on a later line, where only the whole
     // header can see it.
-    if (try declarationAcross(alloc, facts, start, name)) |across| return across;
+    if (across) {
+        if (try declarationAcross(alloc, facts, start, name)) |found| return found;
+    }
 
     from = 0;
     while (nextAssignedMatch(masked_line, name, from)) |hit| {
@@ -2148,17 +2158,18 @@ fn methodDeclOn(self: *Build, mask_line: Str, start: usize) Error!MethodRead {
         if (isNotAName(hit.name)) continue;
         const prefix = try withFuncReceiver(alloc, mask_line[0..hit.name_at]);
         if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or startsWithStatementBefore(prefix))) continue;
-        const found = (try declarationOn(alloc, self.facts, mask_line, start, hit.name)) orelse continue;
+        const found = (try declarationOn(alloc, self.facts, mask_line, start, hit.name, true)) orelse continue;
         if (found.kind != .method) continue;
         return .{ .found = .{ .declaration = found, .has_prefix = prefix.len != 0 } };
     }
 
     // The assigned form: `const name = (…) => …`, `name = function …`. The
-    // line's own spelling is complete or it is nothing.
+    // line's own spelling is complete or it is nothing, and the scan resumes
+    // past each whole match, as the JavaScript's global `exec` does.
     var assigned_from: usize = 0;
-    while (assignedCandidate(mask_line, assigned_from)) |candidate| {
-        assigned_from = candidate.name_end;
-        const found = (try declarationOn(alloc, self.facts, mask_line, start, candidate.name)) orelse continue;
+    while (nextAssignedName(mask_line, assigned_from)) |candidate| {
+        assigned_from = candidate.match_end;
+        const found = (try declarationOn(alloc, self.facts, mask_line, start, candidate.name, false)) orelse continue;
         if (found.kind != .method) continue;
         return .{ .found = .{ .declaration = found, .has_prefix = true } };
     }
@@ -2238,34 +2249,93 @@ fn endLineOf(span: ?Span, decl_line: usize) usize {
     return decl_line;
 }
 
-const Candidate = struct { name: Str, name_end: usize };
+const AssignedName = struct { name: Str, match_end: usize };
 
-/// `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?([A-Za-z_$][\w$]*)\b[^=\n]*=\s*(?:async\s+)?(?:function\b|[^;]*=>)`.
-fn assignedCandidate(line: Str, from: usize) ?Candidate {
-    var at = from;
-    while (at < line.len) : (at += 1) {
-        if (at > 0 and (js.isAsciiWord(line[at - 1]) or line[at - 1] == '$' or line[at - 1] == '.')) continue;
-        if (!js.isIdentStart(line[at])) continue;
-        const name_start = at;
-        var scan = at + 1;
-        while (scan < line.len and js.isIdentPart(line[scan])) scan += 1;
-        const name = line[name_start..scan];
-        const name_end = scan;
-        while (scan < line.len and line[scan] != '=' and line[scan] != '\n') scan += 1;
-        if (scan >= line.len or line[scan] != '=') continue;
-        if (scan + 1 < line.len and line[scan + 1] == '=') continue;
-        scan += 1;
-        while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
-        const async_kw = &js.lit("async");
-        if (js.startsWith(line[scan..], async_kw) and js.isWordBoundary(line, scan + async_kw.len)) {
-            scan += async_kw.len;
-            while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
+/// `(?:const\s+|let\s+|var\s+)` at `q`, when it is there: the offset the name
+/// would start at. The head is tried before the identifier at `q` itself, which
+/// is what the JavaScript's greedy optional group does.
+fn assignedHead(line: Str, q: usize) ?usize {
+    const heads = [_][]const u8{ "const", "let", "var" };
+    for (heads) |word| {
+        if (!js.startsWithBytes(line[q..], word)) continue;
+        var at = q + word.len;
+        const spaces = at;
+        while (at < line.len and js.isWhitespace(line[at])) at += 1;
+        if (at == spaces) continue; // `\s+` needs one
+        return at;
+    }
+    return null;
+}
+
+/// `(?:function\b|[^;]*=>)` at `at`: the offset just past what it matched.
+fn assignedTail(line: Str, at: usize) ?usize {
+    const keyword = &js.lit("function");
+    if (js.startsWith(line[at..], keyword) and js.isWordBoundary(line, at + keyword.len)) {
+        return at + keyword.len;
+    }
+    // `[^;]*=>` is greedy, so it is the **last** `=>` before the first `;`.
+    const limit = js.indexOfUnit(line[at..], ';') orelse (line.len - at);
+    const window = line[at .. at + limit];
+    var index = window.len;
+    while (index >= 2) {
+        index -= 1;
+        if (window[index] == '>' and window[index - 1] == '=') return at + index + 1;
+    }
+    return null;
+}
+
+/// `([A-Za-z_$][\w$]*)\b[^=\n]*=\s*(?:async\s+)?(?:function\b|[^;]*=>)` from
+/// `pos` (the assigned pattern after its leading group).
+fn assignedRest(line: Str, pos: usize) ?AssignedName {
+    if (pos >= line.len or !js.isIdentStart(line[pos])) return null;
+    var end = pos + 1;
+    while (end < line.len and js.isIdentPart(line[end])) end += 1;
+    // `\b` after the name: a trailing `$` is not a word character, so the
+    // JavaScript gives trailing `$`s back until a boundary exists.
+    var name_end = end;
+    while (name_end > pos and !js.isAsciiWord(line[name_end - 1])) name_end -= 1;
+    if (name_end == pos) return null;
+
+    var scan = name_end;
+    while (scan < line.len and line[scan] != '=') scan += 1;
+    if (scan >= line.len) return null;
+    scan += 1; // the `=`
+    while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
+
+    const async_kw = &js.lit("async");
+    var tail_at = scan;
+    if (js.startsWith(line[scan..], async_kw)) {
+        var spaces = scan + async_kw.len;
+        const before = spaces;
+        while (spaces < line.len and js.isWhitespace(line[spaces])) spaces += 1;
+        if (spaces > before) tail_at = spaces; // `async\s+`, greedily
+    }
+    if (assignedTail(line, tail_at)) |tail_end| {
+        return .{ .name = line[pos..name_end], .match_end = tail_end };
+    }
+    // The optional `async\s+` may be given back, and `[^;]*=>` still ends on the
+    // same arrow.
+    if (tail_at != scan) {
+        if (assignedTail(line, scan)) |tail_end| {
+            return .{ .name = line[pos..name_end], .match_end = tail_end };
         }
-        if (functionKeywordEnd(line[scan..]) != null) return .{ .name = name, .name_end = name_end };
-        const rest = line[scan..];
-        const arrow = js.indexOf(rest, &js.lit("=>"));
-        const semi = js.indexOfUnit(rest, ';');
-        if (arrow != null and (semi == null or arrow.? < semi.?)) return .{ .name = name, .name_end = name_end };
+    }
+    return null;
+}
+
+/// `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?([A-Za-z_$][\w$]*)\b[^=\n]*=\s*(?:async\s+)?(?:function\b|[^;]*=>)`,
+/// read as the JavaScript's global `exec` reads it: the next match at or after
+/// `from`, with the offset just past the match — `exec` leaves `lastIndex` there,
+/// so a name that only appears inside the match it just took is never tried.
+fn nextAssignedName(line: Str, from: usize) ?AssignedName {
+    var q = from;
+    while (q < line.len) : (q += 1) {
+        // `(^|[^\w$.])`: the empty first group at `^`, one separator otherwise.
+        if (q > 0 and !isSeparatorUnit(line[q - 1])) continue;
+        if (assignedHead(line, q)) |head_end| {
+            if (assignedRest(line, head_end)) |hit| return hit;
+        }
+        if (assignedRest(line, q)) |hit| return hit;
     }
     return null;
 }

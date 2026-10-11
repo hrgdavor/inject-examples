@@ -151,6 +151,7 @@ public final class BlockScanner {
         Integer openLine;
         Integer closeLine;
         Integer bodyEndLine;
+        Integer bodyFrom;
         Integer expression;
         Integer expressionEndLine;
         boolean indented;
@@ -170,6 +171,7 @@ public final class BlockScanner {
         Integer openLine;
         Integer closeLine;
         Integer endLine;
+        Integer bodyFrom;
         Integer expression;
         Integer expressionEndLine;
         Integer lineEnd;
@@ -407,13 +409,21 @@ public final class BlockScanner {
             if (!declaredHere.isEmpty()) {
                 int lastEnd = i;
                 for (Declared entry : declaredHere) {
-                    // A shape a language declares is read from its own line, which is how those
-                    // languages spell one: its header is the declaration line itself.
-                    Header header = new Header(start + entry.headerFrom(),
-                            start + maskedLine.length());
-                    Span span = "end".equals(entry.body())
-                            ? keywordBody(lex.lines, i, entry.end() == null ? "end" : entry.end())
-                            : shapeBodySpan(lex.mask, lex.maskLines, lex.starts, i, header);
+                    Span span;
+                    if ("end".equals(entry.body())) {
+                        // A shape whose body a keyword line closes (Ruby `end`, VB `End`).
+                        span = keywordBody(lex.lines, i,
+                                entry.end() == null ? "end" : entry.end());
+                    } else if (entry.line()) {
+                        // A shape that spells itself complete on its own line (a Rust field, a
+                        // one-line Haskell binding) is read from that line: its header is the
+                        // declaration line itself.
+                        Header header = new Header(start + entry.headerFrom(),
+                                start + maskedLine.length());
+                        span = shapeBodySpan(lex.mask, lex.maskLines, lex.starts, i, header);
+                    } else {
+                        span = shapeSpan(lex, i, start, maskedLine, entry);
+                    }
                     Block block = new Block(entry.kind() == null ? "method" : entry.kind(),
                             entry.name(), i);
                     if (span != null) {
@@ -582,6 +592,42 @@ public final class BlockScanner {
                 false);
     }
 
+    /**
+     * The body span of a language shape that opens a body: a port of the shape branch of
+     * {@code buildScope} ({@code lib/section.mjs:2165}).
+     *
+     * <p>A shape says where its body begins. An {@code =} is an expression body and is read as such.
+     * A {@code {} — or an offset just past one, which is how a shape that opens a brace body states
+     * it — is a brace body, scanned from the shape's own name so brackets before it cannot offset the
+     * depth; that is what makes a Rust {@code impl Cart {}} a brace span rather than an indented one.
+     * Anything else carries no body of its own: the body is its own line, and is empty when nothing
+     * extends it.
+     */
+    private static Span shapeSpan(Lex lex, int line, int start, String maskedLine, Declared entry) {
+        int nameAt = start + maskedLine.indexOf(entry.name());
+        int at = start + entry.headerFrom();
+        char here = at < lex.mask.length() ? lex.mask.charAt(at) : '\0';
+        int opened;
+        if (here == '{' || here == ' ' || here == '\t') {
+            opened = at;
+        } else if (at > 0 && lex.mask.charAt(at - 1) == '{') {
+            opened = at - 1;
+        } else {
+            opened = -1;
+        }
+        if (here == '=') {
+            return expressionBody(lex.lines, lex.starts, line, at + 1);
+        }
+        if (opened != -1) {
+            return bodySpan(lex, line, opened, nameAt);
+        }
+        Span own = new Span();
+        own.indented = true;
+        own.bodyEndLine = line;
+        own.bodyFrom = line;
+        return own;
+    }
+
     /** The body-span rules, once the header's own end offset and last line are known. */
     private static Span bodySpanEnd(String mask, String[] lines, int[] starts, int declLine, int from,
                                     int to, int headerLast, boolean deferredTerminator) {
@@ -662,6 +708,9 @@ public final class BlockScanner {
             Span indented = new Span();
             indented.indented = true;
             indented.bodyEndLine = end;
+            // A wrapped header's own lines are not part of its body: the body starts after the last of
+            // them.
+            indented.bodyFrom = Math.max(next, headerLast + 1);
             return indented;
         }
         return null;
@@ -893,6 +942,10 @@ public final class BlockScanner {
         }
         if (span.indented) {
             block.indented = true;
+            // The body starts at `bodyFrom` when the header wrapped (its own lines are the
+            // declaration's, not the body's) and runs to `bodyEndLine`. A one-line shape that was not
+            // extended has its body before it starts, which is what makes that body empty.
+            block.bodyFrom = span.bodyFrom != null ? span.bodyFrom : block.declLine + 1;
             block.closeLine = span.bodyEndLine;
             block.endLine = span.bodyEndLine;
             return;

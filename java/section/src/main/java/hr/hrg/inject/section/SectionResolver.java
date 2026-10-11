@@ -610,8 +610,10 @@ public final class SectionResolver {
                 return span(slice(lines, range.declLine, endLine + 1), range.declLine, endLine + 1);
             }
             if (range.indented) {
-                return span(slice(lines, range.declLine + 1, endLine + 1), range.declLine + 1,
-                        endLine + 1);
+                // A wrapped header's lines belong to the declaration, not the body, so the body starts
+                // after the last of them.
+                int first = range.bodyFrom == null ? range.declLine + 1 : range.bodyFrom;
+                return span(slice(lines, first, endLine + 1), first, endLine + 1);
             }
             if (range.expression != null) {
                 int at = Masker.lineOf(starts, range.expression);

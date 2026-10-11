@@ -111,7 +111,9 @@ pub struct TypeDeclaration {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct PropertyDeclaration {
     pub name: String,
-    /// The first word of the type, when there was one (a `const`/`let`/`var` declaration has none).
+    /// The first word of the declaration's type sequence — the reference's `prop[2].trim()` split on
+    /// whitespace, which is what the `NOT_A_TYPE` gate reads. A `const`/`let`/`var` declaration, and
+    /// one whose type is not a plain token sequence, has none.
     pub type_head: Option<String>,
     /// The offset just past the `=`, which is where the declaration ends for a body selection.
     pub value_from: usize,
@@ -319,6 +321,10 @@ pub fn call_shape(masked_line: &str, name: &str) -> Option<(usize, usize)> {
 
 /// `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?name\b(?:\s*:\s*[^=\n]+)?\s*=\s*(?:async\s+)?(=>|function)`:
 /// the offset of the name and the offset the body is read from (the `=>`, or just past `function`).
+///
+/// The optional annotation only participates when the colon follows the name directly (modulo
+/// whitespace); a `:` further along — inside the arrow's own parameter list, say — is not one, which
+/// is what keeps `const add = (a: number): number => a + b` an arrow rather than a property.
 pub fn assigned_shape(masked_line: &str, name: &str) -> Option<(usize, usize)> {
     let mut from = 0;
     while let Some(at) = masked_line[from..].find(name) {
@@ -328,29 +334,81 @@ pub fn assigned_shape(masked_line: &str, name: &str) -> Option<(usize, usize)> {
         if previous.is_some_and(|c| is_word_char(c) || c == '.' || c == '$') {
             continue;
         }
-        let after_name = &masked_line[start + name.len()..];
-        // An optional `: Type` annotation, then the `=`.
-        let after_type = match after_name.find(':') {
-            Some(colon) if after_name[colon + 1..].find('=').is_some() => &after_name[colon + 1..],
-            _ => after_name,
-        };
-        let Some(equals) = after_type.find('=') else {
+        let tail = &masked_line[start + name.len()..];
+        // `name\b`: the character after the name must not continue it.
+        if tail.chars().next().is_some_and(is_word_char) {
+            continue;
+        }
+        let Some(after_head) = assigned_head_str(tail) else {
             continue;
         };
-        let after_equals = after_type[equals + 1..].trim_start();
-        let after_async = after_equals
-            .strip_prefix("async")
-            .map_or(after_equals, |rest| rest.trim_start());
-        if let Some(rest) = after_async.strip_prefix("function") {
-            let length = masked_line.len() - rest.len();
-            return Some((start, length));
+        let head_end = start + name.len() + after_head;
+        let rest = &tail[after_head.min(tail.len())..];
+        let arrow = rest.find("=>");
+        let function = rest
+            .strip_prefix("function")
+            .is_some_and(|after| !after.chars().next().is_some_and(is_word_char));
+        // `arrow !== -1 && (fn === null || arrow < fn.index)` — an anchored `function` has index 0,
+        // so an arrow and a `function` together take the `function` branch.
+        if let Some(arrow) = arrow {
+            if !function {
+                return Some((start, head_end + arrow));
+            }
         }
-        if let Some(arrow) = after_async.find("=>") {
-            let length = masked_line.len() - (&after_async[arrow..]).len();
-            return Some((start, length));
+        if function {
+            return Some((start, head_end + "function".len()));
         }
     }
     None
+}
+
+/// `(?:const\s+|let\s+|var\s+)?name\b(?:\s*:\s*[^=\n]+)?\s*=\s*(?:async\s+)?` from just past a name:
+/// the offset just past the assignment head, or `None` when what follows is not one.
+fn assigned_head_str(tail: &str) -> Option<usize> {
+    let bytes = tail.as_bytes();
+    let mut at = 0usize;
+    let mut probe = 0usize;
+    while probe < bytes.len() && is_blank_byte(bytes[probe]) {
+        probe += 1;
+    }
+    if bytes.get(probe) == Some(&b':') {
+        // A type annotation, up to the first `=` — and never across a line, as `[^=\n]+` reads it.
+        let mut after = probe + 1;
+        while after < bytes.len() && is_blank_byte(bytes[after]) {
+            after += 1;
+        }
+        while after < bytes.len() && bytes[after] != b'=' && bytes[after] != b'\n' {
+            after += 1;
+        }
+        at = after;
+    }
+    while at < bytes.len() && is_blank_byte(bytes[at]) {
+        at += 1;
+    }
+    if bytes.get(at) != Some(&b'=') {
+        return None;
+    }
+    at += 1;
+    while at < bytes.len() && is_blank_byte(bytes[at]) {
+        at += 1;
+    }
+    if tail[at.min(tail.len())..].starts_with("async")
+        && !tail[(at + "async".len()).min(tail.len())..]
+            .chars()
+            .next()
+            .is_some_and(is_word_char)
+    {
+        at += "async".len();
+        while at < bytes.len() && is_blank_byte(bytes[at]) {
+            at += 1;
+        }
+    }
+    Some(at)
+}
+
+/// Whether a byte is blank in the JavaScript's `\s` sense for a header: the port's `is_blank_unit`.
+fn is_blank_byte(byte: u8) -> bool {
+    byte == b' ' || byte == b'\t' || byte == b'\n' || byte == b'\r' || byte == 0x0b || byte == 0x0c
 }
 
 /// `(?<!\.)\b(?:(const|let|var)\s+|type\s+)([A-Za-z_$][\w$]*)\b\s*=(?!=)`.
@@ -378,12 +436,9 @@ pub fn property_decl(masked_line: &str) -> Option<PropertyDeclaration> {
             continue;
         }
         let modifiers = before_name.trim_end();
-        let (type_head, declaration) = match take_identifier_from_end(modifiers) {
-            Some((word, _)) if ["const", "let", "var"].contains(&word) => (None, true),
-            Some((word, _)) => {
-                let head = word.to_string();
-                (Some(head), true)
-            }
+        let (type_head, declaration) = match take_type_token_from_end(modifiers) {
+            Some((token, _)) if ["const", "let", "var"].contains(&token) => (None, true),
+            Some(_) => (type_head_from_end(modifiers), true),
             None => (None, false),
         };
         if !declaration {
@@ -425,6 +480,70 @@ fn take_identifier_from_end(text: &str) -> Option<(&str, usize)> {
     Some((candidate, candidate.len()))
 }
 
+/// The trailing *type* token of `text`, and the offset it starts at.
+///
+/// A type token is one word, optionally followed by a single `<…>` group — the reference's
+/// `[\w$]+(?:<[^<>]*>)?`. `List<String>` is a token; `List<String>[]` is not, and neither is a bare
+/// `>`.
+fn take_type_token_from_end(text: &str) -> Option<(&str, usize)> {
+    let trimmed = text.trim_end();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let word_end = match trimmed.strip_suffix('>') {
+        // `<[^<>]*>`: the nearest `<` with no angle bracket between it and the closer.
+        Some(head) => {
+            let open = head.rfind('<')?;
+            if head[open + 1..].contains(['<', '>']) {
+                return None;
+            }
+            open
+        }
+        None => trimmed.len(),
+    };
+    let start = trimmed[..word_end]
+        .char_indices()
+        .rev()
+        .take_while(|(_, character)| is_word_char(*character))
+        .last()
+        .map(|(index, _)| index)?;
+    Some((&trimmed[start..], start))
+}
+
+/// The first word of the type sequence that ends `text` (the reference's `prop[2]`), or `None`.
+///
+/// The reference's type group is one or more type tokens separated by whitespace; walking right to
+/// left over the tokens recovers the sequence, and the **first** word of it is what the
+/// `NOT_A_TYPE` gate reads.
+fn type_head_from_end(text: &str) -> Option<String> {
+    let mut rest = text.trim_end();
+    let (token, start) = take_type_token_from_end(rest)?;
+    let mut first = first_word(token).to_string();
+    rest = &rest[..start];
+    while rest.ends_with(char::is_whitespace) {
+        let trimmed = rest.trim_end();
+        if trimmed.is_empty() {
+            break;
+        }
+        let Some((token, start)) = take_type_token_from_end(trimmed) else {
+            break;
+        };
+        first = first_word(token).to_string();
+        rest = &trimmed[..start];
+    }
+    Some(first)
+}
+
+/// The leading run of word characters in `token` (`List` in `List<String>`).
+fn first_word(token: &str) -> &str {
+    let end = token
+        .char_indices()
+        .take_while(|(_, character)| is_word_char(*character))
+        .map(|(index, character)| index + character.len_utf8())
+        .last()
+        .unwrap_or(0);
+    &token[..end]
+}
 /// `\b(if|else|for|while|do|switch|try|catch|finally|synchronized)\b`, with the offset of the keyword.
 pub fn statement_keyword(line: &str) -> Option<(String, usize)> {
     let mut best: Option<(String, usize)> = None;
@@ -599,10 +718,57 @@ mod tests {
     }
 
     #[test]
+    fn the_assigned_shape_reads_an_annotated_arrow() {
+        // A `:` inside the arrow's own parameter list is not a type annotation: the annotation group
+        // only participates when the colon follows the name directly, so the arrow is still found.
+        for (source, tail) in [
+            (
+                "const add = (a: number, b: number): number => a + b;",
+                "(a: number, b: number): number => a + b;",
+            ),
+            ("const add = (a: number) => a;", "(a: number) => a;"),
+        ] {
+            let head_end = source.find('(').unwrap();
+            assert_eq!(
+                Some((
+                    source.find("add").unwrap(),
+                    head_end + tail.find("=>").unwrap()
+                )),
+                assigned_shape(source, "add"),
+                "{source:?}"
+            );
+        }
+
+        // `= function` is an assigned body too, read from just past the keyword.
+        let handler = "const handler = function () {};";
+        let head_end = handler.find("function").unwrap();
+        assert_eq!(
+            Some((
+                handler.find("handler").unwrap(),
+                head_end + "function".len()
+            )),
+            assigned_shape(handler, "handler")
+        );
+
+        // With no arrow and no `function` there is no body to read here: a plain assignment is a
+        // property, not a function.
+        assert!(assigned_shape("    const total = 1;", "total").is_none());
+    }
+
+    #[test]
     fn the_property_shape() {
         let found = property_decl("    private int getUsers = 0;").unwrap();
         assert_eq!("getUsers", found.name);
-        assert_eq!(Some("int".to_string()), found.type_head);
+        // The reference reads `prop[2].trim().split(/\s+/)[0]`, so a modifier list yields its first
+        // word — not the type that happens to sit nearest the name.
+        assert_eq!(Some("private".to_string()), found.type_head);
+
+        // A generic type is a type token too: `List<String> items` is a property, and the type
+        // sequence before the name is `private final List<String>`.
+        let generic =
+            property_decl("    private final List<String> items = new ArrayList<>();").unwrap();
+        assert_eq!("items", generic.name);
+        assert_eq!(Some("private".to_string()), generic.type_head);
 
         let constant = property_decl("    const total = 1;").unwrap();
         assert_eq!("total", constant.name);
