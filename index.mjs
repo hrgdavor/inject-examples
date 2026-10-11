@@ -432,35 +432,61 @@ function tomlValueLines(lines, at) {
 /**
  * The rule for `.toml`: `#a/b` selects the `b` key of `[a]`, rendered with its
  * table header above it, and `#a` selects the whole `[a]` table (or the
- * top-level key `a` when there is no such table). A multi-line array or inline
- * table comes with its continuation lines. The reference's separator is `/`; a
- * TOML *header* is still spelled with its own dots (`[server.tls]`), which is
- * the format's spelling, not the reference's.
+ * top-level key `a` when there is no such table).
+ *
+ * A path is read against the format in one order, most specific first:
+ *
+ * 1. the last segment is a **key of the table** the earlier segments spell —
+ *    `#a/b/c` is the key `c` of `[a.b]`, and this wins when both readings exist;
+ * 2. otherwise the whole path is a **table** — `#server/tls` is `[server.tls]`,
+ *    and it resolves whether or not a `[server]` table happens to be declared
+ *    too, because TOML lets a child table stand alone;
+ * 3. otherwise a single segment is a **key above every table** — `#title`.
+ *
+ * A multi-line array or inline table comes with its continuation lines. The
+ * reference's separator is `/`; a TOML *header* is still spelled with its own
+ * dots (`[server.tls]`), which is the format's spelling, not the reference's.
  */
 export function extractTomlRegion(text, reference) {
     const lines = normalize(text).split('\n');
     const out = [];
 
     for (const { path, segments } of keyPaths(reference)) {
-        const key = segments[segments.length - 1];
+        const dotted = segments.join('.');
         const table = segments.slice(0, -1);
+        const key = segments[segments.length - 1];
 
-        if (table.length === 0) {
-            const first = firstTomlHeader(lines);
-            const at = tomlKeyAt(lines, key, 0, (first === -1 ? lines.length : first) - 1);
-            if (at !== -1) { out.push(...tomlValueLines(lines, at)); continue; }
-            const header = tomlHeaderAt(lines, key);
-            if (header === -1) throw new Error(`"${path}": no key or table "${key}"`);
-            out.push(...lines.slice(header, tomlTableEnd(lines, header)));
+        // 1 — a key of the table the earlier segments name.
+        if (table.length > 0) {
+            const header = tomlHeaderAt(lines, table.join('/'));
+            if (header !== -1) {
+                const at = tomlKeyAt(lines, key, header + 1, tomlTableEnd(lines, header) - 1);
+                if (at !== -1) {
+                    out.push(`[${table.join('.')}]`);
+                    out.push(...tomlValueLines(lines, at));
+                    continue;
+                }
+            }
+        }
+
+        // 2 — the whole path is a table of its own.
+        const own = tomlHeaderAt(lines, segments.join('/'));
+        if (own !== -1) {
+            out.push(...lines.slice(own, tomlTableEnd(lines, own)));
             continue;
         }
 
-        const header = tomlHeaderAt(lines, table.join('/'));
-        if (header === -1) throw new Error(`"${path}": no table "[${table.join('.')}]"`);
-        const at = tomlKeyAt(lines, key, header + 1, tomlTableEnd(lines, header) - 1);
-        if (at === -1) throw new Error(`"${path}": no key "${key}" in [${table.join('.')}]`);
-        out.push(`[${table.join('.')}]`);
-        out.push(...tomlValueLines(lines, at));
+        // 3 — a key that sits above every table.
+        if (table.length === 0) {
+            const first = firstTomlHeader(lines);
+            const at = tomlKeyAt(lines, key, 0, (first === -1 ? lines.length : first) - 1);
+            if (at !== -1) {
+                out.push(...tomlValueLines(lines, at));
+                continue;
+            }
+        }
+
+        throw new Error(`"${path}": no key or table "${dotted}"`);
     }
     return out.join('\n');
 }

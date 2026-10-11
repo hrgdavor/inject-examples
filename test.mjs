@@ -422,6 +422,23 @@ test('section-matching: grammar errors throw the §9 shapes', () => {
     );
 });
 
+test('a reference names one file, so a second # is not a nested reference', () => {
+    // The file a reference names is the path the marker's link already carries.
+    // `#` never occurs inside a reference, so `a#b` is a link written into the
+    // fragment by mistake — and reading it as the name `a#b` would send the
+    // reader to a section that cannot exist (RFC 1 §9.8).
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a#b'),
+        /"#a#b" has a second "#"; a reference names one file/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a#'),
+        /has a second "#"/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/#b'),
+        /has a second "#"/);
+    assert.throws(() => parseSelectors('a,b#c'),
+        /has a second "#"/, 'it is caught inside a selector list too');
+    // An empty reference is still the empty-reference error, not this one.
+    assert.throws(() => parseSelectors('#a'), /"##a" names nothing/);
+});
+
 // --- 2e: contradictory modifiers resolve to the dominant reading ---
 test('section-matching: contradictory modifiers resolve to the dominant reading', () => {
     const expected = '    public void handler() { //getUsers\n'
@@ -1940,9 +1957,28 @@ test('extractTomlRegion renders a key with its table, continuation lines include
     assert.equal(extractTomlRegion(TOML_DOC, 'server'),
         '[server]\nport = 8080\nhosts = [\n  "a",\n  "b",\n]', 'a bare name selects the whole table');
     assert.equal(extractTomlRegion(TOML_DOC, 'title'), 'title = "demo"', 'a top-level key needs no header');
-    assert.throws(() => extractTomlRegion(TOML_DOC, 'server/nope'), /no key "nope" in \[server\]/);
+    assert.throws(() => extractTomlRegion(TOML_DOC, 'server/nope'), /no key or table "server\.nope"/);
     assert.throws(() => extractTomlRegion(TOML_DOC, 'nope'), /no key or table "nope"/);
-    assert.throws(() => extractTomlRegion(TOML_DOC, 'server/tls/nope'), /no table "\[server.tls.nope\]"|no key "nope"/);
+    assert.throws(() => extractTomlRegion(TOML_DOC, 'server/tls/nope'), /no key or table "server\.tls\.nope"/);
+});
+
+test('extractTomlRegion reads a nested table as a table, with or without its parent', () => {
+    // `#a/b/c` is the key `c` of `[a.b]` when that key exists — the most specific
+    // reading wins…
+    assert.equal(extractTomlRegion(TOML_DOC, 'server/tls/enabled'), '[server.tls]\nenabled = true');
+    // …and when it does not, the whole path is a table of its own. A TOML child
+    // table may stand alone, so `[server.tls]` resolves even though this document
+    // never declares `[server]`.
+    const childOnly = ['[server.tls]', 'enabled = true'].join('\n');
+    assert.equal(extractTomlRegion(childOnly, 'server/tls'), '[server.tls]\nenabled = true',
+        'a child table with no parent table declared');
+    assert.equal(extractTomlRegion(childOnly, 'server/tls/enabled'), '[server.tls]\nenabled = true');
+    assert.throws(() => extractTomlRegion(childOnly, 'server'), /no key or table "server"/,
+        'the parent table is not invented');
+    // Three deep: the table wins once the two-segment reading has no such key.
+    const deep = ['[deep.a.b]', 'x = 1'].join('\n');
+    assert.equal(extractTomlRegion(deep, 'deep/a/b'), '[deep.a.b]\nx = 1');
+    assert.equal(extractTomlRegion(deep, 'deep/a/b/x'), '[deep.a.b]\nx = 1');
 });
 
 test('extractIniRegion renders a key with its section', () => {
@@ -3608,4 +3644,65 @@ test('the lexical corpus covers every lexer entry', () => {
         assert.ok(shapeLanguages.has(name), `the shape corpus covers the ${name} entry`);
     }
     assert.ok(shaped.length >= 4, 'the table has the shape languages it is supposed to have');
+});
+
+// ---------------------------------------------------------------------------
+// The RFC's contract: the answer shape a port must expose
+// ---------------------------------------------------------------------------
+//
+// `doc/rfc/section-mapping.md` §5.3 names the fields a port must expose, and
+// `test/vectors/manifest.json` lists them for a porter. The corpus asserts
+// *values*; nothing else asserts the *shape*, so a field could be renamed or
+// dropped while every vector still passed. These tests pin it, and they are
+// deliberately exhaustive: a new field must be a deliberate edit here, which is
+// what makes "the field names are frozen at 1.0" (RFC §9.1) checkable.
+test('RFC §5.3: the Plan exposes exactly the documented fields', () => {
+    const plan = planSection(JAVA, 'Line', lexerFor('Example.java'));
+    assert.deepEqual(Object.keys(plan).sort(),
+        ['endLine', 'kind', 'ranges', 'reference', 'startLine', 'text'],
+        'a new or renamed Plan field is a 1.0 decision, not an accident');
+    assert.ok(['region', 'declaration', 'property', 'condition', 'anchor', 'lines', 'multiple']
+        .includes(plan.kind), `kind "${plan.kind}" is one of the documented members`);
+});
+
+test('RFC §5.3: the Reference exposes exactly the documented fields', () => {
+    const { reference } = planSection(JAVA, 'Line', lexerFor('Example.java'));
+    assert.deepEqual(Object.keys(reference).sort(),
+        ['canonical', 'raw', 'scope', 'segments', 'selectors', 'warning']);
+    // The warning belongs to the reference, not the plan: it is a property of
+    // what was asked for rather than of what was found.
+    assert.equal(reference.warning, null);
+    const warned = parseSelectors('getUsers++-').warning;
+    assert.deepEqual([warned.kind, warned.kept, warned.dropped], ['contradiction', '++', '-']);
+});
+
+test('RFC §5.3: a Selector is a path or a line range, and each carries its own detail', () => {
+    const path = planSection(JAVA, 'Line', lexerFor('Example.java')).reference.selectors;
+    assert.equal(path.length, 1);
+    assert.deepEqual(Object.keys(path[0]).sort(), ['kind', 'raw', 'scope', 'segments']);
+    assert.deepEqual(path[0], {
+        kind: 'path', raw: 'Line', segments: ['Line'], scope: 'declaration',
+    });
+
+    const lines = planSection(JAVA, 'L1:3-L2', lexerFor('Example.java')).reference.selectors;
+    assert.equal(lines[0].kind, 'lines');
+    assert.deepEqual(lines[0].from, { line: 1, column: 3 });
+    assert.deepEqual(lines[0].to, { line: 2, column: null });
+
+    // `kind` on the plan is the summary; the per-selection detail is the array.
+    const several = planSection(JAVA, 'Line,L1', lexerFor('Example.java'));
+    assert.equal(several.kind, 'multiple');
+    assert.deepEqual(several.reference.selectors.map((s) => s.kind), ['path', 'lines']);
+});
+
+test('RFC §5.3: ranges are the spread of text, ascending and inclusive', () => {
+    const plan = planSection(JAVA, 'Line', lexerFor('Example.java'));
+    assert.equal(plan.startLine, plan.ranges[0].from, 'startLine is the first range\'s start');
+    assert.equal(plan.endLine, plan.ranges[plan.ranges.length - 1].to, 'endLine is the last range\'s end');
+    for (const [index, range] of plan.ranges.entries()) {
+        assert.ok(range.from <= range.to, `${JSON.stringify(range)} is not inverted`);
+        if (index > 0) {
+            assert.ok(range.from > plan.ranges[index - 1].to, 'ranges ascend and never overlap');
+        }
+    }
 });

@@ -14,7 +14,7 @@
       "layer": 1,
       "name": "grammar",
       "file": "test/vectors/section-vectors.json",
-      "rows": 50,
+      "rows": 54,
       "selector": "rows with input === null (they consult no file)",
       "asserts": [
         "canonical spelling",
@@ -113,7 +113,7 @@
   "corpora": [
     {
       "path": "test/vectors/section-vectors.json",
-      "rows": 182,
+      "rows": 186,
       "shape": "array",
       "row_fields": {
         "name": "unique; `<category>:<case>` for parse rows, a slug for resolution rows",
@@ -129,10 +129,10 @@
         "warning": "null, or { kind, kept, dropped } for a contradictory-modifier warning"
       },
       "counts": {
-        "total": 182,
-        "parse": 50,
+        "total": 186,
+        "parse": 54,
         "resolution": 132,
-        "errors": 48,
+        "errors": 52,
         "warnings": 4,
         "by_kind": {
           "anchor": 9,

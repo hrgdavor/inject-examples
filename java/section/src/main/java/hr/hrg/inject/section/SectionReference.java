@@ -222,7 +222,10 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
             if (!startsLikeANamePath(text)) {
                 throw new SectionReferenceException("\"#" + text + "\" names nothing");
             }
-            SectionReference parsed = parsePath(text);
+            // A reference names a section of one file, and the file is the path the marker's link
+            // already carries, so `#` never occurs inside a selector either; the single-selector
+            // grammar owns the message, exactly as the reference reader uses it.
+            SectionReference parsed = parseReference(text);
             // The reference's own modifier applies to the last selector, as it has always applied to
             // the last path segment; every earlier selector keeps the scope its own spelling gave it.
             Scope scope = index == lastPart && modifier.modifier() != null
@@ -285,6 +288,13 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
         }
         if (raw.indexOf(',') >= 0) {
             throw new SectionReferenceException("\"#" + raw + "\" has an empty selector");
+        }
+        // A reference names a section of one file, and the file is the path the
+        // marker's link already carries, so `#` never occurs inside a reference: a
+        // second one is a link written into the fragment by mistake.
+        if (raw.indexOf('#') >= 0) {
+            throw new SectionReferenceException(
+                "\"#" + raw + "\" has a second \"#\"; a reference names one file");
         }
         if (LINE_RANGE_PREFIX.matcher(raw).find()) {
             lineRangeOf(raw);                   // throws when the spelling is malformed

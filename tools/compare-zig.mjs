@@ -719,9 +719,14 @@ const REFERENCE_CASES = [
     ['fixtures/app.toml', 'server'],
     ['fixtures/app.toml', 'server/port'],
     ['fixtures/app.toml', 'server/tags'],
+    // A nested table is spelled with the same separator as a key path, so
+    // `server/tls` is `[server.tls]` — read as a table once the key reading
+    // (`tls` of `[server]`) finds nothing.
     ['fixtures/app.toml', 'server/tls'],
+    ['fixtures/app.toml', 'server/tls/enabled'],
     ['fixtures/app.toml', 'nope'],
     ['fixtures/app.toml', 'server/nope'],
+    ['fixtures/app.toml', 'server/tls/nope'],
     ['fixtures/app.ini', 'root'],
     ['fixtures/app.ini', 'server'],
     ['fixtures/app.ini', 'server/host'],

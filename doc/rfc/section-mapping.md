@@ -15,19 +15,28 @@
 ## 1. Summary
 
 **Section mapping** is the act of turning a short textual **reference** into the
-exact lines of a source file it names:
+exact lines of one source file it names:
 
 ```text
 Cart/Line/render-          the body of the method `render` inside `Line` inside `Cart`
 L40:12-L44:3               lines 40 to 44, from column 12 to column 3
-++toString,config.port     a documented method, then a key from a config file
+++toString,render          a documented method, then another method, of the same file
+server/port                a key path in a config file
 ```
 
-The reference rides in the fragment of an ordinary Markdown link:
+Each line above is a *different* reference — a reference names one file, and the
+file is the path in the link. The reference rides in the fragment:
 
 ```markdown
 [the renderer](src/Cart.java#Cart/Line/render-)
+[the port](app.yaml#server/port)
 ```
+
+One link, one file, one reference. The same `path/to/file#reference` shape serves
+every rule — a code file, or a config file — because the separator and the
+composition rules are the same; what differs is only what a segment *names*. A
+reference cannot reach into a second file, and a second `#` is a broken link
+rather than a nested reference ([§9.8](#98-cross-file-references-are-out-of-scope)).
 
 This RFC defines the problem, the two use cases it must serve, the boundary
 between what a section mapper is and is not, and the conformance suite a new
@@ -492,9 +501,26 @@ dot is reached as `#a/b.c`; where the format allows a quoted key, `#a/"b.c"`
 says the same thing explicitly.
 
 What a missing selector reports also differs by rule, deliberately: code says
-`no section named "render" in "Cart"`, the data rules name the key
+`no section named "render" in "Cart"`, the data rules name the key or the path
 (`"server/nope": no key "nope"`), because that is the vocabulary of the file the
 reader is looking at.
+
+**A path may name a key or the container that holds one, and the reading is
+ordered.** The formats make these two things look alike, so the rule is stated
+once and applied by each:
+
+1. **the last segment is a key of the container the earlier segments name** —
+   `#a/b/c` is the key `c` of `[a.b]`. This wins when both readings exist,
+   because it is the more specific claim.
+2. **otherwise the whole path is a container** — `#server/tls` is `[server.tls]`.
+   In TOML this resolves whether or not `[server]` is declared too, because a
+   child table may stand alone.
+3. **otherwise a single segment is a key that sits above every container** —
+   `#title`, or a key before any `[section]` in INI.
+
+JSON and YAML are only case 1 and 3 (a mapping is not a "table" to be selected
+whole by a path that also names its child), TOML and INI have all three, and INI
+stops at two segments because a section holds keys and nothing deeper.
 
 ### 9.5 No fallback in the mapper
 

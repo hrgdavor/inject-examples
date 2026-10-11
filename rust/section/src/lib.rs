@@ -295,6 +295,15 @@ pub fn parse_reference(raw: &str) -> Result<Reference> {
             "\"#{raw}\" has an empty selector"
         )));
     }
+    // A reference names a section of one file, and the file is the path the
+    // marker's link already carries. A second `#` is therefore never a nested
+    // reference — it is a link written into the fragment by mistake, and reading
+    // it as a name would send the reader to a section that cannot exist.
+    if raw.contains('#') {
+        return Err(SectionReferenceError::new(format!(
+            "\"#{raw}\" has a second \"#\"; a reference names one file"
+        )));
+    }
     if resolver::is_line_range_prefix(raw) {
         resolver::line_range_of(raw)?; // fails when the spelling is malformed
         return Err(SectionReferenceError::new(format!(

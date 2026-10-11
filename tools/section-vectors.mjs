@@ -95,6 +95,11 @@ const cases = [
         ['L44-L40', 'range-backwards'], ['L40-L44:0', 'range-end-column-zero'],
         ['L40:x-L44', 'range-start-column-not-a-number'],
         ['L40-L44+', 'range-with-a-modifier'],
+        // A reference names one file, and the file is the link's path, so `#`
+        // never occurs inside a reference: a second one is a link written into
+        // the fragment by mistake (RFC §9.8).
+        ['a#b', 'second-hash'], ['a#', 'trailing-hash'], ['a/#b', 'second-hash-after-slash'],
+        ['add,render#x', 'second-hash-in-a-selector-list'],
     ].map(([reference, slug]) => ({ name: `grammar-error:${slug}`, mode: 'parse', reference })),
 
     // Warnings — parse only: the contradiction and the canonical form.

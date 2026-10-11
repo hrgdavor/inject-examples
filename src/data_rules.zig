@@ -410,9 +410,18 @@ fn depthOf(alloc: Allocator, text: Str, from: usize) !isize {
     return level;
 }
 
-/// The rule for `.toml`: `#a.b` selects the `b` key of `[a]`, rendered with its
+/// The rule for `.toml`: `#a/b` selects the `b` key of `[a]`, rendered with its
 /// table header above it, and `#a` selects the whole `[a]` table (or the
 /// top-level key `a` when there is no such table).
+///
+/// A path is read against the format in one order, most specific first:
+///
+/// 1. the last segment is a key of the table the earlier segments spell —
+///    `#a/b/c` is the key `c` of `[a.b]`, and this wins when both readings exist;
+/// 2. otherwise the whole path is a table — `#server/tls` is `[server.tls]`, and
+///    it resolves whether or not a `[server]` table happens to be declared too,
+///    because TOML lets a child table stand alone;
+/// 3. otherwise a single segment is a key above every table — `#title`.
 pub fn extractTomlRegion(alloc: Allocator, text: Str, reference: Str, failure: *Failure) Error![]u16 {
     const normalized = try js.normalize(alloc, text);
     const lines = try js.splitLines(alloc, normalized);
@@ -422,7 +431,34 @@ pub fn extractTomlRegion(alloc: Allocator, text: Str, reference: Str, failure: *
         const segments = entry.segments;
         const key = segments[segments.len - 1];
         const table = segments[0 .. segments.len - 1];
+        const dotted = try joinDots(alloc, segments);
 
+        // 1 — a key of the table the earlier segments name.
+        if (table.len > 0) {
+            const lookup = try joinSlashes(alloc, table);
+            if (tomlHeaderAt(lines, lookup)) |header| {
+                const end = tomlTableEnd(lines, header);
+                if (tomlKeyAt(lines, key, header + 1, if (end == 0) 0 else end - 1)) |at| {
+                    var header_text = std.ArrayList(u16).empty;
+                    try header_text.append(alloc, '[');
+                    try header_text.appendSlice(alloc, try joinDots(alloc, table));
+                    try header_text.append(alloc, ']');
+                    try out.append(alloc, try header_text.toOwnedSlice(alloc));
+                    try tomlValueLines(alloc, lines, at, &out);
+                    continue;
+                }
+            }
+        }
+
+        // 2 — the whole path is a table of its own.
+        if (tomlHeaderAt(lines, try joinSlashes(alloc, segments))) |own| {
+            var i = own;
+            const end = tomlTableEnd(lines, own);
+            while (i < end) : (i += 1) try out.append(alloc, lines[i]);
+            continue;
+        }
+
+        // 3 — a key that sits above every table.
         if (table.len == 0) {
             const first = firstTomlHeader(lines);
             // `(first === -1 ? lines.length : first) - 1`, and `to` is a line
@@ -434,37 +470,9 @@ pub fn extractTomlRegion(alloc: Allocator, text: Str, reference: Str, failure: *
                     continue;
                 }
             }
-            const header = tomlHeaderAt(lines, key) orelse {
-                return failure.set(try js.format(alloc, "\"{s}\": no key or table \"{s}\"", .{ entry.path, key }));
-            };
-            var i = header;
-            const end = tomlTableEnd(lines, header);
-            while (i < end) : (i += 1) try out.append(alloc, lines[i]);
-            continue;
         }
 
-        // The reference's separator is `/`, the format's header is dotted: the
-        // lookup is by `/`-joined segments and both the message and the rendered
-        // header spell the table the TOML way.
-        const joined = try joinDots(alloc, table);
-        const lookup = try joinSlashes(alloc, table);
-        const header = tomlHeaderAt(lines, lookup) orelse {
-            return failure.set(try js.format(alloc, "\"{s}\": no table \"[{s}]\"", .{ entry.path, joined }));
-        };
-        const end = tomlTableEnd(lines, header);
-        const at = tomlKeyAt(lines, key, header + 1, if (end == 0) 0 else end - 1) orelse {
-            return failure.set(try js.format(
-                alloc,
-                "\"{s}\": no key \"{s}\" in [{s}]",
-                .{ entry.path, key, joined },
-            ));
-        };
-        var header_text = std.ArrayList(u16).empty;
-        try header_text.append(alloc, '[');
-        try header_text.appendSlice(alloc, joined);
-        try header_text.append(alloc, ']');
-        try out.append(alloc, try header_text.toOwnedSlice(alloc));
-        try tomlValueLines(alloc, lines, at, &out);
+        return failure.set(try js.format(alloc, "\"{s}\": no key or table \"{s}\"", .{ entry.path, dotted }));
     }
     return js.joinLines(alloc, out.items);
 }
