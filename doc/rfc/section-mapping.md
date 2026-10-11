@@ -2,13 +2,13 @@
 
 | | |
 | --- | --- |
-| **Status** | Draft — **not** 1.0. Expect breaking changes before the version is fixed. |
-| **Version** | `0.1-draft` (see [Document status](#10-document-status-and-versioning)) |
+| **Status** | Release candidate for 1.0 — **not** 1.0 yet. The design questions are settled ([§9](#9-decisions)); what remains is to exercise the document against a fresh port. |
+| **Version** | `0.9-rc` (see [Document status](#10-document-status-and-versioning)) |
 | **Supersedes** | nothing |
 | **Normative detail** | [`doc/section-matching.md`](../section-matching.md) — the resolution rules |
 | **Conformance data** | [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json), [`test/vectors/lexical-vectors.json`](../../test/vectors/lexical-vectors.json), [`test/vectors/manifest.json`](../../test/vectors/manifest.json) |
 | **Reference implementation** | [`lib/section.mjs`](../../lib/section.mjs) (matcher), [`index.mjs`](../../index.mjs) (document rules) |
-| **Discussion** | open — see [Open questions](#9-open-questions) |
+| **Discussion** | the eight settled questions are in [§9](#9-decisions) |
 
 ---
 
@@ -211,29 +211,54 @@ Both are asserted by the lexical corpus.
 ### 5.3 Plan (the whole contract)
 
 ```text
-plan(source: string, reference: string, lexer?: Lexer) -> Answer | error
+plan(source: string, reference: string, lexer?: Lexer) -> Plan | error
 
-Answer := {
+Plan := {
   text:      string,                     // selections joined with "\n", in order
+  reference: Reference,                  // what was asked for, parsed
   startLine: number,                     // 1-based, inclusive
   endLine:   number,
-  ranges:    { from: number, to: number }[],  // one per selector, in order
+  ranges:    { from: number, to: number }[],  // the spread of `text`, ascending
   kind:      'region' | 'declaration' | 'property' | 'condition'
-           | 'anchor' | 'lines' | 'multiple',
-  selections: Selection[]
+           | 'anchor' | 'lines' | 'multiple'
 }
+
+Reference := {
+  raw:       string,                     // the reference as written
+  canonical: string,                     // its canonical spelling
+  selectors: Selector[],                 // one per selector, in order
+  segments:  string[],                   // the last path selector's segments
+  scope:     'declaration' | 'body' | 'annotated' | 'documented',
+  warning:   null | { kind: 'contradiction', kept: '++' | '+', dropped: '-' }
+}
+
+Selector := { kind: 'path',  raw: string, segments: string[], scope: Scope }
+          | { kind: 'lines', raw: string, from: LinePoint, to: LinePoint | null }
 ```
 
-- `text` is the file's own bytes (LF-normalised), with nothing added, rendered or
-  re-indented.
-- `startLine`/`endLine` are the outermost bounds of the pieces; `ranges` is one
-  entry per selector **in the order written**, so a host can highlight each piece
-  separately.
+- `text` is the file's own bytes (LF-normalised) — nothing added or re-indented —
+  except in a **rendering rule** (JSON/YAML/TOML/INI), where a selection of keys
+  is re-printed so the block is valid source of that format.
+- `startLine`/`endLine` are the outermost bounds of `text`; `ranges` is the spread
+  of `text` as ascending 1-based inclusive line pairs, adjacent pieces merged, so
+  a host can highlight what was injected and nothing between it.
+- **The per-selection detail is `reference.selectors`**, not a plan field: each
+  selector carries its own `kind` (`path` or `lines`), its own `scope`, and its
+  own segments. `kind` on the plan is the *summary*: the one matcher that found a
+  single selector, or `multiple` when the reference named several.
+- The `warning` belongs to the reference, not the plan, because it is a property
+  of what was asked for rather than of what was found.
 - Every selector must resolve. A list is **not** a fallback: the first missing
   selector fails the whole reference, naming it.
 - **Never a clamp.** Anything the file does not have is an error, because a range
   that silently became a different range reintroduces the drift the whole design
   exists to remove.
+
+A lighter parser is also public, and a host that only needs the grammar uses it:
+
+```text
+parseSelectors(reference: string) -> Reference | error
+```
 
 ### 5.4 Errors
 
@@ -422,50 +447,124 @@ row names it.
 
 ---
 
-## 9. Open questions
+## 9. Decisions
 
-This draft is expected to change. The questions below are the ones a 1.0 must
-settle; they are listed with the current leaning, not as decisions.
+The draft left eight questions open. All eight are now settled, and **none of
+them changed resolution behaviour** — each one either recorded what the
+implementation already did or drew a boundary. They are normative from here on.
 
-1. **Frozen 1.0 surface.** Which parts become stable — the reference grammar
-   only, or also the answer object's field names? *Leaning: the grammar and the
-   error messages are 1.0; `kind`'s vocabulary may gain members in a minor.*
-2. **Modifier naming.** `-`, `+`, `++` are terse and asymmetric. Is a long
-   spelling (`#Cart/render.body`) wanted as a synonym, or does one syntax stay
-   the only syntax? *Leaning: one syntax, aliases are a host concern.*
-3. **A `kind` for "several".** Today a mixed reference reports `multiple`. Should
-   each selection carry its own `kind` more explicitly than `selections[]` does?
-4. **Non-code formats.** YAML/TOML/INI/JSON resolve keys. Is a key a "section" in
-   the same sense, and should the RFC name a separate grammar for them?
-5. **Fallback, formally.** Use case A wants "as close as feasible". Should the
-   RFC define an *optional* second call — a suggestion the host may ignore —
-   rather than leaving it entirely to the host?
-6. **Version negotiation.** Does a document need to declare which reference
-   version it was written against, or is the syntax stable enough to skip that?
-7. **Fuzz corpus as a contract.** The differential harness generates inputs. Should
-   a frozen subset of those generated cases become committed rows, so a port
-   without a differential partner is still held to them?
-8. **Cross-file references.** Everything is one file today. Is `path#a#b`, or a
-   reference that walks *out* of the current document, ever in scope?
+### 9.1 What 1.0 freezes
+
+**The reference grammar, the thrown messages, and the field names of `Plan` and
+`Reference` as given in [§5.3](#53-plan-the-whole-contract).** Additions are
+minor: a new `kind` member, a new field, a new language, a new corpus row. A
+removal, a rename, a changed message or a changed resolution is major. This
+settles *how much* is stable without freezing the vocabulary forever.
+
+### 9.2 One modifier syntax, and no long form
+
+`-`, `+`, `++` are the only spellings; a host that wants
+`#Cart/render.body` must translate it itself. The reason is not taste: **`.`
+already means something.** A TOML header spells a nested table `[a.b]`, a JSON
+key may contain a dot, and the config rules once used `.` as their separator.
+Adding `.body` as a modifier alias would make one reference readable two ways
+depending on which rule claims the file. One syntax, one reading. The alias idea
+is closed.
+
+### 9.3 The per-selection detail already exists
+
+A mixed reference reports `kind: 'multiple'` on the plan, and each piece carries
+its own kind, scope and segments in `reference.selectors[]`. Nothing needs to be
+added; what was missing was the *documentation* of it, which §5.3 now gives.
+
+### 9.4 A key is a section, under the same grammar
+
+**One reference grammar. Four rules that read it.** `/` separates segments for
+every rule alike — code, JSON, YAML, TOML and INI — and a rule decides what a
+segment *names*: a declaration path for code, a key path for the data formats.
+There is no second grammar for config files, and the separator question is
+therefore closed rather than merely decided per format.
+
+The formats' own spellings still appear in the *output*, because they are the
+format's: a TOML table is rendered as `[a.b]` with its dots, a YAML key path is
+re-indented. The reference's spelling is always `/`. A key that itself contains a
+dot is reached as `#a/b.c`; where the format allows a quoted key, `#a/"b.c"`
+says the same thing explicitly.
+
+What a missing selector reports also differs by rule, deliberately: code says
+`no section named "render" in "Cart"`, the data rules name the key
+(`"server/nope": no key "nope"`), because that is the vocabulary of the file the
+reader is looking at.
+
+### 9.5 No fallback in the mapper
+
+**A mapper MUST NOT approximate.** It returns the exact range or an error. A
+host **MAY** apply a fallback of its own when the call errors — that is use case
+A's whole latitude — but the search, the ranking and the "close enough" judgement
+belong to the host, never to the mapper. Writing this down converts the boundary
+of [§3.3](#33-the-boundary-stated-once) from an explanation into an obligation.
+
+### 9.6 No version negotiation
+
+A reference does not declare the version of the syntax it was written against,
+and 1.0 does not add one. The grammar is small, its changes are additive, and a
+declaration would be carried by every marker in every document for a benefit that
+has not been demonstrated. This is a deliberate *no*: if a real document ever
+breaks under a syntax change, the question reopens with evidence.
+
+### 9.7 The corpus is the regression suite; fuzzing is the discovery tool
+
+Generated differential cases are **not** committed as rows. Instead:
+
+> Every bug a differential run finds MUST become a committed conformance row
+> before it is fixed.
+
+That keeps the corpus small enough to review and turns each discovered bug into a
+permanent, portable test. The differential harness stays the tool for finding
+what no hand-written row covered — it is how the `->` header bug and an
+assigned-name scan bug were found — and a port without a differential partner is
+still held to everything those runs ever found.
+
+### 9.8 Cross-file references are out of scope
+
+A reference names a section of **one** file, and the file is named by the link's
+path. A reference does not walk out of the current document, and nesting one
+reference inside another (`path#a#b`) is not syntax. Everything in
+[§3.4](#34-explicitly-out-of-scope) applies; this makes it explicit that
+transclusion — pulling one document into another — is a different feature with a
+different failure mode (which version of the other file?), and is not smuggled in
+through the fragment.
 
 ---
 
 ## 10. Document status and versioning
 
-- **This document is a draft.** The reference implementation is authoritative
-  where the two disagree, and the conformance corpora are generated from it.
+- **Status: release candidate for 1.0 (`0.9-rc`).** The eight questions of the
+  draft are settled in [§9](#9-decisions) and none of them changed resolution
+  behaviour. What remains before 1.0 is *exercise*, not design: a port written
+  from this document alone, and a release in which no question reopens.
+- **The reference implementation is authoritative** where this document and the
+  behaviour disagree; the conformance corpora are generated from it. A
+  disagreement is a bug in the document or in the port, never in the corpus.
 - **The `doc/section-matching.md` specification is normative** for resolution.
   This RFC is normative for *scope, boundary and conformance obligations*.
 - **The RFC version is independent of the package version.** The npm package is
-  `@hrg/inject-examples` and versions on its own semver; `0.1-draft` here is the
-  *syntax* version, and the two must not be read as one number. When this
-  document reaches 1.0, it is the syntax that becomes stable.
-- **What a version means here, once we get there.** Before 1.0: any change. At
-  1.0: the grammar and the error messages stop changing incompatibly; new
-  languages, new lexer entries and new conformance rows are *minor* changes; a
-  new answer field is minor; a removed or renamed field, a changed message, or a
-  changed resolution is *major*.
+  `@hrg/inject-examples` and versions on its own semver; the version here is the
+  *syntax* version, and the two must not be read as one number.
+- **What a version means.** Before 1.0: any change. At 1.0 ([§9.1](#91-what-10-freezes)):
+  the grammar, the error messages and the `Plan`/`Reference` field names stop
+  changing incompatibly. New languages, lexer entries, conformance rows, `kind`
+  members and fields are **minor**; a removal, a rename, a changed message or a
+  changed resolution is **major**.
 - **Change log.**
+  - `0.9-rc` — the eight open questions settled ([§9](#9-decisions)), and two
+    errors corrected: the answer shape in §5.3 named a `selections` field that
+    does not exist (the per-selection detail is `reference.selectors[]`, and
+    `warning` lives on the reference, not the plan), and the config rules'
+    separator was documented as `.` in several places. **The separator is `/` for
+    every rule alike**, which is a breaking change to any document that spelled a
+    config reference with dots; there is no compatibility path, because this is
+    the syntax's first release.
   - `0.1-draft` — first draft, extracted from the implementation and the
     resolution spec after the wrapped-header, expression-body and enum work.
     Section 3 (the boundary) and section 8 (test layering) are the new material;

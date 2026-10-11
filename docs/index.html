@@ -428,22 +428,22 @@ add x y = x + y</code></pre></li>
 </li>
 <li class="example" id="ex-20">
 <h2><span class="num">20</span>YAML — a key path</h2>
-<p>A <code>.yaml</code> reference is a dotted key path, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
+<p>A <code>.yaml</code> reference is a key path, spelled with the same <code>/</code> separator a code reference uses, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
 <ul class="targets">
-<li class="target-item" id="t-20-1"><button class="target" type="button" data-file="samples/app.yaml" data-section="20" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-20-1-snippet"><span class="chip-file">app.yaml</span><span class="chip-ref">#server.port</span></button><pre class="snippet" id="t-20-1-snippet"><span class="marker">[samples/app.yaml](./samples/app.yaml#server.port)</span><code>server:
+<li class="target-item" id="t-20-1"><button class="target" type="button" data-file="samples/app.yaml" data-section="20" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-20-1-snippet"><span class="chip-file">app.yaml</span><span class="chip-ref">#server/port</span></button><pre class="snippet" id="t-20-1-snippet"><span class="marker">[samples/app.yaml](./samples/app.yaml#server/port)</span><code>server:
   port: 8080</code></pre></li>
-<li class="target-item" id="t-20-2"><button class="target" type="button" data-file="samples/app.yaml" data-section="20" data-from="3" data-to="7" data-ranges="3-3,6-7" aria-pressed="false" aria-controls="t-20-2-snippet"><span class="chip-file">app.yaml</span><span class="chip-ref">#server.tls.enabled</span></button><pre class="snippet" id="t-20-2-snippet"><span class="marker">[samples/app.yaml](./samples/app.yaml#server.tls.enabled)</span><code>server:
+<li class="target-item" id="t-20-2"><button class="target" type="button" data-file="samples/app.yaml" data-section="20" data-from="3" data-to="7" data-ranges="3-3,6-7" aria-pressed="false" aria-controls="t-20-2-snippet"><span class="chip-file">app.yaml</span><span class="chip-ref">#server/tls/enabled</span></button><pre class="snippet" id="t-20-2-snippet"><span class="marker">[samples/app.yaml](./samples/app.yaml#server/tls/enabled)</span><code>server:
   tls:
     enabled: true</code></pre></li>
 </ul>
 </li>
 <li class="example" id="ex-21">
 <h2><span class="num">21</span>TOML — a table and its key</h2>
-<p><code>server.port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
+<p><code>server/port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
 <ul class="targets">
-<li class="target-item" id="t-21-1"><button class="target" type="button" data-file="samples/app.toml" data-section="21" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-21-1-snippet"><span class="chip-file">app.toml</span><span class="chip-ref">#server.port</span></button><pre class="snippet" id="t-21-1-snippet"><span class="marker">[samples/app.toml](./samples/app.toml#server.port)</span><code>[server]
+<li class="target-item" id="t-21-1"><button class="target" type="button" data-file="samples/app.toml" data-section="21" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-21-1-snippet"><span class="chip-file">app.toml</span><span class="chip-ref">#server/port</span></button><pre class="snippet" id="t-21-1-snippet"><span class="marker">[samples/app.toml](./samples/app.toml#server/port)</span><code>[server]
 port = 8080</code></pre></li>
-<li class="target-item" id="t-21-2"><button class="target" type="button" data-file="samples/app.toml" data-section="21" data-from="3" data-to="8" data-ranges="3-3,6-8" aria-pressed="false" aria-controls="t-21-2-snippet"><span class="chip-file">app.toml</span><span class="chip-ref">#server.hosts</span></button><pre class="snippet" id="t-21-2-snippet"><span class="marker">[samples/app.toml](./samples/app.toml#server.hosts)</span><code>[server]
+<li class="target-item" id="t-21-2"><button class="target" type="button" data-file="samples/app.toml" data-section="21" data-from="3" data-to="8" data-ranges="3-3,6-8" aria-pressed="false" aria-controls="t-21-2-snippet"><span class="chip-file">app.toml</span><span class="chip-ref">#server/hosts</span></button><pre class="snippet" id="t-21-2-snippet"><span class="marker">[samples/app.toml](./samples/app.toml#server/hosts)</span><code>[server]
 hosts = [
   &quot;a.example&quot;,
   &quot;b.example&quot;,
@@ -452,9 +452,9 @@ hosts = [
 </li>
 <li class="example" id="ex-22">
 <h2><span class="num">22</span>INI — a section and its key</h2>
-<p><code>section.key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
+<p><code>section/key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
 <ul class="targets">
-<li class="target-item" id="t-22-1"><button class="target" type="button" data-file="samples/app.ini" data-section="22" data-from="4" data-to="6" data-ranges="4-4,6-6" aria-pressed="false" aria-controls="t-22-1-snippet"><span class="chip-file">app.ini</span><span class="chip-ref">#server.port</span></button><pre class="snippet" id="t-22-1-snippet"><span class="marker">[samples/app.ini](./samples/app.ini#server.port)</span><code>[server]
+<li class="target-item" id="t-22-1"><button class="target" type="button" data-file="samples/app.ini" data-section="22" data-from="4" data-to="6" data-ranges="4-4,6-6" aria-pressed="false" aria-controls="t-22-1-snippet"><span class="chip-file">app.ini</span><span class="chip-ref">#server/port</span></button><pre class="snippet" id="t-22-1-snippet"><span class="marker">[samples/app.ini](./samples/app.ini#server/port)</span><code>[server]
 port = 8080</code></pre></li>
 <li class="target-item" id="t-22-2"><button class="target" type="button" data-file="samples/app.ini" data-section="22" data-from="8" data-to="9" data-ranges="8-9" aria-pressed="false" aria-controls="t-22-2-snippet"><span class="chip-file">app.ini</span><span class="chip-ref">#logging</span></button><pre class="snippet" id="t-22-2-snippet"><span class="marker">[samples/app.ini](./samples/app.ini#logging)</span><code>[logging]
 level = info</code></pre></li>
@@ -484,9 +484,9 @@ level = info</code></pre></li>
 </li>
 <li class="example" id="ex-24">
 <h2><span class="num">24</span>JSON — keys</h2>
-<p>JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by dotted paths.</p>
+<p>JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by <code>/</code> — the same separator a code reference uses.</p>
 <ul class="targets">
-<li class="target-item" id="t-24-1"><button class="target" type="button" data-file="samples/api.json" data-section="24" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-24-1-snippet"><span class="chip-file">api.json</span><span class="chip-ref">#name,server.port</span></button><pre class="snippet" id="t-24-1-snippet"><span class="marker">[samples/api.json](./samples/api.json#name,server.port)</span><code>{
+<li class="target-item" id="t-24-1"><button class="target" type="button" data-file="samples/api.json" data-section="24" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-24-1-snippet"><span class="chip-file">api.json</span><span class="chip-ref">#name,server/port</span></button><pre class="snippet" id="t-24-1-snippet"><span class="marker">[samples/api.json](./samples/api.json#name,server/port)</span><code>{
   &quot;name&quot;: &quot;cart-api&quot;,
   &quot;server&quot;: {
     &quot;port&quot;: 8080
@@ -785,22 +785,22 @@ add x y = x + y</code></pre>
 </section>
 <section class="md-section" data-md-section="20">
 <h2 data-md-from="383" data-md-to="383">YAML — a key path</h2>
-<p data-md-from="385" data-md-to="387">A <code>.yaml</code> reference is a dotted key path, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
-<p class="md-marker" data-marker="t-20-1"><a href="./samples/app.yaml#server.port">samples/app.yaml</a><span class="md-badge">inject</span></p>
+<p data-md-from="385" data-md-to="387">A <code>.yaml</code> reference is a key path, spelled with the same <code>/</code> separator a code reference uses, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
+<p class="md-marker" data-marker="t-20-1"><a href="./samples/app.yaml#server/port">samples/app.yaml</a><span class="md-badge">inject</span></p>
 <pre class="md-pre" data-inject="t-20-1" data-md-from="391" data-md-to="394"><code class="language-yaml">server:
   port: <span class="tok-n">8080</span></code></pre>
-<p class="md-marker" data-marker="t-20-2"><a href="./samples/app.yaml#server.tls.enabled">samples/app.yaml</a><span class="md-badge">inject</span></p>
+<p class="md-marker" data-marker="t-20-2"><a href="./samples/app.yaml#server/tls/enabled">samples/app.yaml</a><span class="md-badge">inject</span></p>
 <pre class="md-pre" data-inject="t-20-2" data-md-from="398" data-md-to="402"><code class="language-yaml">server:
   tls:
     enabled: true</code></pre>
 </section>
 <section class="md-section" data-md-section="21">
 <h2 data-md-from="404" data-md-to="404">TOML — a table and its key</h2>
-<p data-md-from="406" data-md-to="407"><code>server.port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
-<p class="md-marker" data-marker="t-21-1"><a href="./samples/app.toml#server.port">samples/app.toml</a><span class="md-badge">inject</span></p>
+<p data-md-from="406" data-md-to="407"><code>server/port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
+<p class="md-marker" data-marker="t-21-1"><a href="./samples/app.toml#server/port">samples/app.toml</a><span class="md-badge">inject</span></p>
 <pre class="md-pre" data-inject="t-21-1" data-md-from="411" data-md-to="414"><code class="language-toml">[server]
 port = <span class="tok-n">8080</span></code></pre>
-<p class="md-marker" data-marker="t-21-2"><a href="./samples/app.toml#server.hosts">samples/app.toml</a><span class="md-badge">inject</span></p>
+<p class="md-marker" data-marker="t-21-2"><a href="./samples/app.toml#server/hosts">samples/app.toml</a><span class="md-badge">inject</span></p>
 <pre class="md-pre" data-inject="t-21-2" data-md-from="418" data-md-to="424"><code class="language-toml">[server]
 hosts = [
   <span class="tok-s">&quot;a.example&quot;</span>,
@@ -809,8 +809,8 @@ hosts = [
 </section>
 <section class="md-section" data-md-section="22">
 <h2 data-md-from="426" data-md-to="426">INI — a section and its key</h2>
-<p data-md-from="428" data-md-to="429"><code>section.key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
-<p class="md-marker" data-marker="t-22-1"><a href="./samples/app.ini#server.port">samples/app.ini</a><span class="md-badge">inject</span></p>
+<p data-md-from="428" data-md-to="429"><code>section/key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
+<p class="md-marker" data-marker="t-22-1"><a href="./samples/app.ini#server/port">samples/app.ini</a><span class="md-badge">inject</span></p>
 <pre class="md-pre" data-inject="t-22-1" data-md-from="433" data-md-to="436"><code class="language-ini">[server]
 port = <span class="tok-n">8080</span></code></pre>
 <p class="md-marker" data-marker="t-22-2"><a href="./samples/app.ini#logging">samples/app.ini</a><span class="md-badge">inject</span></p>
@@ -841,9 +841,9 @@ level = info</code></pre>
 </section>
 <section class="md-section" data-md-section="24">
 <h2 data-md-from="488" data-md-to="488">JSON — keys</h2>
-<p data-md-from="490" data-md-to="491">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by dotted paths.</p>
-<p class="md-marker" data-marker="t-24-1"><a href="./samples/api.json#name,server.port">samples/api.json</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-24-1" data-md-from="495" data-md-to="502"><code class="language-json">{
+<p data-md-from="490" data-md-to="492">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by <code>/</code> — the same separator a code reference uses.</p>
+<p class="md-marker" data-marker="t-24-1"><a href="./samples/api.json#name,server/port">samples/api.json</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-24-1" data-md-from="496" data-md-to="503"><code class="language-json">{
   <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,
   <span class="tok-s">&quot;server&quot;</span>: {
     <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>

@@ -493,7 +493,7 @@ mix freely. The annotated `toString`, then the inner `Line` class:
 
 ```
 
-(`#add,remove` names two methods the same way, and `#scripts.test,keywords.0`
+(`#add,remove` names two methods the same way, and `#scripts/test,keywords/0`
 two JSON keys — the list is general, and how a rule joins its pieces is the
 rule's own business.)
 
@@ -501,12 +501,12 @@ rule's own business.)
 
 JSON has no comments to hang a region directive on, so `.json` gets a rule of
 its own: `#<reference>` names one or more **keys**, comma-separated,
-each a dotted path from the top level. The selected values are rendered as
+each a `/`-separated path from the top level. The selected values are rendered as
 valid JSON — braces and all — in the order they are listed.
 
 Top-level keys and a nested one, from `package.json`:
 
-[../package.json](../package.json#name,version,scripts.test)
+[../package.json](../package.json#name,version,scripts/test)
 
 ```json
 {
@@ -520,7 +520,7 @@ Top-level keys and a nested one, from `package.json`:
 
 An array keeps only the elements named, in order:
 
-[../package.json](../package.json#keywords.0,keywords.2)
+[../package.json](../package.json#keywords/0,keywords/2)
 
 ```json
 {

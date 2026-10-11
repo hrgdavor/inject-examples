@@ -3,9 +3,10 @@
 //!
 //! Each of these formats has a key it can be addressed by and no comments to
 //! hang a `#region` directive on, so each gets a rule of its own, like `.json`.
-//! The reference is a dot-separated path (`server.port`); the selection is
-//! *rendered* as valid source of the format, with the ancestors that hold the
-//! key included, because a bare `port: 8080` is not a YAML document but
+//! The reference is a `/`-separated path (`server/port`) — the same separator a
+//! code reference uses, for every rule alike; the selection is *rendered* as
+//! valid source of the format, with the ancestors that hold the key included,
+//! because a bare `port: 8080` is not a YAML document but
 //! `server:\n  port: 8080` is.
 
 const std = @import("std");
@@ -16,8 +17,10 @@ const Str = js.Str;
 const Failure = @import("section.zig").Failure;
 const Error = @import("section.zig").Error;
 
-/// `a.b, c.d` split into paths, each with its segments. An empty path is an
-/// error, and so is an empty key.
+/// `a/b, c/d` split into paths, each with its segments. An empty path is an
+/// error, and so is an empty key. The reference's separator is `/`, for every
+/// rule alike — the same one a code reference uses; a format's own spelling of a
+/// nested key (a TOML `[a.b]`) is the format's, not the reference's.
 pub const Path = struct { path: Str, segments: []Str };
 
 pub fn keyPaths(alloc: Allocator, reference: Str, failure: *Failure) Error![]Path {
@@ -39,7 +42,7 @@ pub fn keyPaths(alloc: Allocator, reference: Str, failure: *Failure) Error![]Pat
     for (parts.items) |path| {
         var segments = std.ArrayList(Str).empty;
         var at: usize = 0;
-        while (js.indexOfUnit(path[at..], '.')) |offset| {
+        while (js.indexOfUnit(path[at..], '/')) |offset| {
             try segments.append(alloc, unquote(js.trim(path[at .. at + offset])));
             at += offset + 1;
         }
@@ -289,6 +292,8 @@ fn tomlHeaderAt(lines: []const Str, name: Str) ?usize {
     return null;
 }
 
+/// Whether a TOML header spells `name`, where `name` arrives as reference
+/// segments joined with `/` and the header carries the format's own dots.
 fn tomlHeaderMatches(header: Str, name: Str) bool {
     var at: usize = 0;
     var name_at: usize = 0;
@@ -299,7 +304,7 @@ fn tomlHeaderMatches(header: Str, name: Str) bool {
         if (!js.eql(name[name_at .. name_at + piece.len], piece)) return false;
         name_at += piece.len;
         const offset = dot orelse break;
-        if (name_at >= name.len or name[name_at] != '.') return false;
+        if (name_at >= name.len or name[name_at] != '/') return false;
         name_at += 1;
         at += offset + 1;
     }
@@ -438,8 +443,12 @@ pub fn extractTomlRegion(alloc: Allocator, text: Str, reference: Str, failure: *
             continue;
         }
 
+        // The reference's separator is `/`, the format's header is dotted: the
+        // lookup is by `/`-joined segments and both the message and the rendered
+        // header spell the table the TOML way.
         const joined = try joinDots(alloc, table);
-        const header = tomlHeaderAt(lines, joined) orelse {
+        const lookup = try joinSlashes(alloc, table);
+        const header = tomlHeaderAt(lines, lookup) orelse {
             return failure.set(try js.format(alloc, "\"{s}\": no table \"[{s}]\"", .{ entry.path, joined }));
         };
         const end = tomlTableEnd(lines, header);
@@ -461,9 +470,19 @@ pub fn extractTomlRegion(alloc: Allocator, text: Str, reference: Str, failure: *
 }
 
 fn joinDots(alloc: Allocator, segments: []const Str) ![]u16 {
+    return joinWith(alloc, segments, '.');
+}
+
+/// The same segments joined with the reference's separator, for looking a table
+/// up by the name the reference spelled.
+fn joinSlashes(alloc: Allocator, segments: []const Str) ![]u16 {
+    return joinWith(alloc, segments, '/');
+}
+
+fn joinWith(alloc: Allocator, segments: []const Str, separator: u16) ![]u16 {
     var out = std.ArrayList(u16).empty;
     for (segments, 0..) |segment, index| {
-        if (index > 0) try out.append(alloc, '.');
+        if (index > 0) try out.append(alloc, separator);
         try out.appendSlice(alloc, segment);
     }
     return out.toOwnedSlice(alloc);

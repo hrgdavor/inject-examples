@@ -1852,23 +1852,23 @@ test('extractJsonRegion selects top-level keys and forms valid JSON', () => {
     assert.deepEqual(JSON.parse(selected), { name: 'acme', version: '1.0.0' });
 });
 
-test('extractJsonRegion follows dotted paths and array elements', () => {
+test('extractJsonRegion follows nested paths and array elements', () => {
     assert.deepEqual(
-        JSON.parse(extractJsonRegion(JSON_DOC, 'scripts.test,name')),
+        JSON.parse(extractJsonRegion(JSON_DOC, 'scripts/test,name')),
         { scripts: { test: 'make test' }, name: 'acme' },
         'listed order, nested keys merged',
     );
     assert.deepEqual(
-        JSON.parse(extractJsonRegion(JSON_DOC, 'keywords.0,keywords.2')),
+        JSON.parse(extractJsonRegion(JSON_DOC, 'keywords/0,keywords/2')),
         { keywords: ['docs', 'sync'] },
         'only the elements named, in order',
     );
 });
 
 test('extractJsonRegion fails loudly on missing keys and bad documents', () => {
-    assert.throws(() => extractJsonRegion(JSON_DOC, 'scripts.nope'), /"scripts.nope": no key "nope"/);
-    assert.throws(() => extractJsonRegion(JSON_DOC, 'keywords.x'), /is not an array index/);
-    assert.throws(() => extractJsonRegion(JSON_DOC, 'keywords.9'), /no element 9/);
+    assert.throws(() => extractJsonRegion(JSON_DOC, 'scripts/nope'), /"scripts\/nope": no key "nope"/);
+    assert.throws(() => extractJsonRegion(JSON_DOC, 'keywords/x'), /is not an array index/);
+    assert.throws(() => extractJsonRegion(JSON_DOC, 'keywords/9'), /no element 9/);
     assert.throws(() => extractJsonRegion(JSON_DOC, ','), /names no keys/);
     assert.throws(() => extractJsonRegion('not json', 'a'), /not valid JSON/);
     assert.throws(() => extractJsonRegion('[1, 2]', 'a'), /top-level JSON value is not an object/);
@@ -1919,42 +1919,42 @@ const INI_DOC = [
 ].join('\n');
 
 test('extractYamlRegion renders a key with the mapping that holds it', () => {
-    assert.equal(extractYamlRegion(YAML_DOC, 'server.port'), 'server:\n  port: 8080');
-    assert.equal(extractYamlRegion(YAML_DOC, 'server.tls.enabled'), 'server:\n  tls:\n    enabled: true',
+    assert.equal(extractYamlRegion(YAML_DOC, 'server/port'), 'server:\n  port: 8080');
+    assert.equal(extractYamlRegion(YAML_DOC, 'server/tls/enabled'), 'server:\n  tls:\n    enabled: true',
         'every ancestor is kept, so the block is a document');
     assert.equal(extractYamlRegion(YAML_DOC, 'logging'), 'logging:\n  level: info');
     assert.equal(extractYamlRegion(YAML_DOC, 'tags'), 'tags: ["a", "b"]');
-    assert.equal(extractYamlRegion(YAML_DOC, 'server.port,logging.level'),
+    assert.equal(extractYamlRegion(YAML_DOC, 'server/port,logging/level'),
         'server:\n  port: 8080\nlogging:\n  level: info', 'comma-separated paths, in order');
-    assert.throws(() => extractYamlRegion(YAML_DOC, 'server.nope'), /"server.nope": no key "nope"/);
-    assert.throws(() => extractYamlRegion(YAML_DOC, 'logging.level.deep'), /"level" has no nested keys/);
-    assert.throws(() => extractYamlRegion(YAML_DOC, 'a..b'), /has an empty key/);
+    assert.throws(() => extractYamlRegion(YAML_DOC, 'server/nope'), /"server\/nope": no key "nope"/);
+    assert.throws(() => extractYamlRegion(YAML_DOC, 'logging/level/deep'), /"level" has no nested keys/);
+    assert.throws(() => extractYamlRegion(YAML_DOC, 'a//b'), /has an empty key/);
     assert.throws(() => extractYamlRegion(YAML_DOC, ' , '), /names no keys/);
 });
 
 test('extractTomlRegion renders a key with its table, continuation lines included', () => {
-    assert.equal(extractTomlRegion(TOML_DOC, 'server.port'), '[server]\nport = 8080');
-    assert.equal(extractTomlRegion(TOML_DOC, 'server.hosts'),
+    assert.equal(extractTomlRegion(TOML_DOC, 'server/port'), '[server]\nport = 8080');
+    assert.equal(extractTomlRegion(TOML_DOC, 'server/hosts'),
         '[server]\nhosts = [\n  "a",\n  "b",\n]', 'a multi-line array comes whole');
-    assert.equal(extractTomlRegion(TOML_DOC, 'server.tls.enabled'), '[server.tls]\nenabled = true');
+    assert.equal(extractTomlRegion(TOML_DOC, 'server/tls/enabled'), '[server.tls]\nenabled = true');
     assert.equal(extractTomlRegion(TOML_DOC, 'server'),
         '[server]\nport = 8080\nhosts = [\n  "a",\n  "b",\n]', 'a bare name selects the whole table');
     assert.equal(extractTomlRegion(TOML_DOC, 'title'), 'title = "demo"', 'a top-level key needs no header');
-    assert.throws(() => extractTomlRegion(TOML_DOC, 'server.nope'), /no key "nope" in \[server\]/);
+    assert.throws(() => extractTomlRegion(TOML_DOC, 'server/nope'), /no key "nope" in \[server\]/);
     assert.throws(() => extractTomlRegion(TOML_DOC, 'nope'), /no key or table "nope"/);
-    assert.throws(() => extractTomlRegion(TOML_DOC, 'server.tls.nope'), /no table "\[server.tls.nope\]"|no key "nope"/);
+    assert.throws(() => extractTomlRegion(TOML_DOC, 'server/tls/nope'), /no table "\[server.tls.nope\]"|no key "nope"/);
 });
 
 test('extractIniRegion renders a key with its section', () => {
-    assert.equal(extractIniRegion(INI_DOC, 'server.port'), '[server]\nport = 8080');
-    assert.equal(extractIniRegion(INI_DOC, 'server.host'), '[server]\nhost: localhost', '`:` separates too');
+    assert.equal(extractIniRegion(INI_DOC, 'server/port'), '[server]\nport = 8080');
+    assert.equal(extractIniRegion(INI_DOC, 'server/host'), '[server]\nhost: localhost', '`:` separates too');
     assert.equal(extractIniRegion(INI_DOC, 'server'), '[server]\nport = 8080\nhost: localhost',
         'a bare name selects the whole section');
-    assert.equal(extractIniRegion(INI_DOC, 'logging.level'), '[logging]\nlevel = info');
+    assert.equal(extractIniRegion(INI_DOC, 'logging/level'), '[logging]\nlevel = info');
     assert.equal(extractIniRegion(INI_DOC, 'global'), 'global = 1', 'a key before any section');
-    assert.throws(() => extractIniRegion(INI_DOC, 'server.nope'), /no key "nope" in \[server\]/);
+    assert.throws(() => extractIniRegion(INI_DOC, 'server/nope'), /no key "nope" in \[server\]/);
     assert.throws(() => extractIniRegion(INI_DOC, 'nope'), /no section "\[nope\]" and no key "nope"/);
-    assert.throws(() => extractIniRegion(INI_DOC, 'a.b.c'), /not deeper paths/);
+    assert.throws(() => extractIniRegion(INI_DOC, 'a/b/c'), /not deeper paths/);
 });
 
 test('updateDocument leaves an already-matching CRLF block byte-for-byte alone', () => {
@@ -1976,9 +1976,9 @@ test('updateDocument injects a YAML, TOML and INI selection and is idempotent', 
         return files[path];
     };
     const cases = [
-        ['conf/app.yaml', 'server.port', 'server:\n  port: 8080'],
-        ['conf/app.toml', 'server.port', '[server]\nport = 8080'],
-        ['conf/app.ini', 'server.port', '[server]\nport = 8080'],
+        ['conf/app.yaml', 'server/port', 'server:\n  port: 8080'],
+        ['conf/app.toml', 'server/port', '[server]\nport = 8080'],
+        ['conf/app.ini', 'server/port', '[server]\nport = 8080'],
     ];
     for (const [path, reference, expected] of cases) {
         const doc = [`[${path}](./${path}#${reference})`, '```', 'stale', '```'].join('\n');
@@ -3170,7 +3170,7 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
                     assert.ok(from >= 1 && to <= file.lines.length && from <= to,
                         `${example.raw}: range ${from}-${to} is inside ${file.path}`);
                 }
-                const key = example.reference.split(',').pop().split('.').pop();
+                const key = example.reference.split(',').pop().split('/').pop();
                 const covered = example.ranges.flatMap(([from, to]) => file.lines.slice(from - 1, to));
                 assert.ok(covered.join('\n').includes(key),
                     `${example.raw}: the ranges cover the "${key}" key`);

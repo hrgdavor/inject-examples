@@ -137,6 +137,14 @@ export function extractRegion(text, name) {
  * @param {string} reference
  * @returns {{ scope: 'declaration' | 'body' | 'annotated' | 'documented', name: string }}
  */
+/**
+ * Superseded: reads only a leading `-`, `+` or `++` and returns
+ * `{ scope, name }`. It is **not** the section-reference parser — use
+ * `parseSelectors`/`parseReference` from `lib/section.mjs`, which read the whole
+ * grammar (several selectors, line ranges, a trailing modifier, contradictions).
+ * Kept exported, unchanged, only because its own tests still pin it; a new port
+ * must not start here.
+ */
 export function codeReference(reference) {
     const modifier = /^(\+\+|[-+])/.exec(reference);
     if (!modifier) return { scope: 'declaration', name: reference };
@@ -147,8 +155,8 @@ export function codeReference(reference) {
 
 // The code rule and the declaration reader delegate to the single scanner
 // implementation in `lib/section.mjs` (contract §10). Only `index.mjs` reads
-// the disk. The old `codeReference` above is superseded by `parseReference`
-// but kept exported unchanged for its existing tests.
+// the disk. `codeReference` above is superseded by `parseReference`; it stays
+// exported only for its own tests, and nothing in the resolution path uses it.
 
 /**
  * The default rule: code, and every other type no rule claims.
@@ -204,11 +212,11 @@ export function extractJsonRegion(text, reference) {
         throw new Error('the top-level JSON value is not an object');
     }
 
-    const selected = paths.map((path) => selectKeys(root, path.split('.'), path));
+    const selected = paths.map((path) => selectKeys(root, path.split('/'), path));
     return JSON.stringify(selected.reduce(mergeSelections), null, 2);
 }
 
-/** One dotted path of `source`, wrapped in the containers that hold it. */
+/** One path of `source`, wrapped in the containers that hold it. */
 function selectKeys(source, segments, path) {
     if (segments.length === 0) return source;
     const [segment, ...rest] = segments;
@@ -256,12 +264,12 @@ function mergeSelections(left, right) {
 // that hold the key included, because a bare `port: 8080` is not a YAML
 // document but `server:\n  port: 8080` is.
 
-/** Split `a.b, c.d` into paths; each is its segments. Throws on an empty one. */
+/** Split `a/b, c/d` into paths; each is its segments. Throws on an empty one. */
 function keyPaths(reference) {
     const paths = reference.split(',').map((path) => path.trim()).filter((path) => path !== '');
     if (paths.length === 0) throw new Error(`"#${reference}" names no keys`);
     return paths.map((path) => {
-        const segments = path.split('.').map((segment) => unquote(segment.trim()));
+        const segments = path.split('/').map((segment) => unquote(segment.trim()));
         if (segments.some((segment) => segment === '')) throw new Error(`"${path}" has an empty key`);
         return { path, segments };
     });
@@ -347,7 +355,7 @@ function yamlSelection(lines, segments, path, from, to, indent, level, out) {
 }
 
 /**
- * The rule for `.yaml`/`.yml`: `#a.b` selects the `b` key of the `a` mapping,
+ * The rule for `.yaml`/`.yml`: `#a/b` selects the `b` key of the `a` mapping,
  * rendered with `a:` above it and nested lines re-indented to two spaces per
  * level, so the block is a YAML document on its own. Comma-separated paths are
  * rendered in the order they were named.
@@ -370,7 +378,7 @@ const TOML_HEADER = /^\s*\[([^\]]+)\]\s*$/;
 function tomlHeaderAt(lines, name) {
     for (let i = 0; i < lines.length; i++) {
         const match = TOML_HEADER.exec(lines[i]);
-        if (match && match[1].split('.').map((s) => unquote(s.trim())).join('.') === name) return i;
+        if (match && match[1].split('.').map((s) => unquote(s.trim())).join('/') === name) return i;
     }
     return -1;
 }
@@ -422,10 +430,12 @@ function tomlValueLines(lines, at) {
 }
 
 /**
- * The rule for `.toml`: `#a.b` selects the `b` key of `[a]`, rendered with its
+ * The rule for `.toml`: `#a/b` selects the `b` key of `[a]`, rendered with its
  * table header above it, and `#a` selects the whole `[a]` table (or the
  * top-level key `a` when there is no such table). A multi-line array or inline
- * table comes with its continuation lines.
+ * table comes with its continuation lines. The reference's separator is `/`; a
+ * TOML *header* is still spelled with its own dots (`[server.tls]`), which is
+ * the format's spelling, not the reference's.
  */
 export function extractTomlRegion(text, reference) {
     const lines = normalize(text).split('\n');
@@ -445,7 +455,7 @@ export function extractTomlRegion(text, reference) {
             continue;
         }
 
-        const header = tomlHeaderAt(lines, table.join('.'));
+        const header = tomlHeaderAt(lines, table.join('/'));
         if (header === -1) throw new Error(`"${path}": no table "[${table.join('.')}]"`);
         const at = tomlKeyAt(lines, key, header + 1, tomlTableEnd(lines, header) - 1);
         if (at === -1) throw new Error(`"${path}": no key "${key}" in [${table.join('.')}]`);
@@ -488,10 +498,10 @@ function iniKeyAt(lines, key, from, to) {
 }
 
 /**
- * The rule for `.ini`: `#section.key` selects the key inside that section,
+ * The rule for `.ini`: `#section/key` selects the key inside that section,
  * rendered with its `[section]` header above it; `#section` selects the whole
  * section, and `#key` the key that sits before any section. There is no deeper
- * path than `section.key`.
+ * path than `section/key`.
  */
 export function extractIniRegion(text, reference) {
     const lines = normalize(text).split('\n');

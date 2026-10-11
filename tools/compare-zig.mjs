@@ -711,27 +711,27 @@ const REFERENCE_CASES = [
     ['fixtures/Report.java', 'render-'],
     // The data-format rules.
     ['fixtures/app.yaml', 'server'],
-    ['fixtures/app.yaml', 'server.port'],
-    ['fixtures/app.yaml', 'server.options.tls'],
+    ['fixtures/app.yaml', 'server/port'],
+    ['fixtures/app.yaml', 'server/options/tls'],
     ['fixtures/app.yaml', 'missing'],
-    ['fixtures/app.yaml', 'server.missing'],
+    ['fixtures/app.yaml', 'server/missing'],
     ['fixtures/app.toml', 'title'],
     ['fixtures/app.toml', 'server'],
-    ['fixtures/app.toml', 'server.port'],
-    ['fixtures/app.toml', 'server.tags'],
-    ['fixtures/app.toml', 'server.tls'],
+    ['fixtures/app.toml', 'server/port'],
+    ['fixtures/app.toml', 'server/tags'],
+    ['fixtures/app.toml', 'server/tls'],
     ['fixtures/app.toml', 'nope'],
-    ['fixtures/app.toml', 'server.nope'],
+    ['fixtures/app.toml', 'server/nope'],
     ['fixtures/app.ini', 'root'],
     ['fixtures/app.ini', 'server'],
-    ['fixtures/app.ini', 'server.host'],
-    ['fixtures/app.ini', 'server.port'],
+    ['fixtures/app.ini', 'server/host'],
+    ['fixtures/app.ini', 'server/port'],
     ['fixtures/app.ini', 'nope'],
-    ['fixtures/app.ini', 'server.nope'],
-    ['fixtures/app.ini', 'a.b.c'],
+    ['fixtures/app.ini', 'server/nope'],
+    ['fixtures/app.ini', 'a/b/c'],
     // Multi-key and modifier shapes, and the grammar errors.
-    ['fixtures/data.json', 'name,scripts.test'],
-    ['fixtures/data.json', 'keywords.1,keywords.0'],
+    ['fixtures/data.json', 'name,scripts/test'],
+    ['fixtures/data.json', 'keywords/1,keywords/0'],
     ['fixtures/code.ts', 'Cart/toString++'],
     ['fixtures/code.ts', 'add++'],
     ['fixtures/big.md', 'table+'],
@@ -892,12 +892,12 @@ function fixedScenarios() {
     scenario('region-code-documented', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('++toString') });
     scenario('region-code-expression', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('-double') });
     scenario('region-code-none', ['--lenient', 'README.md'], { ...BASE_FILES, 'README.md': regionDoc('+') });
-    scenario('region-json-keys', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('name,scripts.test') });
-    scenario('region-json-array', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('keywords.1,keywords.0') });
-    scenario('region-json-nested', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('scripts.test') });
-    scenario('region-json-missing-key', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('scripts.nope') });
-    scenario('region-json-not-index', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('keywords.x') });
-    scenario('region-json-no-element', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('keywords.9') });
+    scenario('region-json-keys', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('name,scripts/test') });
+    scenario('region-json-array', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('keywords/1,keywords/0') });
+    scenario('region-json-nested', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('scripts/test') });
+    scenario('region-json-missing-key', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('scripts/nope') });
+    scenario('region-json-not-index', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('keywords/x') });
+    scenario('region-json-no-element', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc('keywords/9') });
     scenario('region-json-no-keys', ['README.md'], { ...BASE_FILES, 'README.md': regionDoc(',') });
     scenario('region-json-bad-document', ['README.md'], {
         ...BASE_FILES,
@@ -952,12 +952,12 @@ function fixedScenarios() {
     scenario('region-json-huge-index', ['--lenient', 'README.md'], {
         ...BASE_FILES,
         'fixtures/data.json': '{"list": [1, 2]}',
-        'README.md': regionDoc('list.99999999999999999999'),
+        'README.md': regionDoc('list/99999999999999999999'),
     });
     scenario('region-json-deep-path', ['--lenient', 'README.md'], {
         ...BASE_FILES,
         'fixtures/data.json': '{"a": {"b": {"c": [1, {"d": "x"}]}}}',
-        'README.md': regionDoc('a.b.c.1.d,a.b.c.0'),
+        'README.md': regionDoc('a/b/c/1/d,a/b/c/0'),
     });
 
     // Broken includes and lenient mode.
@@ -1218,7 +1218,7 @@ function fuzzScenarios(seed, rounds) {
     const some = (list, max) => Array.from({ length: Math.floor(random() * (max + 1)) }, () => pick(list));
 
     const targets = ['fixtures/one.md', 'fixtures/two.md', 'fixtures/three.md', 'fixtures/data.json', 'fixtures/code.ts', 'missing.md', 'fixtures/notes.txt'];
-    const references = ['', '#table', '#name', '#missing', '#add', '#-add', '#+add', '#++add', '#a,b', '#list.0', '#deep.key', '#', '#1e5', '#L1-L2', '#L1:1-L1:2', '#table,L1'];
+    const references = ['', '#table', '#name', '#missing', '#add', '#-add', '#+add', '#++add', '#a,b', '#list/0', '#deep/key', '#', '#1e5', '#L1-L2', '#L1:1-L1:2', '#table,L1'];
     const fences = ['```', '````', '```markdown', '   ```', '```js'];
     const bodies = ['stale', 'old body', '', 'real content', 'multi\nline', '  indented'];
     const prose = ['# Title', 'Some prose.', '', 'Text with `code` in it.', '- a list item', '> a quote'];

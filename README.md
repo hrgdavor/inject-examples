@@ -370,15 +370,23 @@ bytes, because a selection of keys has to be re-printed to stay valid JSON.
 ### YAML, TOML and INI — their own rules
 
 The three config formats have the same problem as JSON and the same answer: a
-reference is a dotted path to a key, and the selection is rendered with the
-ancestors that hold it, so the block is valid source on its own — a bare
-`port: 8080` is not a YAML document, `server:` above it makes one:
+reference is a path to a key — the same `/`-separated path a code reference
+uses — and the selection is rendered with the ancestors that hold it, so the
+block is valid source on its own — a bare `port: 8080` is not a YAML document,
+`server:` above it makes one:
 
 | Reference | `.yaml` | `.toml` | `.ini` |
 | --- | --- | --- | --- |
 | `#server` | the `server:` mapping | the whole `[server]` table | the whole `[server]` section |
-| `#server.port` | `server:` and its `port:` entry | `[server]` and `port = 8080` | `[server]` and `port = 8080` |
-| `#a.b.c` | every ancestor, re-indented to two spaces per level | `[a.b]` and its key | an error — INI has sections and keys, no deeper |
+| `#server/port` | `server:` and its `port:` entry | `[server]` and `port = 8080` | `[server]` and `port = 8080` |
+| `#a/b/c` | every ancestor, re-indented to two spaces per level | `[a.b]` and its key | an error — INI has sections and keys, no deeper |
+
+A `/` separates the keys of the *reference*, for every rule alike. A key that
+itself contains a dot is therefore still addressable — `#a/b.c` selects the key
+`b.c` under `a` — and in YAML/TOML/INI a quoted segment (`#a/"b.c"`) says the
+same thing explicitly, because those formats let a key be quoted in the source.
+A TOML *header* keeps the format's own dots (`[a.b]`), which is the format's
+spelling and not the reference's.
 
 A YAML selection keeps its blank and nested lines; a TOML value that spans lines
 (an array, an inline table) comes with its continuation lines; INI quotes
@@ -819,7 +827,7 @@ mirrors rather than leads**.
 
 Writing a fourth port starts with
 [`doc/rfc/section-mapping.md`](./doc/rfc/section-mapping.md) (RFC 1 — *section
-mapping syntax*, status `0.1-draft`): it states the two use cases and the boundary
+mapping syntax*, status `0.9-rc`): it states the two use cases and the boundary
 between them, the interface a port must expose, what a mapper deliberately is not,
 and the obligations the conformance suite imposes. Its companion is
 [`test/vectors/manifest.json`](./test/vectors/manifest.json), the machine-readable

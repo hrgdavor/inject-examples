@@ -49,10 +49,13 @@ rule** instead of a lexer: the reference is a path to a key, and the selection i
 
 | format | extensions | reference | selection |
 | --- | --- | --- | --- |
-| JSON | `json` | `#name,scripts.test`, `#keywords.0` | re-printed as valid JSON, comma-separated paths merged |
-| YAML | `yaml` `yml` | `#server.port`, `#server` | the key with the mappings that hold it, re-indented to two spaces |
-| TOML | `toml` | `#server.port`, `#server` | the key above its `[table]` header, or the whole table |
-| INI | `ini` `cfg` `properties` | `#server.port`, `#section`, `#key` | the key under its `[section]`, or the whole section |
+| JSON | `json` | `#name,scripts/test`, `#keywords/0` | re-printed as valid JSON, comma-separated paths merged |
+| YAML | `yaml` `yml` | `#server/port`, `#server` | the key with the mappings that hold it, re-indented to two spaces |
+| TOML | `toml` | `#server/port`, `#server` | the key above its `[table]` header, or the whole table |
+| INI | `ini` `cfg` `properties` | `#server/port`, `#section`, `#key` | the key under its `[section]`, or the whole section |
+
+The separator is `/` for every rule — the same one a code reference uses — so a
+key that contains a dot is still addressable (`#a/b.c`).
 
 A missing key, a missing table or section, an index out of range, and a path the
 format cannot express are errors; `--lenient` reports them like any other broken

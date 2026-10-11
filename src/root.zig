@@ -1527,7 +1527,7 @@ fn isJsonObject(value: *const JsonValue) bool {
     return value.* == .object;
 }
 
-/// One dotted path of `source`, wrapped in the containers that hold it.
+/// One `/`-separated path of `source`, wrapped in the containers that hold it.
 fn selectKeys(
     alloc: Allocator,
     source: *const JsonValue,
@@ -1602,7 +1602,7 @@ fn mergeSelections(alloc: Allocator, left: *const JsonValue, right: *const JsonV
     return right;
 }
 
-/// `extractJsonRegion`: a `#a,b.c` reference is a list of dotted paths.
+/// `extractJsonRegion`: a `#a,b/c` reference is a list of `/`-separated paths.
 pub fn extractJsonRegion(alloc: Allocator, text: Str, region: Str, failure: *Failure) JsError![]u16 {
     var paths = std.ArrayList(Str).empty;
     var from: usize = 0;
@@ -1634,11 +1634,11 @@ pub fn extractJsonRegion(alloc: Allocator, text: Str, region: Str, failure: *Fai
         var segments = std.ArrayList(Str).empty;
         var segment_from: usize = 0;
         while (true) {
-            const dot = indexOfUnit(path[segment_from..], '.');
-            const segment = if (dot) |at| path[segment_from .. segment_from + at] else path[segment_from..];
+            const slash = indexOfUnit(path[segment_from..], '/');
+            const segment = if (slash) |at| path[segment_from .. segment_from + at] else path[segment_from..];
             try segments.append(alloc, segment);
-            if (dot == null) break;
-            segment_from += dot.? + 1;
+            if (slash == null) break;
+            segment_from += slash.? + 1;
         }
         try selected.append(alloc, try selectKeys(alloc, root, segments.items, path, failure));
     }
@@ -1710,16 +1710,16 @@ pub fn extractJsonRegionWithPath(alloc: Allocator, text: Str, reference: Str, pa
 /// claims: region directives and named sections both resolve here.
 pub const CODE_RULE = Rule{ .name = "code", .extensions = &.{}, .resolve = extractCodeRegion };
 
-/// The rule for `.json`: a region is a dotted list of keys.
+/// The rule for `.json`: a region is a `/`-separated list of keys.
 pub const JSON_RULE = Rule{ .name = "json", .extensions = &.{"json"}, .resolve = extractJsonRegionWithPath };
 
-/// The rule for YAML: a region is a dotted path to a key.
+/// The rule for YAML: a region is a `/`-separated path to a key.
 pub const YAML_RULE = Rule{ .name = "yaml", .extensions = &.{ "yaml", "yml" }, .resolve = yamlRuleResolve };
 
 /// The rule for TOML: a key, or a `[table]` and its key.
 pub const TOML_RULE = Rule{ .name = "toml", .extensions = &.{"toml"}, .resolve = tomlRuleResolve };
 
-/// The rule for INI: `section.key`, a section, or a leading key.
+/// The rule for INI: `section/key`, a section, or a leading key.
 pub const INI_RULE = Rule{ .name = "ini", .extensions = &.{ "ini", "cfg", "properties" }, .resolve = iniRuleResolve };
 
 /// The built-in rules, most specific first; `code` is the fallback.
@@ -2969,7 +2969,7 @@ test "extractJsonRegion selects top-level keys and forms valid JSON" {
     try expectText("{\n  \"name\": \"acme\",\n  \"version\": \"1.0.0\"\n}", selected);
 }
 
-test "extractJsonRegion follows dotted paths and array elements" {
+test "extractJsonRegion follows nested paths and array elements" {
     var context: TestContext = undefined;
     context.init();
     defer context.deinit();
@@ -2979,11 +2979,11 @@ test "extractJsonRegion follows dotted paths and array elements" {
 
     try expectText(
         "{\n  \"scripts\": {\n    \"test\": \"make test\"\n  },\n  \"name\": \"acme\"\n}",
-        try extractJsonRegion(alloc, doc, try context.units("scripts.test,name"), &failure),
+        try extractJsonRegion(alloc, doc, try context.units("scripts/test,name"), &failure),
     );
     try expectText(
         "{\n  \"keywords\": [\n    \"docs\",\n    \"sync\"\n  ]\n}",
-        try extractJsonRegion(alloc, doc, try context.units("keywords.0,keywords.2"), &failure),
+        try extractJsonRegion(alloc, doc, try context.units("keywords/0,keywords/2"), &failure),
     );
 }
 
@@ -2995,11 +2995,11 @@ test "extractJsonRegion fails loudly on missing keys and bad documents" {
     const doc = try context.units(JSON_DOC);
 
     const cases = [_]struct { region: []const u8, message: []const u8 }{
-        .{ .region = "scripts.nope", .message = "\"scripts.nope\": no key \"nope\"" },
-        .{ .region = "keywords.x", .message = "\"keywords.x\": \"x\" is not an array index" },
-        .{ .region = "keywords.9", .message = "\"keywords.9\": no element 9" },
+        .{ .region = "scripts/nope", .message = "\"scripts/nope\": no key \"nope\"" },
+        .{ .region = "keywords/x", .message = "\"keywords/x\": \"x\" is not an array index" },
+        .{ .region = "keywords/9", .message = "\"keywords/9\": no element 9" },
         .{ .region = ",", .message = "\"#,\" names no keys" },
-        .{ .region = "name.deeper", .message = "\"name.deeper\": cannot read \"deeper\"" },
+        .{ .region = "name/deeper", .message = "\"name/deeper\": cannot read \"deeper\"" },
     };
     for (cases) |case| {
         var failure = Failure{};

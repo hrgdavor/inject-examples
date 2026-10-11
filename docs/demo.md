@@ -382,18 +382,18 @@ pub fn target() void {
 
 ## YAML — a key path
 
-A `.yaml` reference is a dotted key path, rendered with the mappings that hold it
-so the block is a YAML document on its own; a `#` inside a quoted value is not a
-comment.
+A `.yaml` reference is a key path, spelled with the same `/` separator a code
+reference uses, rendered with the mappings that hold it so the block is a YAML
+document on its own; a `#` inside a quoted value is not a comment.
 
-[samples/app.yaml](./samples/app.yaml#server.port)
+[samples/app.yaml](./samples/app.yaml#server/port)
 
 ```yaml
 server:
   port: 8080
 ```
 
-[samples/app.yaml](./samples/app.yaml#server.tls.enabled)
+[samples/app.yaml](./samples/app.yaml#server/tls/enabled)
 
 ```yaml
 server:
@@ -403,17 +403,17 @@ server:
 
 ## TOML — a table and its key
 
-`server.port` renders `[server]` above the key, and a value that spans lines — an
+`server/port` renders `[server]` above the key, and a value that spans lines — an
 array here — comes with its continuation lines.
 
-[samples/app.toml](./samples/app.toml#server.port)
+[samples/app.toml](./samples/app.toml#server/port)
 
 ```toml
 [server]
 port = 8080
 ```
 
-[samples/app.toml](./samples/app.toml#server.hosts)
+[samples/app.toml](./samples/app.toml#server/hosts)
 
 ```toml
 [server]
@@ -425,10 +425,10 @@ hosts = [
 
 ## INI — a section and its key
 
-`section.key` renders the `[section]` header above the key, a bare section name
+`section/key` renders the `[section]` header above the key, a bare section name
 selects the whole section, and both `key = value` and `key: value` are read.
 
-[samples/app.ini](./samples/app.ini#server.port)
+[samples/app.ini](./samples/app.ini#server/port)
 
 ```ini
 [server]
@@ -488,9 +488,10 @@ not on everything between.
 ## JSON — keys
 
 JSON renders a selection of keys as valid JSON, in the order they were named, with
-nested keys and array elements addressable by dotted paths.
+nested keys and array elements addressable by `/` — the same separator a code
+reference uses.
 
-[samples/api.json](./samples/api.json#name,server.port)
+[samples/api.json](./samples/api.json#name,server/port)
 
 ```json
 {
