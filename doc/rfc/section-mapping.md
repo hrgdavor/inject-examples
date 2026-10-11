@@ -162,9 +162,12 @@ Not section mapping, and no implementation should grow these inside the mapper:
   and no writer is part of this contract. **This is a boundary of the current
   version, not of the project** — see the forward goal in
   [§3.6](#36-forward-goal-refactoring-that-updates-references).
-- **Being a parser.** See [§6](#6-what-a-mapper-is-not); this is the single most
-  important non-goal, and the reason the answer is a *range* rather than an AST
-  node.
+- **Being an AST parser.** See [§6](#6-what-a-mapper-is-not): no syntax tree, no
+  grammar, no parser dependency — this is the single most important non-goal, and
+  the reason the answer is a *range* rather than an AST node. AST-based
+  implementations are a future *second kind* of engine
+  ([§7.5](#75-ast-based-implementations-later-and-what-they-change)), not a
+  change to this one.
 - **Executing or evaluating.** Config values are read as text; nothing is
   interpreted.
 - **Finding a *good* place.** Ranking, "closest match", fuzzy matching: host
@@ -196,7 +199,11 @@ mapper's operations — none of them requires the mapper to do anything more.
 1. **Parsing is pure and cheap.** `parseSelectors` reads no file and takes about
    a microsecond, so a server can call it on every keystroke. `planSection` reads
    the target, so a server calls it when the document or the target changes and
-   caches per file version — exactly the invalidation a host already has.
+   caches per file version — exactly the invalidation a host already has. Cost is
+   a *contract-level* concern here, not an optimisation detail: an engine whose
+   scan is not near-linear in the file is unusable for this consumer, and
+   [§7.5](#75-ast-based-implementations-later-and-what-they-change) makes the
+   comparison a gate.
 2. **Failure is a value, not an approximation.** The mapper never guesses. A
    server can therefore show *"no section named render in Cart"* confidently, and
    apply its own fuzzy policy while the user is still typing — a policy the RFC
@@ -386,8 +393,42 @@ The load-bearing non-goal, stated as a rule an implementer must respect:
 > tokenizer for the language, then reads declaration-shaped lines, counts
 > brackets and applies shape heuristics.
 
-Consequences that follow, and that an implementation must reproduce rather than
-"improve":
+**"Not a parser" means not an AST parser.** The tokenizer step is real, and it is
+the *only* part that needs per-language knowledge. What the mapper deliberately
+does not do is build a syntax tree — no grammar, no AST library, no per-language
+parser dependency. That is an engineering choice with a purpose, not a limitation
+to be apologised for:
+
+- **The mapper stays standalone.** A single dependency-free module that is
+  vendorable and portable, rather than one build per language with a parser
+  library behind it. The reference is one ES module; the ports are one small
+  library each.
+- **It stays fast and lean enough for a language server.** The engine runs per
+  keystroke and per document, so its cost is a user-visible property. A
+  five-line heuristic that resolves in microseconds beats a full parse of the
+  file, and the sizes are not comparable.
+- **Its contract is a range, not a node.** A tree would let an implementation
+  answer questions the contract does not ask, and the boundary in
+  [§3.3](#33-the-boundary-stated-once) exists to prevent exactly that.
+
+**AST-based implementations will be added later, and are not a contradiction.**
+See [§7.5](#75-ast-based-implementations-later-and-what-they-change): an AST
+variant is an additional implementation of the same contract, allowed to use a
+real grammar for its language. When one exists it becomes the **source of truth
+for that language**, and the standalone engine becomes the thing it is measured
+against — on correctness *and* on time and memory. Two rules follow, and both are
+binding:
+
+> **A standalone implementation must be correct and leaner or faster than the AST
+> variant, or the custom implementation has no reason to exist.**
+
+> **An AST variant must agree with the conformance suite.** Becoming the source
+> of truth for a language means being better *within the same contract*, never
+> redefining it — a variant that resolves something the suite says must fail is
+> wrong, however well it parses.
+
+Consequences of the heuristic design that an implementation must reproduce rather
+than "improve":
 
 1. **A `}` inside a string or comment cannot end a body** — because it is blank in
    the mask. This is the *only* reason the lexical layer exists.
@@ -418,10 +459,10 @@ bug in the *port* by definition.
 
 | Corpus | Rows | Asserts | Read by |
 | --- | --- | --- | --- |
-| `test/vectors/section-vectors.json` | 182 | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error, warning | JS, Zig, Java, Rust |
-| — of which grammar-only (`input: null`) | 50 | canonical spelling and the thrown message; no file, no lexer | do. |
+| `test/vectors/section-vectors.json` | 186 | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error, warning | JS, Zig, Java, Rust |
+| — of which grammar-only (`input: null`) | 54 | canonical spelling and the thrown message; no file, no lexer | do. |
 | — of which resolution | 132 | text and ranges against a fixture | do. |
-| — of which expect an **error** | 48 | the failure path: a missing name, a malformed selector, a range past the end | do. |
+| — of which expect an **error** | 52 | the failure path: a missing name, a malformed selector, a range past the end, a second `#` | do. |
 | — of which expect a **warning** | 4 | a contradictory modifier resolved to the dominant reading | do. |
 | `test/vectors/lexical-vectors.json` → `masks` | 45 | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust |
 | `test/vectors/lexical-vectors.json` → `shapes` | 43 | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line` | JS, Zig, Java, Rust |
@@ -507,6 +548,64 @@ Two halves, both needed:
 
 `doc/languages.md` carries the per-language inventory; `AGENTS.md` carries the
 mechanical checklist.
+
+### 7.5 AST-based implementations (later), and what they change
+
+A second *kind* of implementation is expected, and this section fixes the rules
+before the first one exists so that adding it is not a debate.
+
+**What it is.** An implementation that resolves a language by parsing it with a
+real grammar — an AST library, or a parser generated from the language's own
+specification — rather than by the shape heuristics of
+[§6](#6-what-a-mapper-is-not). It implements the *same* interface
+([§5](#5-the-interface)) and answers the *same* questions: a `Plan`, the same
+error messages, the same conformance rows.
+
+**What changes when one exists.**
+
+| | Standalone (heuristic) engine | AST variant |
+| --- | --- | --- |
+| Correctness for its language | best-effort by shape, per §6 | **source of truth for that language** |
+| Which constructs it resolves | the shapes it recognises | everything the grammar defines |
+| Cost | no parse; microseconds | a parse of the file |
+| Dependencies | none, vendorable | the language's parser |
+| Status | the general engine, all languages | the authority for its own language |
+
+**The rules that follow.**
+
+1. **An AST variant is bound by the same contract.** It may resolve *more* than
+   the heuristic engine — that is the point — but it may not resolve something the
+   conformance suite says must fail, and it may not rename a message or a field.
+   Being the source of truth for a language means being better *inside* the
+   contract, never redefining it.
+2. **The standalone engine remains the fallback and the baseline.** It is what
+   serves languages with no AST variant, and what a variant is measured against.
+3. **Correctness is not the only gate — cost is too.** For the project to justify
+   a hand-written engine where a parser exists, the standalone implementation must
+   be **correct and either leaner or faster**. A variant that parses must earn its
+   place by resolving what the heuristic engine cannot; a heuristic engine must
+   earn its place by being right about the common shapes at a fraction of the
+   cost. The honest position:
+   > If the standalone engine is not correct, and not faster or leaner than the
+   > AST variant, then the custom implementation is pointless and should be
+   > replaced by the parser.
+4. **Benchmarks become part of the suite, not an afterthought.** Cost is a
+   property the project claims, so comparing engine and variant on time and
+   memory over the fixtures is a gate, alongside the vectors. A performance
+   regression is a defect in the same way a wrong range is.
+5. **Selection is a policy, and it has to be visible.** When both exist for a
+   language, which one a document is resolved with must be a stated choice
+   (a default, a flag, or a rule override) — never an accident of what happens to
+   be installed. A document that resolves differently on two machines is the
+   failure mode to design out.
+6. **A variant is registered like a rule, not bolted on.** The interface already
+   takes the language's engine as an argument (`lexer`), so a variant is *an
+   engine a caller passes*, not a second code path inside the mapper.
+
+**Nothing here is scheduled**, and none of it is needed for 1.0. The point of
+writing it down now is that 1.0 does not have to be redesigned to allow it: the
+contract is already engine-agnostic, and the conformance suite is already the
+arbiter.
 
 ---
 
@@ -676,6 +775,22 @@ through the fragment.
     every rule alike**, which is a breaking change to any document that spelled a
     config reference with dots; there is no compatibility path, because this is
     the syntax's first release.
+  - `0.9-rc` (continued) — three clarifications after review:
+    - **Language servers are a consumer, not out of scope** ([§3.5](#35-what-a-language-server-consumes)).
+      The removed item was a category error, and §3.4 now excludes *semantic code
+      intelligence* — what the mapper must not do — rather than the hosts that use
+      it.
+    - **"Not a parser" means not an AST parser** ([§6](#6-what-a-mapper-is-not)),
+      with [§7.5](#75-ast-based-implementations-later-and-what-they-change) fixing
+      the rules for the AST-based implementations that will follow: they become
+      the source of truth for their language, and the standalone engine must stay
+      correct and leaner or faster, or it has no reason to exist.
+    - **Refactoring that updates references is a forward goal**
+      ([§3.6](#36-forward-goal-refactoring-that-updates-references)), with
+      OpenRewrite integration named as the direction. Read-only is a boundary of
+      this version, not of the project.
+    - Row counts in [§7.1](#71-the-three-corpora) corrected to the corpus as it
+      stands.
   - `0.1-draft` — first draft, extracted from the implementation and the
     resolution spec after the wrapped-header, expression-body and enum work.
     Section 3 (the boundary) and section 8 (test layering) are the new material;
