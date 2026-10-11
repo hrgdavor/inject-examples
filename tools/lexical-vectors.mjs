@@ -99,6 +99,14 @@ const maskCases = [
     { name: 'yaml-quoted-hash', path: 'a.yaml', source: "# a comment\nkey: 'a # not a comment'\nother: \"b } c\"\n" },
     { name: 'toml-triple-quoted', path: 'a.toml', source: 'a = """x } y"""\nb = \'\'\'z }\'\'\'\n# c\n' },
     { name: 'ini-comments', path: 'a.ini', source: '; a comment\n# another } comment\nkey = value\n' },
+    // CSS: the entry exists because the built-in union reads a `#` as a line
+    // comment. The `#cart` rule — selector, braces and declarations — must
+    // survive the mask whole, while a comment's and a string's braces do not.
+    {
+        name: 'css-id-selector-is-not-a-comment',
+        path: 'site.css',
+        source: '/* a comment with a } brace */\n#cart { display: flex; }\n.content::after { content: "\\"}"; }\n@media (min-width: 700px) { .card { color: #1f6feb; } }\n',
+    },
     { name: 'default-unknown-type', path: null, source: '// a } brace\n/* b */\n"c } d"\n\'e }\'\n' },
     { name: 'default-no-extension', path: 'Makefile', source: '# comment }\n"a } b"\n' },
     { name: 'astral-plane-in-string', path: 'a.py', source: `x = "${EMOJI} } ${EMOJI}"\n${EMOJI} = 1\n` },

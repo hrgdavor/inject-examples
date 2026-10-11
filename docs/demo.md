@@ -442,6 +442,89 @@ port = 8080
 level = info
 ```
 
+## CSS — a rule, an at-rule, and the nesting between
+
+A `.css` reference names a **rule**, in CSS's own vocabulary. A style rule is
+named by the rightmost simple selector of its selector list (`.card`), an
+at-rule by its keyword (`@media`, `@keyframes`), and `/` descends the nesting
+CSS already has — a rule inside a media query is a child of it. The `-` a code
+reference uses for "the body only" works the same way, so `.card-` is a rule's
+declarations without its selector.
+
+The design tokens, addressed by the pseudo-class that holds them:
+
+[samples/site.css](./samples/site.css#:root)
+
+```css
+:root {
+  --brand: #1f6feb;
+  --radius: 6px;
+}
+```
+
+A class, and a variant of that same class — the compact one is reached by a
+predicate read from the selector, because two rules may share a name:
+
+[samples/site.css](./samples/site.css#.card[data-variant=compact])
+
+```css
+.card[data-variant="compact"] {
+  gap: 2px;
+  padding: 4px;
+}
+```
+
+The media query, whole, and then the one rule inside it — the nesting is the
+path:
+
+[samples/site.css](./samples/site.css#@media)
+
+```css
+@media (min-width: 700px) {
+  .card {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+```
+
+[samples/site.css](./samples/site.css#@media/.card-)
+
+```css
+grid-template-columns: 1fr 1fr;
+```
+
+An at-rule with a name of its own — `@keyframes:pulse` names one animation,
+`@keyframes` alone would be an error here because the file has two:
+
+[samples/site.css](./samples/site.css#@keyframes:pulse)
+
+```css
+@keyframes pulse {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+```
+
+A region directive still works in CSS, and a class name cannot be a region
+name, so the two never collide:
+
+[samples/site.css](./samples/site.css#pulse)
+
+```css
+@keyframes pulse {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+```
+
 ## Line numbers, and several pieces at once
 
 A reference may name lines directly instead of a block, which is the tool for a

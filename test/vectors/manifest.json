@@ -28,7 +28,7 @@
       "layer": 2,
       "name": "mask",
       "file": "test/vectors/lexical-vectors.json",
-      "rows": 45,
+      "rows": 46,
       "selector": "masks[]",
       "asserts": [
         "mask() output for one lexer entry",
@@ -149,7 +149,7 @@
     },
     {
       "path": "test/vectors/lexical-vectors.json",
-      "rows": 88,
+      "rows": 89,
       "shape": "object with masks[] and shapes[]",
       "row_fields": {
         "masks[]": {
@@ -165,9 +165,9 @@
         }
       },
       "counts": {
-        "masks": 45,
+        "masks": 46,
         "shapes": 43,
-        "total": 88
+        "total": 89
       },
       "assert_all": true
     }

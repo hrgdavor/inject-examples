@@ -111,6 +111,7 @@ pub const EXTENSIONS = [_]Extension{
     .{ .extension = "ini", .syntax = &syntaxes.INI_SYNTAX },
     .{ .extension = "cfg", .syntax = &syntaxes.INI_SYNTAX },
     .{ .extension = "properties", .syntax = &syntaxes.INI_SYNTAX },
+    .{ .extension = "css", .syntax = &syntaxes.CSS_SYNTAX },
 };
 
 /// The lexer for `path`'s extension, or null when the type is unknown (no

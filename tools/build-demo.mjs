@@ -36,7 +36,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fenceRanges, fileLanguage, fileReader, normalize, parseMarker, ruleFor, CODE_RULE } from '../index.mjs';
+import { fenceRanges, fileLanguage, fileReader, normalize, parseMarker, ruleFor, CODE_RULE, CSS_RULE } from '../index.mjs';
 import { planSection } from '../lib/section.mjs';
 import { lexerFor } from '../src/js/scanner/lexers.js';
 import { tokenize } from '../src/js/scanner/tokenizer.js';
@@ -275,6 +275,33 @@ export function locateRendered(source, injected) {
 }
 
 /**
+ * Where a **CSS** selection sits in its file.
+ *
+ * A CSS rule selects its own bytes, so unlike a rendered data selection its text
+ * *is* a slice of the file — but a reference may name several rules, and the
+ * injected text is those slices joined with a newline, which is not one slice.
+ * The rule's own `ranges` answer that exactly (and for `-` they are the
+ * declarations alone, which is not a whole-line slice either), so they are taken
+ * from there and the text is only used to confirm the slice.
+ *
+ * @param {{ ranges: (text: string, reference: string) => Array<{ from: number, to: number }> }} css
+ * @param {string} source the target file
+ * @param {string} reference the `#fragment` as written
+ * @param {string} injected the text the reference resolves to
+ * @returns {{ ranges: Array<[number, number]> } | null}
+ */
+export function locateCss(css, source, reference, injected) {
+    const lines = source.replace(/\r\n/g, '\n').split('\n');
+    const ranges = css.ranges(source, reference).map(({ from, to }) => [from, to]);
+    if (ranges.length === 0) return null;
+    const from = Math.min(...ranges.map(([first]) => first));
+    const to = Math.max(...ranges.map(([, last]) => last));
+    const slice = lines.slice(from - 1, to).join('\n');
+    if (!slice.includes(injected)) return null;
+    return { ranges };
+}
+
+/**
  * Resolve one marker into the model entry the page needs: the text it injects
  * and the lines of the file it injects them from.
  */
@@ -282,7 +309,10 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
     const rule = ruleFor(marker.path);
     let text;
     let ranges = null;
-    const rendered = rule !== CODE_RULE && marker.reference !== null;
+    // A rule that *renders* its selection re-prints or re-frames it, so the
+    // result is not a byte slice of the file. Code and CSS both answer with the
+    // lines they selected, so neither is rendered here.
+    const rendered = rule !== CODE_RULE && rule !== CSS_RULE && marker.reference !== null;
 
     if (marker.reference === null) {
         text = file.text;
@@ -299,6 +329,12 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
         // place to point at — so the page does not have to find them again.
         ranges = plan.ranges.map((range) => [range.from, range.to]);
         if (ranges.length === 0) {
+            throw new Error(`${marker.raw}: the lines of "#${marker.reference}" cannot be located in ${marker.path}`);
+        }
+    } else if (rule === CSS_RULE) {
+        text = rule.resolve(file.text, marker.reference, marker.path);
+        ranges = locateCss(rule, file.text, marker.reference, text)?.ranges ?? null;
+        if (ranges === null) {
             throw new Error(`${marker.raw}: the lines of "#${marker.reference}" cannot be located in ${marker.path}`);
         }
     } else {
@@ -702,6 +738,18 @@ const HASKELL_KEYWORDS = new Set([
 
 const JSON_KEYWORDS = new Set(['true', 'false', 'null']);
 
+/**
+ * CSS has no keywords to highlight: what a reader recognises is the at-rule
+ * (`@media`) and the property name. `renderPlain` already colours a `@`-word as
+ * `tok-a`, so the table only needs the property names it calls keywords — one
+ * word each, because the tokenizer reads a hyphen as a word boundary.
+ */
+const CSS_KEYWORDS = new Set([
+    'display', 'position', 'color', 'background', 'gap', 'row', 'column', 'padding', 'margin',
+    'border', 'radius', 'grid', 'flex', 'align', 'items', 'justify', 'content', 'font', 'family',
+    'size', 'opacity', 'transform', 'transition', 'src', 'width', 'height', 'top', 'left',
+]);
+
 /** JSON is display-only here: the resolver reads it by rule (see `JSON_RULE`). */
 const JSON_SYNTAX = {
     name: 'json',
@@ -737,6 +785,7 @@ const HIGHLIGHTERS = {
     toml: { syntax: SYNTAXES.toml, keywords: null },
     ini: { syntax: SYNTAXES.ini, keywords: null },
     json: { syntax: JSON_SYNTAX, keywords: JSON_KEYWORDS },
+    css: { syntax: SYNTAXES.css, keywords: CSS_KEYWORDS },
 };
 
 /** Fence info-string aliases, as the extensions of `lexers.js` spell them. */

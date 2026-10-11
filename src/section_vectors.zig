@@ -2652,6 +2652,12 @@ pub const mask_cases = [_]MaskCase{
         .masked = "           \n                   \nkey = value\n",
     },
     .{
+        .name = "css-id-selector-is-not-a-comment",
+        .path = "site.css",
+        .source = "/* a comment with a } brace */\n#cart { display: flex; }\n.content::after { content: \"\\\"}\"; }\n@media (min-width: 700px) { .card { color: #1f6feb; } }\n",
+        .masked = "                              \n#cart { display: flex; }\n.content::after { content:      ; }\n@media (min-width: 700px) { .card { color: #1f6feb; } }\n",
+    },
+    .{
         .name = "default-unknown-type",
         .path = null,
         .source = "// a } brace\n/* b */\n\"c } d\"\n'e }'\n",

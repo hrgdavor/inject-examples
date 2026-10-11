@@ -623,6 +623,23 @@ pub const INI_SYNTAX = Syntax{
     },
 };
 
+/// CSS: the C block pair, and no line comment at all — `//` is Sass/Less, not
+/// CSS, and a second entry would be the only difference.
+///
+/// The entry exists for the **id selector**: the built-in union mask reads a `#`
+/// as a line comment, so `#cart { … }` would be blanked whole — the selector and
+/// every declaration under it — and `cart` would resolve to nothing. `@media`,
+/// `:root` and a hex colour are not comments either, and the two string forms
+/// escape with a backslash, so a `}` inside `content: "\"}"` cannot end a body.
+pub const CSS_SYNTAX = Syntax{
+    .name = "css",
+    .block_comments = &C_BLOCK,
+    .strings = &.{
+        .{ .open = u("\""), .close = u("\"") },
+        .{ .open = u("'"), .close = u("'") },
+    },
+};
+
 /// Every language, by the name `lexerFor` reports.
 pub const TYPESCRIPT_SYNTAX = Syntax{
     .name = "typescript",

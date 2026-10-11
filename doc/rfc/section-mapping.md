@@ -735,7 +735,11 @@ added; what was missing was the *documentation* of it, which §5.3 now gives.
 every rule alike — code, JSON, YAML, TOML and INI — and a rule decides what a
 segment *names*: a declaration path for code, a key path for the data formats.
 There is no second grammar for config files, and the separator question is
-therefore closed rather than merely decided per format.
+therefore closed rather than merely decided per format. (The CSS rule added
+after this release is a fifth reader of the same path and the same `,`-list:
+what a segment names there is a style rule's rightmost simple selector or an
+at-rule's keyword, and the sigils a CSS name is written with — `.`, `#`, `@` —
+are that rule's vocabulary, never a second separator.)
 
 The formats' own spellings still appear in the *output*, because they are the
 format's: a TOML table is rendered as `[a.b]` with its dots, a YAML key path is

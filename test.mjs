@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
     CODE_RULE,
+    CSS_RULE,
     INI_RULE,
     JSON_RULE,
     REGION_RULES,
@@ -28,6 +29,7 @@ import {
     YAML_RULE,
     codeReference,
     extractCodeRegion,
+    extractCssRuleRegion,
     extractDeclaration,
     extractIniRegion,
     extractJsonRegion,
@@ -1001,6 +1003,28 @@ test('the line-range reading is a code rule reading, not a data rule one', () =>
         '{\n  "name": "x"\n}');
 });
 
+test('updateDocument injects a CSS selection, with ranges, and is idempotent', () => {
+    const files = { 'docs/site.css': `${CSS_DOC}\n` };
+    const read = (path) => {
+        if (!(path in files)) throw new Error(`ENOENT ${path}`);
+        return files[path];
+    };
+    const doc = ['[docs/site.css](./docs/site.css#@media/.card-)', '```', 'stale', '```', ''].join('\n');
+
+    const plan = planMarker(parseMarker('[docs/site.css](./docs/site.css#@media/.card-)'), read);
+    assert.equal(plan.text, 'gap: 2px;');
+    assert.deepEqual(plan.ranges, [{ from: 20, to: 20 }], 'a CSS selection answers with the lines it came from');
+
+    const first = updateDocument(doc, { readFile: read, gitignore: false });
+    assert.equal(first.changed, true, 'the stale block is rewritten');
+    assert.match(first.text, /^```css$/m, 'the fence gets the file language');
+    assert.match(first.text, /gap: 2px;/);
+    assert.doesNotMatch(first.text, /stale/);
+
+    const second = updateDocument(first.text, { readFile: read, gitignore: false });
+    assert.equal(second.changed, false, 'a second pass is a no-op');
+});
+
 test('planMarker carries the ranges of the code rule, and none for a rendered rule', () => {
     const files = { 'a.java': EXAMPLE, 'a.json': '{"a": 1}' };
 
@@ -1965,6 +1989,45 @@ const INI_DOC = [
     'level = info',
 ].join('\n');
 
+/** A stylesheet with every construct the CSS rule has to read. */
+const CSS_DOC = [
+    ':root {',
+    '  --brand: #1f6feb;',
+    '}',
+    '',
+    '.card {',
+    '  display: grid;',
+    '  gap: 8px;',
+    '}',
+    '',
+    '.card[data-variant="compact"] {',
+    '  gap: 2px;',
+    '}',
+    '',
+    '#cart, li.item {',
+    '  margin: 0;',
+    '}',
+    '',
+    '@media screen {',
+    '  .card {',
+    '    gap: 2px;',
+    '  }',
+    '}',
+    '',
+    '@keyframes pulse {',
+    '  from { opacity: 0.4; }',
+    '  to { opacity: 1; }',
+    '}',
+    '',
+    '@font-face {',
+    '  font-family: Cart;',
+    '}',
+    '',
+    '.wrap {',
+    '  & .nested { color: teal; }',
+    '}',
+].join('\n');
+
 test('extractYamlRegion renders a key with the mapping that holds it', () => {
     assert.equal(extractYamlRegion(YAML_DOC, 'server/port'), 'server:\n  port: 8080');
     assert.equal(extractYamlRegion(YAML_DOC, 'server/tls/enabled'), 'server:\n  tls:\n    enabled: true',
@@ -2035,6 +2098,118 @@ test('updateDocument leaves an already-matching CRLF block byte-for-byte alone',
     assert.equal(result.results[0].changed, false);
 });
 
+// ---------------------------------------------------------------------------
+// The CSS rule
+// ---------------------------------------------------------------------------
+//
+// CSS has no members to search, so `.css` gets a rule of its own — but its
+// vocabulary is CSS's: a reference names a **rule** by the rightmost simple
+// selector of its selector list, or an at-rule by its keyword and parameter.
+// `/` descends the nesting CSS already has, so no combinator syntax is needed,
+// and the `-` a code reference uses for a body is read here too.
+
+test('extractCssRuleRegion reads a style rule by its rightmost simple selector', () => {
+    assert.throws(() => extractCssRuleRegion(CSS_DOC, '.card'), /matches 2 blocks/,
+        'two top-level rules answer to `.card`, so the bare name is ambiguous');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[data-variant=compact]-'), 'gap: 2px;',
+        '`-` is the declarations, exactly as it is a body for code');
+    assert.equal(extractCssRuleRegion(CSS_DOC, ':root'), ':root {\n  --brand: #1f6feb;\n}',
+        ':root is a name of its own, not a pseudo on an empty selector');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.item'), '#cart, li.item {\n  margin: 0;\n}',
+        'the rightmost simple selector of `li.item` is the class');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '#cart'), '#cart, li.item {\n  margin: 0;\n}',
+        'an id is named the way the file spells it');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '#cart'), '#cart, li.item {\n  margin: 0;\n}',
+        'an id is named the way the file spells it');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.wrap/.nested'), '  & .nested { color: teal; }',
+        'a nested rule is reached through its parent, as CSS nesting says');
+    assert.equal(extractCssRuleRegion(CSS_DOC, ':root'), ':root {\n  --brand: #1f6feb;\n}');
+    assert.throws(() => extractCssRuleRegion(CSS_DOC, '.nope'), /no rule "\.nope"/);
+});
+
+test('extractCssRuleRegion reads an at-rule, and descends into it', () => {
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@media'),
+        '@media screen {\n  .card {\n    gap: 2px;\n  }\n}');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@media screen'), '@media screen {\n  .card {\n    gap: 2px;\n  }\n}',
+        'the parameter may be written out, with its space');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@media:screen'), '@media screen {\n  .card {\n    gap: 2px;\n  }\n}',
+        'or as one token, for a parameter that carries no space of its own');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@keyframes:pulse'),
+        '@keyframes pulse {\n  from { opacity: 0.4; }\n  to { opacity: 1; }\n}');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@font-face'), '@font-face {\n  font-family: Cart;\n}');
+    // The nesting is the path: a rule inside the at-rule is a child of it.
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@media/.card'), '  .card {\n    gap: 2px;\n  }');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@media/.card-'), 'gap: 2px;');
+    assert.throws(() => extractCssRuleRegion(CSS_DOC, '@media:print'),
+        /no "@media" block whose parameter contains "print"/);
+    assert.throws(() => extractCssRuleRegion(CSS_DOC, '@supports'), /no "@supports" block/);
+    assert.throws(() => extractCssRuleRegion(CSS_DOC, '@media/nope'), /no rule "nope"/);
+});
+
+test('a CSS predicate picks between blocks that share a name', () => {
+    // Two top-level rules answer to `.card`, so the bare name is an error —
+    // the same "names must be unique" rule two `#region`s of one name follow.
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[data-variant=compact]'),
+        '.card[data-variant="compact"] {\n  gap: 2px;\n}',
+        'the predicate reads the attribute from the selector');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[sel=compact]'),
+        '.card[data-variant="compact"] {\n  gap: 2px;\n}',
+        '[sel=…] is the escape hatch for selector text');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[data-variant=compact]-'), 'gap: 2px;',
+        'a modifier may follow the predicate it applies to');
+    assert.throws(() => extractCssRuleRegion(CSS_DOC, '.card[data-variant=wide]'),
+        /no rule "\.card"/, 'a predicate that matches nothing is a miss, not a fallback');
+    // A block may also be read *in* the scope that holds the thing the predicate
+    // is about; a predicate alone has nothing to describe.
+    assert.throws(() => extractCssRuleRegion(CSS_DOC, '[--brand]'), /names nothing/);
+});
+
+test('a CSS reference is a comma-separated list like every other rule', () => {
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[data-variant=compact],@font-face'),
+        '.card[data-variant="compact"] {\n  gap: 2px;\n}\n@font-face {\n  font-family: Cart;\n}',
+        'the pieces are joined in the order written');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@media/.card,@font-face'),
+        '  .card {\n    gap: 2px;\n  }\n@font-face {\n  font-family: Cart;\n}');
+});
+
+test('a region directive still resolves in a stylesheet', () => {
+    const css = ['/* #region theme */', ':root {', '  --brand: #1f6feb;', '}', '/* #endregion */'].join('\n');
+    assert.equal(extractCssRuleRegion(css, 'theme'), ':root {\n  --brand: #1f6feb;\n}',
+        'a region is the lines between its directives');
+    // The bare name is the only spelling a directive can claim: `.theme` is a
+    // class name and never a region.
+    assert.throws(() => extractCssRuleRegion(css, '.theme'), /no rule "\.theme"/);
+    assert.throws(() => extractCssRuleRegion(`${css}\n/* #region nope */\nx\n`, 'nope'),
+        /never closed/, 'an unclosed region is reported rather than guessed');
+    // A region name may also be a type selector's name; the directive wins, the
+    // same precedence the code rule gives a `#region` over a declaration.
+    const both = ['/* #region aside */', 'aside { color: gray; }', '/* #endregion */'].join('\n');
+    assert.equal(extractCssRuleRegion(both, 'aside'), 'aside { color: gray; }');
+});
+
+test('the CSS mask keeps a selector, and blanks what is not one', () => {
+    const source = [
+        '/* #decoy { color: red; } */',
+        '#cart { display: flex; }',
+        '.card::after { content: "a\\" } decoy"; }',
+        '@media screen { .card { color: #1f6feb; } }',
+    ].join('\n');
+    const lexer = lexerFor('docs/site.css');
+    assert.equal(lexer?.name, 'css');
+    const mask = lexer.mask(source);
+
+    assert.equal(mask.length, source.length, 'the mask keeps the length');
+    for (let i = 0; i < source.length; i++) {
+        if (source[i] === '\n') assert.equal(mask[i], '\n', `newline at ${i}`);
+    }
+    // The entry exists for the id selector: `#` is not a comment in CSS, and a
+    // `#decoy` inside a comment is not a declaration.
+    assert.match(mask, /#cart \{ display: flex; \}/);
+    assert.match(mask, /color: #1f6feb/);
+    assert.doesNotMatch(mask, /decoy/);
+    assert.match(mask, /@media screen \{ \.card \{ color: #1f6feb; \} \}/);
+});
+
 test('updateDocument injects a YAML, TOML and INI selection and is idempotent', () => {
     const files = { 'conf/app.yaml': `${YAML_DOC}\n`, 'conf/app.toml': `${TOML_DOC}\n`, 'conf/app.ini': `${INI_DOC}\n` };
     const read = (path) => {
@@ -2063,7 +2238,7 @@ test('ruleFor sends each data format to its own rule, and code elsewhere', () =>
     assert.equal(ruleFor('./a/b.JSON').name, 'json', 'extensions are case-insensitive');
     for (const [path, name] of [['conf/app.yaml', 'yaml'], ['conf/app.yml', 'yaml'],
         ['conf/app.toml', 'toml'], ['conf/app.ini', 'ini'], ['conf/app.cfg', 'ini'],
-        ['conf/app.properties', 'ini']]) {
+        ['conf/app.properties', 'ini'], ['docs/site.css', 'css'], ['a/b/CSS', 'code']]) {
         assert.equal(ruleFor(path).name, name, path);
     }
     assert.equal(ruleFor('index.mjs').name, 'code');
@@ -2072,7 +2247,7 @@ test('ruleFor sends each data format to its own rule, and code elsewhere', () =>
     assert.equal(ruleFor('noext').name, 'code');
     assert.equal(ruleFor('a.json', [JSON_RULE, CODE_RULE]).name, 'json');
     assert.equal(ruleFor('a.json', []).name, 'code', 'a rule set with no match falls back');
-    assert.deepEqual(REGION_RULES, [JSON_RULE, YAML_RULE, TOML_RULE, INI_RULE, CODE_RULE]);
+    assert.deepEqual(REGION_RULES, [JSON_RULE, YAML_RULE, TOML_RULE, INI_RULE, CSS_RULE, CODE_RULE]);
 });
 
 test('resolveMarker resolves a region by the file type', () => {
@@ -3309,6 +3484,7 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
         ['samples/Nesting.zig', '<span class="tok-k">pub</span>'],
         ['samples/app.toml', '<span class="tok-s">&quot;cart&quot;</span>'],
         ['samples/api.json', '<span class="tok-k">true</span>'],
+        ['samples/site.css', '<span class="tok-a">@media</span>'],
     ]) {
         const pane = html.slice(html.indexOf(`data-file="${path}" aria-label`));
         assert.ok(pane.includes(marker), `${path} is highlighted (${marker})`);

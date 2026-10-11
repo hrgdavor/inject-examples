@@ -219,6 +219,18 @@ public final class Syntaxes {
             noEscape("\"", "\"", false),
             noEscape("'", "'", false)), Syntax.Heredoc.NONE, List.of(), List.of());
 
+    /**
+     * CSS: the C block pair, and no line comment at all — {@code //} is Sass/Less, not CSS.
+     *
+     * <p>The entry exists for the <b>id selector</b>: the default union mask reads a {@code #} as a line
+     * comment, so {@code #cart { … }} would be blanked whole — the selector and every declaration under
+     * it. Both string forms escape with a backslash, so a {@code }} inside {@code content: "\"}"} cannot
+     * end a body.
+     */
+    public static final Syntax CSS = new Syntax("css", List.of(), C_BLOCK,
+            List.of(backslash("\"", "\"", false), backslash("'", "'", false)),
+            Syntax.Heredoc.NONE, List.of(), List.of());
+
     /** TypeScript is JavaScript's syntax under its own name. */
     public static final Syntax TYPESCRIPT = new Syntax("typescript", JAVASCRIPT.lineComments(),
             JAVASCRIPT.blockComments(), JAVASCRIPT.strings(), Syntax.Heredoc.NONE, List.of(),
@@ -242,7 +254,8 @@ public final class Syntaxes {
             Map.entry("haskell", HASKELL),
             Map.entry("yaml", YAML),
             Map.entry("toml", TOML),
-            Map.entry("ini", INI));
+            Map.entry("ini", INI),
+            Map.entry("css", CSS));
 
     /** Extension to language name: one line per extension, exactly as {@code lexers.js} has it. */
     private static final Map<String, String> EXTENSIONS = Map.ofEntries(
@@ -265,7 +278,8 @@ public final class Syntaxes {
             Map.entry("hs", "haskell"), Map.entry("lhs", "haskell"),
             Map.entry("yaml", "yaml"), Map.entry("yml", "yaml"),
             Map.entry("toml", "toml"),
-            Map.entry("ini", "ini"), Map.entry("cfg", "ini"), Map.entry("properties", "ini"));
+            Map.entry("ini", "ini"), Map.entry("cfg", "ini"), Map.entry("properties", "ini"),
+            Map.entry("css", "css"));
 
     private static final Map<String, BlockScanner.Lexer> LEXERS = new HashMap<>();
 

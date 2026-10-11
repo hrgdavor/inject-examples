@@ -202,6 +202,18 @@ pub fn ini() -> Syntax {
         .string(StringKind::raw("'", "'"))
 }
 
+/// CSS: the C block pair, and no line comment at all — `//` is Sass/Less, not CSS.
+///
+/// The entry exists for the **id selector**: the default union mask reads a `#` as a line comment, so
+/// `#cart { … }` would be blanked whole — the selector and every declaration under it. Both string forms
+/// escape with a backslash, so a `}` inside `content: "\"}"` cannot end a body.
+pub fn css() -> Syntax {
+    Syntax::new("css")
+        .block("/*", "*/")
+        .string(StringKind::new("\"", "\""))
+        .string(StringKind::new("'", "'"))
+}
+
 /// The syntax registered under `name`, or `None` when the table has no such entry.
 pub fn syntax_by_name(name: &str) -> Option<Syntax> {
     let syntax = match name {
@@ -223,6 +235,7 @@ pub fn syntax_by_name(name: &str) -> Option<Syntax> {
         "yaml" => yaml(),
         "toml" => toml(),
         "ini" => ini(),
+        "css" => css(),
         _ => return None,
     };
     Some(syntax.normalised())
@@ -268,6 +281,7 @@ pub fn extensions() -> &'static [(&'static str, &'static str)] {
         ("ini", "ini"),
         ("cfg", "ini"),
         ("properties", "ini"),
+        ("css", "css"),
     ]
 }
 

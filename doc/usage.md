@@ -265,8 +265,8 @@ prefix is stripped before the name is read. The rules:
 `#<reference>` means "the piece of this file called `<reference>`". What
 the reference may say — and what comes back — depends on the file's **type**:
 each type has one rule, and the reference is handed to the rule that claims the
-file's extension. Five rules ship — JSON, YAML, TOML, INI and the `code`
-fallback — and a sixth is a few lines in a `regionRules`
+file's extension. Six rules ship — JSON, YAML, TOML, INI, CSS and the `code`
+fallback — and a seventh is a few lines in a `regionRules`
 array (see [Adding a rule for another type](#adding-a-rule-for-another-type)).
 
 A reference is one or more **selectors** separated by commas, and every rule
@@ -541,6 +541,57 @@ An array keeps only the elements named, in order:
   of keys has to be re-printed to stay valid JSON, so whitespace and number
   formatting in the block belong to the renderer, not to the file. Keys appear
   in the order the reference lists them.
+
+### The CSS rule
+
+CSS has no members to search, so `.css` gets a rule of its own — but its
+vocabulary is CSS's. A reference names a **rule**, not a declaration: a style
+rule by the rightmost simple selector of its selector list, or an at-rule by its
+keyword and parameter. `/` descends the nesting CSS already has, so a rule inside
+a media query is a child of it and no descendant syntax is needed.
+
+| Reference | Injected text |
+| --- | --- |
+| `#.card` | the rule: selector through closing brace |
+| `#.card-` | its declarations alone, without the selector |
+| `#@media` | the whole media block |
+| `#@media:screen` | the media block whose parameter contains `screen` |
+| `#@keyframes:pulse` | the `@keyframes` block named `pulse` |
+| `#@media/.card` | the `.card` rule the media block holds |
+| `#.card[data-variant=compact]` | the rule whose selector carries that attribute |
+
+A rule with a compound selector is named by its **rightmost simple selector**, so
+`li.item` is `.item` and `ul > li.item` is `.item` too; `:root` is a name of its
+own. Two rules may share a name — a base rule and a variant — and a bare name
+that matches more than one block is an error, exactly as two `#region`s of one
+name are. The **predicate** written after the name is how you say which:
+`[data-variant=compact]` reads that attribute from the selector, `[sel=:hover]`
+its selector text, and `[--brand]` a custom property the block declares.
+
+A stylesheet may still carry `#region` directives — `/* #region name */` — and
+they resolve as they do anywhere: a bare name that is a region is the region, and
+a `.`/`@` name is never one, so a class name and a region name cannot collide.
+
+The design tokens of `docs/samples/site.css`, and the `.card` rule the media
+query overrides:
+
+[../docs/samples/site.css](../docs/samples/site.css#:root)
+
+```css
+:root {
+  --brand: #1f6feb;
+  --radius: 6px;
+}
+```
+
+[../docs/samples/site.css](../docs/samples/site.css#@media/.card-)
+
+```css
+grid-template-columns: 1fr 1fr;
+```
+
+A CSS selection is the file's own bytes, like a code declaration: the rule
+**copies** the lines it names, so the indentation you see is the file's.
 
 ### Adding a rule for another type
 

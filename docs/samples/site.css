@@ -1,0 +1,43 @@
+/* The design tokens, in one place. */
+:root {
+  --brand: #1f6feb;
+  --radius: 6px;
+}
+
+/* One card, and the compact variant of it. */
+.card {
+  display: grid;
+  gap: 8px;
+  border-radius: var(--radius);
+}
+
+.card[data-variant="compact"] {
+  gap: 2px;
+  padding: 4px;
+}
+
+@media (min-width: 700px) {
+  .card {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* #region pulse */
+@keyframes pulse {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* #endregion */
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

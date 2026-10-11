@@ -11,9 +11,12 @@
  * rule, and the reference is handed to the rule that claims the file's
  * extension. A code file resolves a region directive, a method or inner
  * class by name, or an explicit line range (`#L40:12-L44:3`); a `.json` file,
- * which has no comments to hang a directive on, resolves a list of keys. Every
- * rule reads a comma-separated list of selectors, so `#add,L40-L44` is one
- * more selector wherever it is written. See `REGION_RULES` and `ruleFor`.
+ * which has no comments to hang a directive on, resolves a list of keys; a
+ * `.css` file resolves a rule by the rightmost simple selector of its selector
+ * list (`.card`), an at-rule (`@media`), or a rule inside one
+ * (`@media/.card`). Every rule reads a comma-separated list of selectors, so
+ * `#add,L40-L44` is one more selector wherever it is written. See
+ * `REGION_RULES` and `ruleFor`.
  *
  * This module is pure: it reads only through the `readFile` you hand it, so it
  * is safe to unit-test and to embed. `cli.mjs` is the thin executable wrapper.
@@ -35,6 +38,7 @@ import {
     parseSelectors,
 } from './lib/section.mjs';
 import { lexerFor } from './src/js/scanner/lexers.js';
+import { extractCssRegion, cssRanges } from './lib/css.mjs';
 
 /** A fence is a line starting with this; three backticks, per CommonMark. */
 export const FENCE = '```';
@@ -560,6 +564,49 @@ export function extractIniRegion(text, reference) {
 }
 
 // ---------------------------------------------------------------------------
+// The CSS rule
+// ---------------------------------------------------------------------------
+
+/**
+ * The rule for `.css`: a reference names a **rule**, in CSS's own vocabulary.
+ *
+ * A style rule is named by the rightmost simple selector of its selector list —
+ * `.card`, `.card[data-variant="compact"]`, `li.item` — and an at-rule by its
+ * keyword and, when it has one, its parameter: `@media`, `@media:700px`,
+ * `@keyframes:pulse`, `@font-face`. `/` descends exactly as it does for code,
+ * and here the containment is CSS's own — a rule inside `@media` is a child of
+ * that at-rule — so `@media/.card` is the `.card` rule the media query holds,
+ * and `@media/.card-` is its declarations alone.
+ *
+ * A `[key=value]` predicate picks between blocks that share a name:
+ * `[data-variant=compact]` reads an attribute from the selector,
+ * `[--brand]` a custom property the block declares, `[sel=:hover]` its selector
+ * text. A key that names two different blocks in one scope is an error — the
+ * rule `#region` already follows — and the predicate is the way to say which.
+ *
+ * The `-` of a trailing modifier is read here rather than by
+ * `lib/section.mjs`, because CSS's own names contain hyphens (`.item-list`) and
+ * the grammar's `-` is a modifier everywhere else.
+ */
+export function extractCssRuleRegion(text, reference) {
+    try {
+        return extractCssRegion(normalize(text), reference);
+    } catch (err) {
+        throw new Error(`"#${reference}": ${err.message}`);
+    }
+}
+
+/**
+ * The line ranges of a CSS selection, for a host that highlights rather than
+ * injects — the same answer `planSection().ranges` gives the code rule.
+ *
+ * @returns {Array<{ from: number, to: number }>}
+ */
+export function planCssMarker(text, reference) {
+    return cssRanges(normalize(text), reference);
+}
+
+// ---------------------------------------------------------------------------
 // The rule registry
 // ---------------------------------------------------------------------------
 
@@ -584,8 +631,24 @@ export const TOML_RULE = { name: 'toml', extensions: ['toml'], resolve: extractT
 /** The rule for INI: a region is `section.key`, a section, or a leading key. */
 export const INI_RULE = { name: 'ini', extensions: ['ini', 'cfg', 'properties'], resolve: extractIniRegion };
 
+/**
+ * The rule for `.css`: a region is a rule, an at-rule, or a rule inside one.
+ *
+ * `ranges(text, reference)` is the lines each selector of the reference came
+ * from — the same answer the code rule hands back with its text — so a host can
+ * highlight a CSS selection without searching for it again. It is a function on
+ * the rule rather than a second return value because a rule's `resolve` answers
+ * text, and one answer cannot disagree with itself.
+ */
+export const CSS_RULE = {
+    name: 'css',
+    extensions: ['css'],
+    resolve: extractCssRuleRegion,
+    ranges: (text, reference) => planCssMarker(normalize(text), reference),
+};
+
 /** The built-in rules, most specific first; `code` is the fallback. */
-export const REGION_RULES = [JSON_RULE, YAML_RULE, TOML_RULE, INI_RULE, CODE_RULE];
+export const REGION_RULES = [JSON_RULE, YAML_RULE, TOML_RULE, INI_RULE, CSS_RULE, CODE_RULE];
 
 /**
  * The rule that resolves a reference in `path`.
@@ -777,6 +840,12 @@ export function planMarker(marker, read, rule = ruleFor(marker.path)) {
         const plan = planSection(text, marker.reference, lexerFor(marker.path));
         return { text: plan.text, warning: plan.reference.warning, ranges: plan.ranges };
     }
+    if (rule === CSS_RULE) {
+        // CSS selects a byte slice of the file, so it can answer with the lines
+        // it came from even though its names are not declaration names.
+        const source = normalize(text);
+        return { text: extractCssRuleRegion(text, marker.reference), warning: null, ranges: planCssMarker(source, marker.reference) };
+    }
     rejectLineRange(marker.reference, rule);
     return { text: rule.resolve(text, marker.reference, marker.path), warning: null, ranges: null };
 }
@@ -786,7 +855,8 @@ export function planMarker(marker, read, rule = ruleFor(marker.path)) {
  * injected verbatim. A rule that renders its selection — JSON, YAML, TOML, INI —
  * has no such slice to hand back, so `#L40-L44` in one of those files is a
  * mistake worth reporting rather than a selection rendered into source of the
- * format that would not mean anything.
+ * format that would not mean anything. (The CSS rule reads its own syntax and
+ * never reaches this check; its `ranges` are a byte slice like the code rule's.)
  *
  * @param {string} reference
  * @param {{ name: string }} rule

@@ -313,6 +313,28 @@ export const PROBES = [
         hidden: ['a decoy'],
         kept: ['other = 1'],
     },
+    // CSS — the entry exists for the construct the union mask gets *wrong*: a
+    // `#id` selector read as a line comment.
+    {
+        language: 'css',
+        name: 'an id selector is not a comment',
+        code: '#cart { display: flex; }\n.card { color: #1f6feb; }\n',
+        kept: ['#cart', 'display', '#1f6feb'],
+    },
+    {
+        language: 'css',
+        name: 'a block comment hides a decoy rule',
+        code: '/* #decoy { color: red; } */\n.card { color: blue; }\n',
+        hidden: ['#decoy'],
+        kept: ['.card'],
+    },
+    {
+        language: 'css',
+        name: 'an escaped quote stays inside the string',
+        code: '.card::after { content: "a\\" } decoy"; }\n.other { color: red; }\n',
+        hidden: ['decoy'],
+        kept: ['.other'],
+    },
 ];
 
 /**

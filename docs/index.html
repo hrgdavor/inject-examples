@@ -461,19 +461,60 @@ level = info</code></pre></li>
 </ul>
 </li>
 <li class="example" id="ex-23">
-<h2><span class="num">23</span>Line numbers, and several pieces at once</h2>
+<h2><span class="num">23</span>CSS — a rule, an at-rule, and the nesting between</h2>
+<p>A <code>.css</code> reference names a <strong>rule</strong>, in CSS's own vocabulary. A style rule is named by the rightmost simple selector of its selector list (<code>.card</code>), an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the body only&quot; works the same way, so <code>.card-</code> is a rule's declarations without its selector.</p>
+<p>The design tokens, addressed by the pseudo-class that holds them:</p>
+<p>A class, and a variant of that same class — the compact one is reached by a predicate read from the selector, because two rules may share a name:</p>
+<p>The media query, whole, and then the one rule inside it — the nesting is the path:</p>
+<p>An at-rule with a name of its own — <code>@keyframes:pulse</code> names one animation, <code>@keyframes</code> alone would be an error here because the file has two:</p>
+<p>A region directive still works in CSS, and a class name cannot be a region name, so the two never collide:</p>
+<ul class="targets">
+<li class="target-item" id="t-23-1"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="2" data-to="5" data-ranges="2-5" aria-pressed="false" aria-controls="t-23-1-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#:root</span></button><pre class="snippet" id="t-23-1-snippet"><span class="marker">[samples/site.css](./samples/site.css#:root)</span><code>:root {
+  --brand: #1f6feb;
+  --radius: 6px;
+}</code></pre></li>
+<li class="target-item" id="t-23-2"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="14" data-to="17" data-ranges="14-17" aria-pressed="false" aria-controls="t-23-2-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#.card[data-variant=compact]</span></button><pre class="snippet" id="t-23-2-snippet"><span class="marker">[samples/site.css](./samples/site.css#.card[data-variant=compact])</span><code>.card[data-variant=&quot;compact&quot;] {
+  gap: 2px;
+  padding: 4px;
+}</code></pre></li>
+<li class="target-item" id="t-23-3"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="19" data-to="23" data-ranges="19-23" aria-pressed="false" aria-controls="t-23-3-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#@media</span></button><pre class="snippet" id="t-23-3-snippet"><span class="marker">[samples/site.css](./samples/site.css#@media)</span><code>@media (min-width: 700px) {
+  .card {
+    grid-template-columns: 1fr 1fr;
+  }
+}</code></pre></li>
+<li class="target-item" id="t-23-4"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="21" data-to="21" data-ranges="21-21" aria-pressed="false" aria-controls="t-23-4-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#@media/.card-</span></button><pre class="snippet" id="t-23-4-snippet"><span class="marker">[samples/site.css](./samples/site.css#@media/.card-)</span><code>grid-template-columns: 1fr 1fr;</code></pre></li>
+<li class="target-item" id="t-23-5"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="t-23-5-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#@keyframes:pulse</span></button><pre class="snippet" id="t-23-5-snippet"><span class="marker">[samples/site.css](./samples/site.css#@keyframes:pulse)</span><code>@keyframes pulse {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}</code></pre></li>
+<li class="target-item" id="t-23-6"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="t-23-6-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#pulse</span></button><pre class="snippet" id="t-23-6-snippet"><span class="marker">[samples/site.css](./samples/site.css#pulse)</span><code>@keyframes pulse {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}</code></pre></li>
+</ul>
+</li>
+<li class="example" id="ex-24">
+<h2><span class="num">24</span>Line numbers, and several pieces at once</h2>
 <p>A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them. <code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
 <p>A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file:</p>
 <p>The demo page's middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between.</p>
 <ul class="targets">
-<li class="target-item" id="t-23-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="23" data-from="8" data-to="14" data-ranges="8-14" aria-pressed="false" aria-controls="t-23-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L8-L14</span></button><pre class="snippet" id="t-23-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#L8-L14)</span><code>
+<li class="target-item" id="t-24-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="24" data-from="8" data-to="14" data-ranges="8-14" aria-pressed="false" aria-controls="t-24-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L8-L14</span></button><pre class="snippet" id="t-24-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#L8-L14)</span><code>
     // #region catalog
     /** The catalog, kept as an explicit region directive. */
     static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };
     // #endregion
 
     private final List&lt;Item&gt; items = new ArrayList&lt;&gt;();</code></pre></li>
-<li class="target-item" id="t-23-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="23" data-from="7" data-to="50" data-ranges="7-7,32-36,50-50" aria-pressed="false" aria-controls="t-23-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L7,++toString,L50</span></button><pre class="snippet" id="t-23-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#L7,++toString,L50)</span><code>public class Inventory {
+<li class="target-item" id="t-24-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="24" data-from="7" data-to="50" data-ranges="7-7,32-36,50-50" aria-pressed="false" aria-controls="t-24-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L7,++toString,L50</span></button><pre class="snippet" id="t-24-2-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java#L7,++toString,L50)</span><code>public class Inventory {
     /** Summarise the inventory. */
     @Override
     public String toString() {
@@ -482,11 +523,11 @@ level = info</code></pre></li>
 }</code></pre></li>
 </ul>
 </li>
-<li class="example" id="ex-24">
-<h2><span class="num">24</span>JSON — keys</h2>
+<li class="example" id="ex-25">
+<h2><span class="num">25</span>JSON — keys</h2>
 <p>JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by <code>/</code> — the same separator a code reference uses.</p>
 <ul class="targets">
-<li class="target-item" id="t-24-1"><button class="target" type="button" data-file="samples/api.json" data-section="24" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-24-1-snippet"><span class="chip-file">api.json</span><span class="chip-ref">#name,server/port</span></button><pre class="snippet" id="t-24-1-snippet"><span class="marker">[samples/api.json](./samples/api.json#name,server/port)</span><code>{
+<li class="target-item" id="t-25-1"><button class="target" type="button" data-file="samples/api.json" data-section="25" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-25-1-snippet"><span class="chip-file">api.json</span><span class="chip-ref">#name,server/port</span></button><pre class="snippet" id="t-25-1-snippet"><span class="marker">[samples/api.json](./samples/api.json#name,server/port)</span><code>{
   &quot;name&quot;: &quot;cart-api&quot;,
   &quot;server&quot;: {
     &quot;port&quot;: 8080
@@ -516,6 +557,7 @@ level = info</code></pre></li>
 <button class="file-tab" type="button" data-file="samples/app.yaml">docs/samples/app.yaml</button>
 <button class="file-tab" type="button" data-file="samples/app.toml">docs/samples/app.toml</button>
 <button class="file-tab" type="button" data-file="samples/app.ini">docs/samples/app.ini</button>
+<button class="file-tab" type="button" data-file="samples/site.css">docs/samples/site.css</button>
 <button class="file-tab" type="button" data-file="samples/api.json">docs/samples/api.json</button>
 </div>
 <div class="file-view">
@@ -536,6 +578,7 @@ level = info</code></pre></li>
 <div class="file" data-file="samples/app.yaml" aria-label="docs/samples/app.yaml"><pre class="code"><span class="line" id="samples-app-yaml-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c"># The demo config. A `#` inside a quoted value is not a comment.</span></span></span><span class="line" id="samples-app-yaml-L2" data-line="2"><span class="ln">2</span><span class="lc">service: cart</span></span><span class="line" id="samples-app-yaml-L3" data-line="3"><span class="ln">3</span><span class="lc">server:</span></span><span class="line" id="samples-app-yaml-L4" data-line="4"><span class="ln">4</span><span class="lc">  host: localhost</span></span><span class="line" id="samples-app-yaml-L5" data-line="5"><span class="ln">5</span><span class="lc">  port: <span class="tok-n">8080</span></span></span><span class="line" id="samples-app-yaml-L6" data-line="6"><span class="ln">6</span><span class="lc">  tls:</span></span><span class="line" id="samples-app-yaml-L7" data-line="7"><span class="ln">7</span><span class="lc">    enabled: true</span></span><span class="line" id="samples-app-yaml-L8" data-line="8"><span class="ln">8</span><span class="lc">logging:</span></span><span class="line" id="samples-app-yaml-L9" data-line="9"><span class="ln">9</span><span class="lc">  level: info</span></span></pre></div>
 <div class="file" data-file="samples/app.toml" aria-label="docs/samples/app.toml"><pre class="code"><span class="line" id="samples-app-toml-L1" data-line="1"><span class="ln">1</span><span class="lc">title = <span class="tok-s">&quot;cart&quot;</span></span></span><span class="line" id="samples-app-toml-L2" data-line="2"><span class="ln">2</span><span class="lc"></span></span><span class="line" id="samples-app-toml-L3" data-line="3"><span class="ln">3</span><span class="lc">[server]</span></span><span class="line" id="samples-app-toml-L4" data-line="4"><span class="ln">4</span><span class="lc">host = <span class="tok-s">&quot;localhost&quot;</span></span></span><span class="line" id="samples-app-toml-L5" data-line="5"><span class="ln">5</span><span class="lc">port = <span class="tok-n">8080</span></span></span><span class="line" id="samples-app-toml-L6" data-line="6"><span class="ln">6</span><span class="lc">hosts = [</span></span><span class="line" id="samples-app-toml-L7" data-line="7"><span class="ln">7</span><span class="lc">  <span class="tok-s">&quot;a.example&quot;</span>,</span></span><span class="line" id="samples-app-toml-L8" data-line="8"><span class="ln">8</span><span class="lc">  <span class="tok-s">&quot;b.example&quot;</span>,</span></span><span class="line" id="samples-app-toml-L9" data-line="9"><span class="ln">9</span><span class="lc">]</span></span><span class="line" id="samples-app-toml-L10" data-line="10"><span class="ln">10</span><span class="lc"></span></span><span class="line" id="samples-app-toml-L11" data-line="11"><span class="ln">11</span><span class="lc">[server.tls]</span></span><span class="line" id="samples-app-toml-L12" data-line="12"><span class="ln">12</span><span class="lc">enabled = true</span></span></pre></div>
 <div class="file" data-file="samples/app.ini" aria-label="docs/samples/app.ini"><pre class="code"><span class="line" id="samples-app-ini-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c">; The demo config; a `#` comment works too.</span></span></span><span class="line" id="samples-app-ini-L2" data-line="2"><span class="ln">2</span><span class="lc">global = <span class="tok-n">1</span></span></span><span class="line" id="samples-app-ini-L3" data-line="3"><span class="ln">3</span><span class="lc"></span></span><span class="line" id="samples-app-ini-L4" data-line="4"><span class="ln">4</span><span class="lc">[server]</span></span><span class="line" id="samples-app-ini-L5" data-line="5"><span class="ln">5</span><span class="lc">host = localhost</span></span><span class="line" id="samples-app-ini-L6" data-line="6"><span class="ln">6</span><span class="lc">port = <span class="tok-n">8080</span></span></span><span class="line" id="samples-app-ini-L7" data-line="7"><span class="ln">7</span><span class="lc"></span></span><span class="line" id="samples-app-ini-L8" data-line="8"><span class="ln">8</span><span class="lc">[logging]</span></span><span class="line" id="samples-app-ini-L9" data-line="9"><span class="ln">9</span><span class="lc">level = info</span></span></pre></div>
+<div class="file" data-file="samples/site.css" aria-label="docs/samples/site.css"><pre class="code"><span class="line" id="samples-site-css-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c">/* The design tokens, in one place. */</span></span></span><span class="line" id="samples-site-css-L2" data-line="2"><span class="ln">2</span><span class="lc">:root {</span></span><span class="line" id="samples-site-css-L3" data-line="3"><span class="ln">3</span><span class="lc">  --brand: #<span class="tok-n">1f6feb</span>;</span></span><span class="line" id="samples-site-css-L4" data-line="4"><span class="ln">4</span><span class="lc">  --<span class="tok-k">radius</span>: <span class="tok-n">6px</span>;</span></span><span class="line" id="samples-site-css-L5" data-line="5"><span class="ln">5</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L6" data-line="6"><span class="ln">6</span><span class="lc"></span></span><span class="line" id="samples-site-css-L7" data-line="7"><span class="ln">7</span><span class="lc"><span class="tok-c">/* One card, and the compact variant of it. */</span></span></span><span class="line" id="samples-site-css-L8" data-line="8"><span class="ln">8</span><span class="lc">.card {</span></span><span class="line" id="samples-site-css-L9" data-line="9"><span class="ln">9</span><span class="lc">  <span class="tok-k">display</span>: <span class="tok-k">grid</span>;</span></span><span class="line" id="samples-site-css-L10" data-line="10"><span class="ln">10</span><span class="lc">  <span class="tok-k">gap</span>: <span class="tok-n">8px</span>;</span></span><span class="line" id="samples-site-css-L11" data-line="11"><span class="ln">11</span><span class="lc">  <span class="tok-k">border</span>-<span class="tok-k">radius</span>: var(--<span class="tok-k">radius</span>);</span></span><span class="line" id="samples-site-css-L12" data-line="12"><span class="ln">12</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L13" data-line="13"><span class="ln">13</span><span class="lc"></span></span><span class="line" id="samples-site-css-L14" data-line="14"><span class="ln">14</span><span class="lc">.card[data-variant=<span class="tok-s">&quot;compact&quot;</span>] {</span></span><span class="line" id="samples-site-css-L15" data-line="15"><span class="ln">15</span><span class="lc">  <span class="tok-k">gap</span>: <span class="tok-n">2px</span>;</span></span><span class="line" id="samples-site-css-L16" data-line="16"><span class="ln">16</span><span class="lc">  <span class="tok-k">padding</span>: <span class="tok-n">4px</span>;</span></span><span class="line" id="samples-site-css-L17" data-line="17"><span class="ln">17</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L18" data-line="18"><span class="ln">18</span><span class="lc"></span></span><span class="line" id="samples-site-css-L19" data-line="19"><span class="ln">19</span><span class="lc"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {</span></span><span class="line" id="samples-site-css-L20" data-line="20"><span class="ln">20</span><span class="lc">  .card {</span></span><span class="line" id="samples-site-css-L21" data-line="21"><span class="ln">21</span><span class="lc">    <span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</span></span><span class="line" id="samples-site-css-L22" data-line="22"><span class="ln">22</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L23" data-line="23"><span class="ln">23</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L24" data-line="24"><span class="ln">24</span><span class="lc"></span></span><span class="line" id="samples-site-css-L25" data-line="25"><span class="ln">25</span><span class="lc"><span class="tok-c">/* #region pulse */</span></span></span><span class="line" id="samples-site-css-L26" data-line="26"><span class="ln">26</span><span class="lc"><span class="tok-a">@keyframes</span> pulse {</span></span><span class="line" id="samples-site-css-L27" data-line="27"><span class="ln">27</span><span class="lc">  from {</span></span><span class="line" id="samples-site-css-L28" data-line="28"><span class="ln">28</span><span class="lc">    <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;</span></span><span class="line" id="samples-site-css-L29" data-line="29"><span class="ln">29</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L30" data-line="30"><span class="ln">30</span><span class="lc">  to {</span></span><span class="line" id="samples-site-css-L31" data-line="31"><span class="ln">31</span><span class="lc">    <span class="tok-k">opacity</span>: <span class="tok-n">1</span>;</span></span><span class="line" id="samples-site-css-L32" data-line="32"><span class="ln">32</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L33" data-line="33"><span class="ln">33</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L34" data-line="34"><span class="ln">34</span><span class="lc"><span class="tok-c">/* #endregion */</span></span></span><span class="line" id="samples-site-css-L35" data-line="35"><span class="ln">35</span><span class="lc"></span></span><span class="line" id="samples-site-css-L36" data-line="36"><span class="ln">36</span><span class="lc"><span class="tok-a">@keyframes</span> fade {</span></span><span class="line" id="samples-site-css-L37" data-line="37"><span class="ln">37</span><span class="lc">  from {</span></span><span class="line" id="samples-site-css-L38" data-line="38"><span class="ln">38</span><span class="lc">    <span class="tok-k">opacity</span>: <span class="tok-n">0</span>;</span></span><span class="line" id="samples-site-css-L39" data-line="39"><span class="ln">39</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L40" data-line="40"><span class="ln">40</span><span class="lc">  to {</span></span><span class="line" id="samples-site-css-L41" data-line="41"><span class="ln">41</span><span class="lc">    <span class="tok-k">opacity</span>: <span class="tok-n">1</span>;</span></span><span class="line" id="samples-site-css-L42" data-line="42"><span class="ln">42</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L43" data-line="43"><span class="ln">43</span><span class="lc">}</span></span></pre></div>
 <div class="file" data-file="samples/api.json" aria-label="docs/samples/api.json"><pre class="code"><span class="line" id="samples-api-json-L1" data-line="1"><span class="ln">1</span><span class="lc">{</span></span><span class="line" id="samples-api-json-L2" data-line="2"><span class="ln">2</span><span class="lc">  <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,</span></span><span class="line" id="samples-api-json-L3" data-line="3"><span class="ln">3</span><span class="lc">  <span class="tok-s">&quot;version&quot;</span>: <span class="tok-s">&quot;1.0.0&quot;</span>,</span></span><span class="line" id="samples-api-json-L4" data-line="4"><span class="ln">4</span><span class="lc">  <span class="tok-s">&quot;server&quot;</span>: {</span></span><span class="line" id="samples-api-json-L5" data-line="5"><span class="ln">5</span><span class="lc">    <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>,</span></span><span class="line" id="samples-api-json-L6" data-line="6"><span class="ln">6</span><span class="lc">    <span class="tok-s">&quot;enabled&quot;</span>: <span class="tok-k">true</span>,</span></span><span class="line" id="samples-api-json-L7" data-line="7"><span class="ln">7</span><span class="lc">    <span class="tok-s">&quot;cors&quot;</span>: [<span class="tok-s">&quot;https://a.example&quot;</span>]</span></span><span class="line" id="samples-api-json-L8" data-line="8"><span class="ln">8</span><span class="lc">  },</span></span><span class="line" id="samples-api-json-L9" data-line="9"><span class="ln">9</span><span class="lc">  <span class="tok-s">&quot;keywords&quot;</span>: [<span class="tok-s">&quot;cart&quot;</span>, <span class="tok-s">&quot;orders&quot;</span>, <span class="tok-s">&quot;demo&quot;</span>]</span></span><span class="line" id="samples-api-json-L10" data-line="10"><span class="ln">10</span><span class="lc">}</span></span></pre></div>
 </div>
 </section>
@@ -818,32 +861,77 @@ port = <span class="tok-n">8080</span></code></pre>
 level = info</code></pre>
 </section>
 <section class="md-section" data-md-section="23">
-<h2 data-md-from="445" data-md-to="445">Line numbers, and several pieces at once</h2>
-<p data-md-from="447" data-md-to="453">A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them. <code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
-<p class="md-marker" data-marker="t-23-1"><a href="./samples/Inventory.java#L8-L14">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-23-1" data-md-from="457" data-md-to="465"><code class="language-java">
+<h2 data-md-from="445" data-md-to="445">CSS — a rule, an at-rule, and the nesting between</h2>
+<p data-md-from="447" data-md-to="452">A <code>.css</code> reference names a <strong>rule</strong>, in CSS's own vocabulary. A style rule is named by the rightmost simple selector of its selector list (<code>.card</code>), an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the body only&quot; works the same way, so <code>.card-</code> is a rule's declarations without its selector.</p>
+<p data-md-from="454" data-md-to="454">The design tokens, addressed by the pseudo-class that holds them:</p>
+<p class="md-marker" data-marker="t-23-1"><a href="./samples/site.css#:root">samples/site.css</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-1" data-md-from="458" data-md-to="463"><code class="language-css">:root {
+  --brand: #<span class="tok-n">1f6feb</span>;
+  --<span class="tok-k">radius</span>: <span class="tok-n">6px</span>;
+}</code></pre>
+<p data-md-from="465" data-md-to="466">A class, and a variant of that same class — the compact one is reached by a predicate read from the selector, because two rules may share a name:</p>
+<p class="md-marker" data-marker="t-23-2"><a href="./samples/site.css#.card[data-variant=compact]">samples/site.css</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-2" data-md-from="470" data-md-to="475"><code class="language-css">.card[data-variant=<span class="tok-s">&quot;compact&quot;</span>] {
+  <span class="tok-k">gap</span>: <span class="tok-n">2px</span>;
+  <span class="tok-k">padding</span>: <span class="tok-n">4px</span>;
+}</code></pre>
+<p data-md-from="477" data-md-to="478">The media query, whole, and then the one rule inside it — the nesting is the path:</p>
+<p class="md-marker" data-marker="t-23-3"><a href="./samples/site.css#@media">samples/site.css</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-3" data-md-from="482" data-md-to="488"><code class="language-css"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {
+  .card {
+    <span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;
+  }
+}</code></pre>
+<p class="md-marker" data-marker="t-23-4"><a href="./samples/site.css#@media/.card-">samples/site.css</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-4" data-md-from="492" data-md-to="494"><code class="language-css"><span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</code></pre>
+<p data-md-from="496" data-md-to="497">An at-rule with a name of its own — <code>@keyframes:pulse</code> names one animation, <code>@keyframes</code> alone would be an error here because the file has two:</p>
+<p class="md-marker" data-marker="t-23-5"><a href="./samples/site.css#@keyframes:pulse">samples/site.css</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-5" data-md-from="501" data-md-to="510"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
+  from {
+    <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;
+  }
+  to {
+    <span class="tok-k">opacity</span>: <span class="tok-n">1</span>;
+  }
+}</code></pre>
+<p data-md-from="512" data-md-to="513">A region directive still works in CSS, and a class name cannot be a region name, so the two never collide:</p>
+<p class="md-marker" data-marker="t-23-6"><a href="./samples/site.css#pulse">samples/site.css</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-6" data-md-from="517" data-md-to="526"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
+  from {
+    <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;
+  }
+  to {
+    <span class="tok-k">opacity</span>: <span class="tok-n">1</span>;
+  }
+}</code></pre>
+</section>
+<section class="md-section" data-md-section="24">
+<h2 data-md-from="528" data-md-to="528">Line numbers, and several pieces at once</h2>
+<p data-md-from="530" data-md-to="536">A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them. <code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
+<p class="md-marker" data-marker="t-24-1"><a href="./samples/Inventory.java#L8-L14">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-24-1" data-md-from="540" data-md-to="548"><code class="language-java">
     <span class="tok-c">// #region catalog</span>
     <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
     <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };
     <span class="tok-c">// #endregion</span>
 
     <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">List</span>&lt;<span class="tok-t">Item</span>&gt; items = <span class="tok-k">new</span> <span class="tok-t">ArrayList</span>&lt;&gt;();</code></pre>
-<p data-md-from="467" data-md-to="470">A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file:</p>
-<p class="md-marker" data-marker="t-23-2"><a href="./samples/Inventory.java#L7,++toString,L50">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-23-2" data-md-from="474" data-md-to="482"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
+<p data-md-from="550" data-md-to="553">A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file:</p>
+<p class="md-marker" data-marker="t-24-2"><a href="./samples/Inventory.java#L7,++toString,L50">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-24-2" data-md-from="557" data-md-to="565"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
     <span class="tok-c">/** Summarise the inventory. */</span>
     <span class="tok-a">@Override</span>
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }
 }</code></pre>
-<p data-md-from="484" data-md-to="486">The demo page's middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between.</p>
+<p data-md-from="567" data-md-to="569">The demo page's middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between.</p>
 </section>
-<section class="md-section" data-md-section="24">
-<h2 data-md-from="488" data-md-to="488">JSON — keys</h2>
-<p data-md-from="490" data-md-to="492">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by <code>/</code> — the same separator a code reference uses.</p>
-<p class="md-marker" data-marker="t-24-1"><a href="./samples/api.json#name,server/port">samples/api.json</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-24-1" data-md-from="496" data-md-to="503"><code class="language-json">{
+<section class="md-section" data-md-section="25">
+<h2 data-md-from="571" data-md-to="571">JSON — keys</h2>
+<p data-md-from="573" data-md-to="575">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by <code>/</code> — the same separator a code reference uses.</p>
+<p class="md-marker" data-marker="t-25-1"><a href="./samples/api.json#name,server/port">samples/api.json</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-25-1" data-md-from="579" data-md-to="586"><code class="language-json">{
   <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,
   <span class="tok-s">&quot;server&quot;</span>: {
     <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>

@@ -40,6 +40,7 @@ fourth links the sample the [demo page](../docs/index.html) shows it with.
 | `yaml` | `yaml` `yml` | `'…'` doubling and quoted `#`; the region rule reads key paths | [app.yaml](../docs/samples/app.yaml) |
 | `toml` | `toml` | `"""` / `'''`; the region rule reads tables and keys | [app.toml](../docs/samples/app.toml) |
 | `ini` | `ini` `cfg` `properties` | `;` and `#` comments; the region rule reads `section.key` | [app.ini](../docs/samples/app.ini) |
+| `css` | `css` | the **id selector** — the union mask reads a `#` as a line comment, so `#cart { … }` would vanish; the region rule reads a rule, not a member | [site.css](../docs/samples/site.css) |
 
 ## Config formats
 

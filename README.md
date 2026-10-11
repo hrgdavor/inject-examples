@@ -165,15 +165,15 @@ Rules:
 `#<reference>` means "the piece of this file called `<reference>`". What
 the reference may say — and what comes back — is decided by the file's
 **type**: each type has one rule, and the reference is handed to the rule that
-claims the file's extension. Five rules ship — JSON, YAML, TOML, INI and the
+claims the file's extension. Six rules ship — JSON, YAML, TOML, INI, CSS and the
 `code` fallback; the library takes more.
 
 A reference is a comma-separated list of **selectors**, and every rule reads it
 that way: the pieces are resolved and injected in the order they were written.
 One selector is the ordinary case of a list of one, and what it may say is the
 rule's business — a name or a line range for code, a key path for a config
-format. `#add,remove` injects two methods; `#add,L40-L44` injects a method and
-the lines beside it.
+format, a rule for CSS. `#add,remove` injects two methods; `#add,L40-L44`
+injects a method and the lines beside it.
 
 ### Code — the default rule
 
@@ -222,12 +222,12 @@ it. A wrapped *call* stays a call — `#map` resolves the method, never the
 The match is not a parser: it reads declaration-shaped lines and counts brackets
 over text whose comments and string literals are blanked, so a `}` inside a
 string cannot end a body. That blanking is done by a real tokenizer for the
-eighteen languages in [`src/js/scanner/syntaxes.js`](./src/js/scanner/syntaxes.js)
+nineteen languages in [`src/js/scanner/syntaxes.js`](./src/js/scanner/syntaxes.js)
 — JavaScript/TypeScript, Java, Zig, Go, Rust, Python, C#, Kotlin, PHP, Ruby, SQL,
-Shell, VB, Haskell, YAML, TOML and INI — exact to each language's own syntax:
-template literals, text blocks, nested block comments, raw and verbatim strings,
-doubling escapes, `<<EOF` heredocs, and a Rust `'a` lifetime that is not a char
-literal. [doc/languages.md](./doc/languages.md) lists every entry, the construct
+Shell, VB, Haskell, YAML, TOML, INI and CSS — exact to each language's own
+syntax: template literals, text blocks, nested block comments, raw and verbatim
+strings, doubling escapes, `<<EOF` heredocs, a Rust `'a` lifetime that is not a
+char literal, and a CSS `#id` that is not a comment. [doc/languages.md](./doc/languages.md) lists every entry, the construct
 it exists for and its extensions. For every other type a best-effort union of the
 comment and string spellings stands in, so an unknown type still resolves, just
 less precisely. The
@@ -393,6 +393,43 @@ A YAML selection keeps its blank and nested lines; a TOML value that spans lines
 nothing back — both the `key = value` and the `key: value` spellings are read.
 A missing key, a missing table or section, and a path the format cannot express
 are all errors, reported by `--lenient` like any other broken include.
+
+### CSS — a rule, not a declaration
+
+A `.css` reference names a **rule**: a style rule by the rightmost simple
+selector of its selector list (`.card`, `li.item`), or an at-rule by its
+keyword (`@media`, `@keyframes`). `/` descends the nesting CSS already has — a
+rule inside a media query is a child of it — so no combinator or descendant
+syntax is needed:
+
+| Reference | Injected text |
+| --- | --- |
+| `#.card` | the rule: selector through closing brace |
+| `#.card-` | its declarations alone, without the selector |
+| `#@media` | the whole media block |
+| `#@keyframes:pulse` | the at-rule whose parameter is `pulse` (`#@media:screen` reads the same way) |
+| `#@media/.card` | the `.card` rule inside the media block |
+
+Two rules may share a name — a base rule and a variant — so a bare name that
+matches more than one block is an error, exactly as two `#region`s of one name
+are. A **predicate** written after the name says which one:
+`#.card[data-variant=compact]` reads that attribute from the selector,
+`#.card[sel=:hover]` its selector text, and `[--brand]` the custom property a
+block declares. A `#region` directive still works in a stylesheet, and a class
+name cannot be a region name, so the two never collide.
+
+`#.card[data-variant=compact]` in a real stylesheet:
+
+````markdown
+[docs/samples/site.css](./docs/samples/site.css#.card[data-variant=compact])
+
+```css
+.card[data-variant="compact"] {
+  gap: 2px;
+  padding: 4px;
+}
+```
+````
 
 ### Adding a rule for another type
 
@@ -665,13 +702,15 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 | `planMarker(marker, read, rule?)` | That text plus the section warning and the `ranges` each selector came from |
 | `extractRegion(text, name)` / `regionDirective(line)` | Region directive parsing |
 | `ruleFor(path, rules?)` | The region rule that resolves a reference in `path` |
-| `REGION_RULES` / `CODE_RULE` / `JSON_RULE` / `YAML_RULE` / `TOML_RULE` / `INI_RULE` | The built-in rules; `code` is the fallback for every unclaimed type |
+| `REGION_RULES` / `CODE_RULE` / `JSON_RULE` / `YAML_RULE` / `TOML_RULE` / `INI_RULE` / `CSS_RULE` | The built-in rules; `code` is the fallback for every unclaimed type |
 | `extractCodeRegion(text, region)` | The default rule: a region directive, a named declaration, or a line range |
 | `extractDeclaration(text, name, scope?)` | The text of one declaration, or `null`; `scope` is the `-`/`+`/`++` |
 | `extractJsonRegion(text, region)` | The `.json` rule: dotted key paths, rendered as valid JSON |
 | `extractYamlRegion(text, region)` | The `.yaml` rule: a dotted key path, rendered with its ancestors |
 | `extractTomlRegion(text, region)` | The `.toml` rule: a key with its `[table]`, or a whole table |
 | `extractIniRegion(text, region)` | The `.ini` rule: `section.key`, a whole section, or a leading key |
+| `extractCssRuleRegion(text, region)` | The `.css` rule: a rule by its rightmost simple selector, an at-rule, or a predicate |
+| `planCssMarker(text, region)` | The lines a CSS selection came from, one range per selector |
 | `codeReference(reference)` | Split a `-`/`+`/`++` modifier from the name it applies to |
 | `normalize(text)` | LF endings, one trailing newline removed |
 | `fileLanguage(path)` | The fence language a file's extension implies, or `null` |

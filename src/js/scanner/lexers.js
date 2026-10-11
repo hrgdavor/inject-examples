@@ -38,6 +38,7 @@ export const EXTENSIONS = {
   yaml: 'yaml', yml: 'yaml',
   toml: 'toml',
   ini: 'ini', cfg: 'ini', properties: 'ini',
+  css: 'css',
 };
 
 /**
