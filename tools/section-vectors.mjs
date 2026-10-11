@@ -62,6 +62,7 @@ const VB_FORM = 'test/fixtures/Form.vb';
 const WRAPPED = 'test/fixtures/Wrapped.java';
 const WRAPPED_CLASS = 'test/fixtures/WrappedClass.java';
 const WRAPPED_KT = 'test/fixtures/Wrapped.kt';
+const WRAPPED_PY = 'test/fixtures/Wrapped.py';
 const ENUM = 'test/fixtures/Enum.java';
 
 const cases = [
@@ -142,6 +143,11 @@ const cases = [
     // line: the `=` is on the line the `)` closes on, not on the name's line.
     { name: 'wrapped-expression-body', input: WRAPPED_KT, reference: 'label' },
     { name: 'wrapped-expression-body-inner', input: WRAPPED_KT, reference: 'label-' },
+    // A language with no braces at all: the body is indentation, so following a
+    // wrapped header must not swallow its own continuation lines into the body.
+    { name: 'wrapped-indented-body', input: WRAPPED_PY, reference: 'Wrapped/describe' },
+    { name: 'wrapped-indented-body-inner', input: WRAPPED_PY, reference: 'Wrapped/describe-' },
+    { name: 'wrapped-indented-existing', input: WRAPPED_PY, reference: 'Wrapped/render-' },
     // A Java enum's constants stand between the declaration and its `{`, one per
     // line, so the header has to be followed past several lines to reach the body.
     { name: 'enum-declaration', input: ENUM, reference: 'OrgFeature' },

@@ -7,3 +7,9 @@ class Wrapped:
 
     def label(self) -> str:
         return self.name
+
+    def describe(
+            self,
+            prefix: str):
+        first = prefix + self.name
+        return first

@@ -102,6 +102,8 @@ pub fn is_not_a_type(word: &str) -> bool {
 pub struct TypeDeclaration {
     pub keyword: String,
     pub name: String,
+    /// The offset of the declared name itself, which is where the header's bracket scan starts.
+    pub name_at: usize,
     pub header_from: usize,
 }
 
@@ -280,6 +282,7 @@ pub fn declaration_keyword(line: &str) -> Option<TypeDeclaration> {
             return Some(TypeDeclaration {
                 keyword: keyword.to_string(),
                 name: name.to_string(),
+                name_at: line.len() - body.len(),
                 header_from: line.len() - body.len() + length,
             });
         }
@@ -287,8 +290,9 @@ pub fn declaration_keyword(line: &str) -> Option<TypeDeclaration> {
     None
 }
 
-/// `(^|[^\w$.])name\s*\(` with the prefix gate, and the offset just past its matching `)`.
-pub fn call_shape(masked_line: &str, name: &str) -> Option<usize> {
+/// `(^|[^\w$.])name\s*\(` with the prefix gate: the offset of the name and the offset just past its
+/// matching `)`.
+pub fn call_shape(masked_line: &str, name: &str) -> Option<(usize, usize)> {
     let mut from = 0;
     while let Some(at) = masked_line[from..].find(name) {
         let start = from + at;
@@ -308,13 +312,14 @@ pub fn call_shape(masked_line: &str, name: &str) -> Option<usize> {
             continue;
         }
         let close = matching_paren(masked_line, open)?;
-        return Some(close + 1);
+        return Some((start, close + 1));
     }
     None
 }
 
-/// `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?name\b(?:\s*:\s*[^=\n]+)?\s*=\s*(?:async\s+)?(=>|function)`.
-pub fn assigned_shape(masked_line: &str, name: &str) -> Option<usize> {
+/// `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?name\b(?:\s*:\s*[^=\n]+)?\s*=\s*(?:async\s+)?(=>|function)`:
+/// the offset of the name and the offset the body is read from (the `=>`, or just past `function`).
+pub fn assigned_shape(masked_line: &str, name: &str) -> Option<(usize, usize)> {
     let mut from = 0;
     while let Some(at) = masked_line[from..].find(name) {
         let start = from + at;
@@ -338,11 +343,11 @@ pub fn assigned_shape(masked_line: &str, name: &str) -> Option<usize> {
             .map_or(after_equals, |rest| rest.trim_start());
         if let Some(rest) = after_async.strip_prefix("function") {
             let length = masked_line.len() - rest.len();
-            return Some(length);
+            return Some((start, length));
         }
         if let Some(arrow) = after_async.find("=>") {
             let length = masked_line.len() - (&after_async[arrow..]).len();
-            return Some(length);
+            return Some((start, length));
         }
     }
     None
@@ -557,6 +562,7 @@ mod tests {
         let found = declaration_keyword("public static class Cart {").unwrap();
         assert_eq!("class", found.keyword);
         assert_eq!("Cart", found.name);
+        assert_eq!(len("public static class "), found.name_at);
         assert_eq!(len("public static class Cart"), found.header_from);
 
         let record = declaration_keyword("public record Point(int x) {").unwrap();
@@ -571,7 +577,7 @@ mod tests {
     #[test]
     fn the_call_shape_needs_a_body_and_a_quiet_prefix() {
         assert_eq!(
-            Some(len("    public boolean add()")),
+            Some((len("    public boolean "), len("    public boolean add()"))),
             call_shape("    public boolean add() {", "add")
         );
         assert!(

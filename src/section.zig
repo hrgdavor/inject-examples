@@ -1231,12 +1231,18 @@ fn headerContinues(text: Str) bool {
 fn expressionBody(lines: []const Str, starts: []const usize, decl_line: usize, at: usize) Span {
     const first = lineOf(starts, at);
     const indent = indentWidth(lines[decl_line]);
-    var last = first;
-    var index = first + 1;
-    while (index < lines.len) : (index += 1) {
-        if (js.trim(lines[index]).len == 0) break;
-        if (indentWidth(lines[index]) <= indent) break;
-        last = index;
+    // A body that starts on the declaration's own line is the rest of that line
+    // (`const inc = (n) => n + 1;`); the lines below belong to it only when it
+    // starts on a later one and they are indented under the declaration — a `do`
+    // block under a wrapped `main = do`.
+    var last = if (first > decl_line) first else decl_line;
+    if (first > decl_line) {
+        var index = first + 1;
+        while (index < lines.len) : (index += 1) {
+            if (js.trim(lines[index]).len == 0) break;
+            if (indentWidth(lines[index]) <= indent) break;
+            last = index;
+        }
     }
     return .{ .expression = at, .expression_end_line = last };
 }
@@ -1322,8 +1328,18 @@ fn bodySpan(
 
     // An `=` opens an expression body, and is checked before the indentation
     // rule: an indented line after a `=` is part of the *expression*, not a body.
+    // `expressionAt` wants a word character before the `=`, which is how a Kotlin
+    // `): String = expr` and a `fun f(): T = expr` both spell one; an `=` that only
+    // a space precedes is still the body's, because the caller has already decided
+    // this is a declaration. The remainder may begin *at* the `=` (the header ended
+    // on it), so the expression starts one past whichever `=` was found.
     if (expressionAt(rest)) |equals| {
-        return expressionBody(lines, starts, decl_line, from + equals + 1);
+        return expressionBody(lines, starts, decl_line, from + equals + 2);
+    }
+    if (js.indexOfUnit(rest, '=')) |bare| {
+        if (!(bare + 1 < rest.len and rest[bare + 1] == '=')) {
+            return expressionBody(lines, starts, decl_line, from + bare + 2);
+        }
     }
 
     // No terminator on the header's own lines. The body is then the next block:
@@ -2200,7 +2216,12 @@ fn applySpan(block: *Block, span: ?Span) void {
     }
     if (found.expression) |expression| {
         block.expression = expression;
-        block.end_line = block.decl_line;
+        if (found.expression_end_line) |expression_end| {
+            block.expression_end_line = expression_end;
+        }
+        // An expression body is rendered from its own offset, so no `endLine` may
+        // be left behind for `renderDeclaration` to prefer over it.
+        block.end_line = null;
         return;
     }
     block.open = found.open;
@@ -3078,13 +3099,15 @@ fn renderBlock(
     const end_line = block.end_line orelse block.close_line orelse block.decl_line;
 
     if (!is_anchor and (block.kind == .class or block.kind == .method)) {
+        // An expression body carries the line its expression ends on; every other
+        // shape carries the line its body closes on.
         return renderDeclaration(
             alloc,
             facts.lines,
             facts.source,
             facts.starts,
             block,
-            block.end_line orelse block.close_line,
+            block.expression_end_line orelse block.end_line orelse block.close_line,
             scope,
             facts.annotations,
         );
@@ -3197,8 +3220,9 @@ fn extractDeclarationFromScan(
     }
     const block = chosen[0];
     // `endLine !== undefined ? endLine : closeLine` — a body-less member leaves
-    // both unset, and `renderDeclaration` reads that as "no last line".
-    const end_line = block.end_line orelse block.close_line;
+    // both unset, and `renderDeclaration` reads that as "no last line", while an
+    // expression body prefers the line its expression ends on.
+    const end_line = block.expression_end_line orelse block.end_line orelse block.close_line;
     const rendered = try renderDeclaration(
         alloc,
         scan.facts.lines,

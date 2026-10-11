@@ -1304,7 +1304,9 @@ fn render_declaration(block: &BlockRef, scope: Scope, lex: &Lex, lexer: &dyn Lex
         end_line,
         single_line,
         indented,
+        body_from,
         expression,
+        expression_end_line,
         open_line,
         open,
         close,
@@ -1316,16 +1318,18 @@ fn render_declaration(block: &BlockRef, scope: Scope, lex: &Lex, lexer: &dyn Lex
             block_ref.end_line,
             block_ref.single_line,
             block_ref.indented,
+            block_ref.body_from,
             block_ref.expression,
+            block_ref.expression_end_line,
             block_ref.open_line,
             block_ref.open,
             block_ref.close,
         )
     };
-    // The JavaScript's `range.endLine !== undefined ? range.endLine : range.closeLine`: a block
-    // with neither is a declaration with nothing to inject (a body-less member), and its slice is
-    // **empty** rather than the declaration's own line.
-    let end_line = end_line.or(close_line);
+    // An expression body carries the line its expression ends on; every other shape carries the line
+    // its body closes on. A block with none of the three is a declaration with nothing to inject (a
+    // body-less member), and its slice is **empty** rather than the declaration's own line.
+    let end_line = expression_end_line.or(end_line).or(close_line);
     let to = end_line.map_or(1, |line| line + 1);
 
     if scope == Scope::Body {
@@ -1333,17 +1337,23 @@ fn render_declaration(block: &BlockRef, scope: Scope, lex: &Lex, lexer: &dyn Lex
             return span(&slice(&lex.source_lines, decl_line, to), decl_line, to);
         }
         if indented {
-            return span(
-                &slice(&lex.source_lines, decl_line + 1, to),
-                decl_line + 1,
-                to,
-            );
+            // A wrapped header's lines belong to the declaration, not the body, so the body starts
+            // after the last of them.
+            let first = body_from.unwrap_or(decl_line + 1);
+            return span(&slice(&lex.source_lines, first, to), first, to);
         }
         if let Some(expression) = expression {
+            let at = line_of(&lex.starts, expression);
+            // The expression may be a block, whose lines the declaration's own indentation governs
+            // (`main = do` then an indented body).
+            let last = expression_end_line.unwrap_or(at);
+            if last > at {
+                return span(&slice(&lex.source_lines, at, last + 1), at, last);
+            }
             let units = crate::mask::units(&lex.source);
             let line_end = end_of_line(&units, expression);
             let text = slice_units(&lex.source, expression, line_end);
-            return single(text.trim(), line_of(&lex.starts, expression));
+            return single(text.trim(), at);
         }
         if open_line == end_line {
             let Some(open_line) = open_line else {

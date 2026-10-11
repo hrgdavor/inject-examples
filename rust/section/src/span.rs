@@ -7,17 +7,26 @@
 //!
 //! A member with no body to inject — an interface method, an `abstract` one — yields `None` rather than
 //! half a method.
+//!
+//! This is a port of `headerEnd`/`bodySpan`/`expressionBody`/`braceBody` in `lib/section.mjs`, and it
+//! mirrors them rather than inventing: the header is followed across lines from the declaration's own
+//! name, and the first `{`, `;` or `=>` met with every bracket closed is what ended it.
 
-use crate::mask::{index_of, line_of, matching_bracket};
+use crate::mask::{end_of_line, index_of, line_of, matching_bracket};
 
-/// A declaration's header: the mask from the declaration's first character through the `{` or `;`
-/// that ends it, **including** that terminator. `last` is the line the window ends on, which is the
-/// line a wrapped parameter list, generic list or `throws` clause pushes the terminator down to.
+/// How far a declaration's header may run past the line it starts on. A header that is not closed
+/// within this many lines is not followed, rather than scanned to the end of the file.
+pub const HEADER_LINES: usize = 200;
+
+/// A declaration's header: the mask from the declaration's line through the `{` or `;` that ends the
+/// header, **including** that terminator. `last` is the line the window ends on, which is the line a
+/// wrapped parameter list, generic list or `throws` clause pushes the terminator down to.
 ///
 /// The window is never clamped to the start of the declaration's own line: an `impl Cart {` header
 /// ends at the `{`, after the offset the declaration starts at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Header {
+    /// The start of the declaration's own line.
     pub start: usize,
     pub end: usize,
     pub last: usize,
@@ -33,13 +42,21 @@ pub struct Span {
     pub close_line: Option<usize>,
     /// The last line of an indented body, which has no braces.
     pub body_end_line: Option<usize>,
-    /// The offset of an arrow expression's body (`=> expr`).
+    /// The line an indented body starts on, when it is not the line after the declaration (a wrapped
+    /// header's own lines are the declaration's, not the body's).
+    pub body_from: Option<usize>,
+    /// The offset an arrow or `=` expression body starts at.
     pub expression: Option<usize>,
+    /// The last line an expression body runs to — the line the expression starts on, or the last
+    /// indented line of the `do`/`where` block under it.
+    pub expression_end_line: Option<usize>,
     pub indented: bool,
 }
 
 impl Span {
-    /// The last line the declaration covers, for a caller walking the tree.
+    /// The last line the declaration covers, for a caller walking the tree. The JavaScript's
+    /// `endLineOf` reads `closeLine` then `bodyEndLine`; an expression span contributes neither, so
+    /// the declaration's own line is what a walker gets.
     pub fn end_line(&self, decl_line: usize) -> usize {
         self.close_line.or(self.body_end_line).unwrap_or(decl_line)
     }
@@ -52,80 +69,284 @@ enum Terminator {
     Arrow,
 }
 
-/// A body span, or `None` when the member has no body to inject (an interface or `abstract`
-/// method).
+/// Where a declaration's header ends, starting at `from` on `line`.
 ///
-/// `mask_lines` is the masked text split by line, which is what the next-line brace and the
-/// indentation are read from; `starts` are the line-start offsets. `header` is the declaration's
-/// header as a slice of the mask — one line, or the several a wrapped parameter list spans — ending
-/// at the `{` or `;` that ends it; the first `{`, `;` or `=>` inside it is the body's terminator.
+/// Wrapping a parameter list is formatting, not a different declaration, so a header may span lines —
+/// but only while it could still be a header. It ends at the first `{` or `;` met with every bracket
+/// closed, and stops at the blank line or the line that cannot continue it. Counting every bracket —
+/// `(`, `[`, `{`, `<` — is what makes a wrapped parameter list, a wrapped generic list and a wrapped
+/// `throws` one rule.
+pub fn header_end(mask_lines: &[Vec<u16>], starts: &[usize], line: usize, from: usize) -> Header {
+    let stop = mask_lines
+        .len()
+        .saturating_sub(1)
+        .min(line + HEADER_LINES - 1);
+    // Everything before where the header starts is already the declaration's name; its brackets are
+    // not the header's, so the count begins after them.
+    let mut depth = 0i32;
+    let mut start = from;
+    let mut i = line;
+    while i <= stop {
+        let text = &mask_lines[i];
+        if i > line && trim_units(text).is_empty() {
+            break;
+        }
+        let line_start = starts.get(i).copied().unwrap_or(start);
+        if depth == 0 {
+            depth = bracket_depth(text, 0, start.saturating_sub(line_start));
+        }
+        let mut column = start.saturating_sub(line_start);
+        while column < text.len() {
+            let unit = text[column];
+            // A `{` or `;` with every bracket closed ends the header, and is part of it: the body
+            // starts after it.
+            if depth == 0 && (unit == b'{' as u16 || unit == b';' as u16) {
+                return Header {
+                    start: starts.get(line).copied().unwrap_or(0),
+                    end: line_start + column + 1,
+                    last: i,
+                };
+            }
+            let previous = if column > 0 { text[column - 1] } else { 0 };
+            if unit == b'(' as u16
+                || unit == b'[' as u16
+                || unit == b'{' as u16
+                || unit == b'<' as u16
+            {
+                depth += 1;
+            } else if unit == b')' as u16 || unit == b']' as u16 || unit == b'}' as u16 {
+                depth -= 1;
+            } else if unit == b'>' as u16 {
+                // An arrow's `>` is not a closing angle bracket: `=>` and `->` are punctuation, and
+                // counting one as a bracket ends a header that was still open. The JavaScript reads
+                // the character before it, which is `undefined` in the first column.
+                if column == 0 || (previous != b'=' as u16 && previous != b'-' as u16) {
+                    depth -= 1;
+                }
+            }
+            if depth < 0 {
+                return Header {
+                    start: starts.get(line).copied().unwrap_or(0),
+                    end: line_start + column + 1,
+                    last: i,
+                };
+            }
+            column += 1;
+        }
+        depth = depth.max(0);
+        start = line_start + text.len();
+        // A header continues while a bracket is open, while the line ends on a separator, and onto a
+        // `{` alone on the next line — the Allman brace, which no other rule reaches.
+        let continues = depth > 0
+            || line_ends_on_separator(text)
+            || next_non_blank_units(mask_lines, i + 1)
+                .is_some_and(|next| reads_as_alone_brace(&mask_lines[next]));
+        if !continues {
+            return Header {
+                start: starts.get(line).copied().unwrap_or(0),
+                end: start,
+                last: i,
+            };
+        }
+        i += 1;
+    }
+    let i = i.min(mask_lines.len().saturating_sub(1));
+    let line_start = starts.get(i).copied().unwrap_or(0);
+    Header {
+        start: starts.get(line).copied().unwrap_or(0),
+        end: line_start + mask_lines.get(i).map_or(0, Vec::len),
+        last: i,
+    }
+}
+
+/// How much `text` opens across every bracket a header can hold, from `from` to `to`.
+fn bracket_depth(text: &[u16], from: usize, to: usize) -> i32 {
+    let mut depth = 0i32;
+    for unit in text.iter().take(to.min(text.len())).skip(from) {
+        if *unit == b'(' as u16
+            || *unit == b'[' as u16
+            || *unit == b'{' as u16
+            || *unit == b'<' as u16
+        {
+            depth += 1;
+        } else if *unit == b')' as u16
+            || *unit == b']' as u16
+            || *unit == b'}' as u16
+            || *unit == b'>' as u16
+        {
+            depth -= 1;
+        }
+    }
+    depth
+}
+
+/// Whether a line ends on `(`, `,` or `;` — the JavaScript's `/[(,;]\s*$/`.
+fn line_ends_on_separator(text: &[u16]) -> bool {
+    let mut at = text.len();
+    while at > 0 && is_blank_unit(text[at - 1]) {
+        at -= 1;
+    }
+    at > 0
+        && matches!(
+            text[at - 1],
+            unit if unit == b'(' as u16 || unit == b',' as u16 || unit == b';' as u16
+        )
+}
+
+/// Whether a line is a `{` alone — the JavaScript's `/^\s*\{\s*$/`, the Allman brace.
+fn reads_as_alone_brace(text: &[u16]) -> bool {
+    let trimmed = trim_units(text);
+    trimmed.len() == 1 && trimmed[0] == b'{' as u16
+}
+
+/// A body span, or `None` when the member has no body to inject (an interface or `abstract` method).
+///
+/// `from` is where the declaration's header starts in the mask — after its name, for the matchers that
+/// stop there — and the header is followed to its `{` or `;` wherever that is, starting the bracket
+/// count at `name_at`. `shape_at_body` says the caller is a language shape whose own offset is the
+/// `=`, so the token is the body rather than an assignment.
 pub fn body_span(
     mask: &[u16],
     mask_lines: &[Vec<u16>],
     starts: &[usize],
     decl_line: usize,
-    header: Header,
+    from: usize,
+    name_at: usize,
+    shape_at_body: bool,
 ) -> Option<Span> {
-    if decl_line >= starts.len() {
-        return None;
+    // A shape whose own `headerFrom` is the `=` itself (a Haskell binding, a Rust `const`) states its
+    // expression body directly; the expression is what follows.
+    if shape_at_body && mask.get(from) == Some(&(b'=' as u16)) {
+        return Some(expression_body(mask_lines, starts, decl_line, from + 1));
     }
-    let rest = slice_units(mask, header.start, header.end);
 
-    // The earliest terminator wins: a body ends at whichever of `{`, `;` or `=>` comes first.
-    let mut first: Option<(usize, Terminator)> = None;
-    for (at, kind) in [
-        (index_of(rest, &[b'{' as u16], 0), Terminator::Brace),
-        (index_of(rest, &[b';' as u16], 0), Terminator::Statement),
-        (
-            index_of(rest, &[b'=' as u16, b'>' as u16], 0),
-            Terminator::Arrow,
-        ),
-    ] {
-        if let Some(at) = at {
-            if first.is_none_or(|(best, _)| at < best) {
-                first = Some((at, kind));
+    let header = header_end(mask_lines, starts, decl_line, name_at);
+    let rest = slice_units(mask, from, header.end);
+
+    // The arrow that opens the body, read first: for `(n) => n + 1;` the `=>` is what declares the
+    // member's body, and the `;` after it closes that body rather than declaring a body-less member.
+    // A caller's `from` may also sit on the `=` or the `>` of the arrow itself.
+    let arrow = index_of(rest, &units("=>"), 0);
+    let arrow_at = match arrow {
+        Some(at) => Some(from + at),
+        None => {
+            if mask.get(from) == Some(&(b'=' as u16)) || mask.get(from) == Some(&(b'>' as u16)) {
+                Some(from)
+            } else {
+                None
+            }
+        }
+    };
+    let arrow_here = arrow_at.map(|at| at.saturating_sub(from));
+
+    // The header's own scan ended on the `{` that opens the body (a shape like `impl Cart {`, or any
+    // caller whose `from` sits just after it), so the body is cut from that column and never from a
+    // later brace in the body.
+    if arrow_here.is_none() && from > 0 && mask.get(from - 1) == Some(&(b'{' as u16)) {
+        return brace_body(mask, starts, from - 1);
+    }
+
+    if let Some(arrow_here) = arrow_here {
+        let at = from + arrow_here + 2;
+        let brace = index_of(mask, &[b'{' as u16], at);
+        let line_end = end_of_line(mask, at);
+        return match brace {
+            Some(brace) if brace <= line_end => brace_body(mask, starts, brace),
+            _ => Some(expression_body(mask_lines, starts, decl_line, at)),
+        };
+    }
+
+    let terminator = terminator_in(rest);
+
+    // A `;` with every bracket closed is a member with no body to inject.
+    if let Some((at, kind)) = terminator {
+        if kind == Terminator::Statement {
+            return None;
+        }
+        // `from` may already be the terminator's own column (a shape whose offset is the `{`) or a
+        // character or two before it.
+        let brace = index_of(mask, &[b'{' as u16], from);
+        let at = brace.map_or(from + at, |brace| brace.max(from + at));
+        return brace_body(mask, starts, at);
+    }
+
+    // The header itself ended on the `{` that opens the body (a shape like `impl Cart {`), so the
+    // body is cut from that column.
+    if header.end > 0 {
+        if let Some(opened_at) = last_index_of(mask, b'{' as u16, header.end - 1) {
+            if opened_at >= from {
+                return brace_body(mask, starts, opened_at);
             }
         }
     }
 
-    // The earliest terminator wins, and when there is none the body is the next block: a `{` on the
-    // next line, or an indented run.
-    if let Some((at, kind)) = first {
-        match kind {
-            Terminator::Statement => return None,
-            Terminator::Arrow => {
-                // The `=>` opens a function; its body is a brace expression when there is one, and
-                // otherwise an expression that runs to the end of its line.
-                let after_arrow = at + 2;
-                return match index_of(&rest[after_arrow..], &[b'{' as u16], 0) {
-                    None => Some(Span {
-                        expression: Some(header.start + after_arrow),
-                        ..Span::default()
-                    }),
-                    Some(brace) => brace_body(mask, starts, header.start + after_arrow + brace),
-                };
-            }
-            Terminator::Brace => return brace_body(mask, starts, header.start + at),
+    // An `=` opens an expression body, and is checked before the indentation rule: an indented line
+    // after a `=` is part of the *expression*, not a body. `expression_at` wants a word character
+    // before the `=`, which is how a Kotlin `): String = expr` spells one; an `=` that only a space
+    // precedes is still the body's, because the caller has already decided this is a declaration. The
+    // remainder may begin *at* the `=` (the header ended on it), so the expression starts one past
+    // whichever `=` was found — the JavaScript's `+ 2`, which also skips the space it assumes follows.
+    if let Some(equals) = expression_at(rest) {
+        return Some(expression_body(
+            mask_lines,
+            starts,
+            decl_line,
+            from + equals + 2,
+        ));
+    }
+    if let Some(bare) = index_of(rest, &[b'=' as u16], 0) {
+        if rest.get(bare + 1) != Some(&(b'=' as u16)) {
+            return Some(expression_body(
+                mask_lines,
+                starts,
+                decl_line,
+                from + bare + 2,
+            ));
         }
     }
 
-    // No terminator at all: the body may still open on the next line, or be an indented run. A
-    // wrapped header moves the `{` or the indented block down with it — the header's **last** line
-    // is what the next line is read from, not the declaration's.
+    // No terminator on the header's own lines. The body is then the next block: a `{` on a later line
+    // (a wrapped `) throws X` line, an Allman brace) or the indented block the declaration's own
+    // indentation governs.
     let next = next_non_blank_units(mask_lines, header.last + 1)?;
-    if let Some(brace) = index_of(&mask_lines[next], &[b'{' as u16], 0) {
-        if mask_lines[next][..brace]
-            .iter()
-            .all(|unit| is_blank_unit(*unit))
-        {
-            return brace_body(mask, starts, starts[next] + brace);
+    let indent = mask_lines
+        .get(decl_line)
+        .map_or(0, |line| indent_width_units(line));
+
+    // The next line, if it opens the body itself.
+    let first = &mask_lines[next];
+    if trim_units(first).starts_with(&[b'{' as u16]) {
+        let brace = index_of(first, &[b'{' as u16], 0).unwrap_or(0);
+        return brace_body(
+            mask,
+            starts,
+            starts.get(next).copied().unwrap_or(0) + brace,
+        );
+    }
+
+    // A line that still belongs to the declaration — a `throws` clause, a return type — puts the `{`
+    // after it. A wrapped header's body starts after the last of its lines, so the search begins
+    // there.
+    let search_from = next.max(header.last);
+    let after = slice_units(
+        mask,
+        from,
+        starts.get(search_from).copied().unwrap_or(0)
+            + mask_lines.get(search_from).map_or(0, Vec::len),
+    );
+    if let Some((at, kind)) = terminator_in(after) {
+        if kind == Terminator::Statement {
+            return None;
+        }
+        if kind == Terminator::Brace {
+            return brace_body(mask, starts, from + at);
         }
     }
-    let indent = indent_width_units(&mask_lines[decl_line]);
-    if indent_width_units(&mask_lines[next]) > indent {
+
+    if indent_width_units(first) > indent {
         let mut last = next;
         for i in next + 1..mask_lines.len() {
-            if mask_lines[i].iter().all(|unit| is_blank_unit(*unit)) {
+            if trim_units(&mask_lines[i]).is_empty() {
                 continue;
             }
             if indent_width_units(&mask_lines[i]) <= indent {
@@ -133,13 +354,97 @@ pub fn body_span(
             }
             last = i;
         }
+        // A wrapped header's own lines are not part of its body.
         return Some(Span {
             indented: true,
             body_end_line: Some(last),
+            body_from: Some(next.max(header.last + 1)),
             ..Span::default()
         });
     }
     None
+}
+
+/// The offset of `unit` at or before `from`, or `None`: the JavaScript's `lastIndexOf`.
+fn last_index_of(text: &[u16], unit: u16, from: usize) -> Option<usize> {
+    let end = from.min(text.len().saturating_sub(1));
+    (0..=end).rev().find(|at| text[*at] == unit)
+}
+
+/// The first of `{`, `;` and `=>` in a header, in the order they appear — the thing that ended it.
+fn terminator_in(rest: &[u16]) -> Option<(usize, Terminator)> {
+    let mut found: Option<(usize, Terminator)> = None;
+    for (at, kind) in [
+        (index_of(rest, &[b'{' as u16], 0), Terminator::Brace),
+        (index_of(rest, &[b';' as u16], 0), Terminator::Statement),
+        (index_of(rest, &units("=>"), 0), Terminator::Arrow),
+    ] {
+        if let Some(at) = at {
+            if found.is_none_or(|(best, _)| at < best) {
+                found = Some((at, kind));
+            }
+        }
+    }
+    found
+}
+
+/// The offset of the `=` that opens an expression body, or `None`.
+///
+/// A `=` that stands for `==`, `<=`, `>=`, `!=` or `+=` is not a body — and neither is a type
+/// annotation's (`name: Type =`), which is why the character right after the `=` must not be `=`, and
+/// the last character before it must close something: a type, a bracket or a `>`.
+fn expression_at(rest: &[u16]) -> Option<usize> {
+    for at in 0..rest.len() {
+        if rest[at] != b'=' as u16 {
+            continue;
+        }
+        if rest.get(at + 1) == Some(&(b'=' as u16)) {
+            continue;
+        }
+        if at > 0 && closes_something(rest[at - 1]) {
+            return Some(at);
+        }
+    }
+    None
+}
+
+/// Whether a unit can close a type, a bracket or a generic list: the JavaScript's `[\w$>)\]}]`.
+fn closes_something(unit: u16) -> bool {
+    (unit < 0x80 && (unit as u8).is_ascii_alphanumeric())
+        || unit == b'_' as u16
+        || unit == b'$' as u16
+        || unit == b'>' as u16
+        || unit == b')' as u16
+        || unit == b']' as u16
+        || unit == b'}' as u16
+}
+
+/// An expression body beginning at `at`: it runs to the end of its line, and on through the indented
+/// lines that follow it — a `do` block, a `where` clause — which the declaration's own indentation
+/// governs. A body that starts on the declaration's own line is the rest of that line; the lines below
+/// belong to it only when it starts on a later one and they are indented under the declaration.
+fn expression_body(mask_lines: &[Vec<u16>], starts: &[usize], decl_line: usize, at: usize) -> Span {
+    let first = line_of(starts, at);
+    let indent = mask_lines
+        .get(decl_line)
+        .map_or(0, |line| indent_width_units(line));
+    let mut last = if first > decl_line { first } else { decl_line };
+    if first > decl_line {
+        for i in first + 1..mask_lines.len() {
+            if trim_units(&mask_lines[i]).is_empty() {
+                break;
+            }
+            if indent_width_units(&mask_lines[i]) <= indent {
+                break;
+            }
+            last = i;
+        }
+    }
+    Span {
+        expression: Some(at),
+        expression_end_line: Some(last),
+        ..Span::default()
+    }
 }
 
 /// The JavaScript's `masked.slice(from, to)`, forgiving of an out-of-range end.
@@ -147,6 +452,11 @@ fn slice_units(text: &[u16], from: usize, to: usize) -> &[u16] {
     let start = from.min(text.len());
     let end = to.min(text.len()).max(start);
     &text[start..end]
+}
+
+/// The UTF-16 units of a string.
+fn units(text: &str) -> Vec<u16> {
+    text.encode_utf16().collect()
 }
 
 /// A brace-delimited body, when the braces actually pair.
@@ -177,7 +487,7 @@ pub fn keyword_body(lines: &[Vec<u16>], decl_line: usize, word: &str) -> Option<
         if indent_width_units(&lines[i]) > indent {
             continue;
         }
-        let word = crate::mask::units(word);
+        let word = units(word);
         if text == word.as_slice()
             || (text.starts_with(&word) && text.get(word.len()) == Some(&(b' ' as u16)))
         {
@@ -235,18 +545,17 @@ mod tests {
         (mask, lines, starts)
     }
 
+    /// The offset just past a declaration's own name, which is where its header is followed from.
+    fn after_name(source: &str, name: &str) -> usize {
+        source.find(name).unwrap() + name.len()
+    }
+
     #[test]
     fn a_brace_body_on_the_header_line() {
         let source = "void add() {\n    count++;\n}\n";
         let (mask, lines, starts) = scan(source);
-        // The window the scanner hands a line-local method: from just past its `)` to the end of
-        // the line that holds the body's `{`.
-        let header = Header {
-            start: source.find(')').unwrap() + 1,
-            end: crate::mask::end_of_line(&mask, 0),
-            last: 0,
-        };
-        let span = body_span(&mask, &lines, &starts, 0, header).unwrap();
+        let from = after_name(source, "add");
+        let span = body_span(&mask, &lines, &starts, 0, from, from, false).unwrap();
         assert_eq!(Some(0), span.open_line);
         assert_eq!(Some(2), span.close_line);
         assert_eq!(2, span.end_line(0));
@@ -257,13 +566,9 @@ mod tests {
     fn a_body_that_never_opens() {
         let source = "void add();\n";
         let (mask, lines, starts) = scan(source);
-        let header = Header {
-            start: source.find(')').unwrap() + 1,
-            end: crate::mask::end_of_line(&mask, 0),
-            last: 0,
-        };
+        let from = after_name(source, "add");
         assert!(
-            body_span(&mask, &lines, &starts, 0, header).is_none(),
+            body_span(&mask, &lines, &starts, 0, from, from, false).is_none(),
             "a `;` is no body"
         );
     }
@@ -273,29 +578,30 @@ mod tests {
         let source = "const add = (a, b) => a + b;\n";
         let (mask, lines, starts) = scan(source);
         let arrow = source.find("=>").unwrap();
-        let header = Header {
-            start: arrow,
-            end: crate::mask::end_of_line(&mask, 0),
-            last: 0,
-        };
-        let span = body_span(&mask, &lines, &starts, 0, header).unwrap();
+        let span = body_span(&mask, &lines, &starts, 0, arrow, arrow, false).unwrap();
         // Just past `=>`, the space included: the renderer trims, as the JavaScript's does.
         assert_eq!(Some(arrow + 2), span.expression);
         assert!(span.open.is_none());
     }
 
     #[test]
+    fn an_arrow_after_a_rust_return_type_still_reaches_its_brace() {
+        // The `>` of `->` is not a closing angle bracket: counting it ends the header at the arrow.
+        let source = "    fn remove(&mut self) -> Option<String> {\n        self.items.pop()\n    }\n";
+        let (mask, lines, starts) = scan(source);
+        let from = after_name(source, "remove");
+        let span = body_span(&mask, &lines, &starts, 0, from, from, false).unwrap();
+        assert_eq!(Some(0), span.open_line);
+        assert_eq!(Some(2), span.close_line);
+    }
+
+    #[test]
     fn a_wrapped_parameter_list_is_one_header() {
-        // The `)` and the `{` sit two lines below the name; the window is what carries them.
+        // The `)` and the `{` sit two lines below the name; only the header scan carries them.
         let source = "void add(\n        int a,\n        int b) {\n    count++;\n}\n";
         let (mask, lines, starts) = scan(source);
-        let brace = source.find('{').unwrap();
-        let header = Header {
-            start: 0,
-            end: brace + 1,
-            last: 2,
-        };
-        let span = body_span(&mask, &lines, &starts, 0, header).unwrap();
+        let from = after_name(source, "add");
+        let span = body_span(&mask, &lines, &starts, 0, from, from, false).unwrap();
         assert_eq!(Some(2), span.open_line, "the brace opens on line 3");
         assert_eq!(Some(4), span.close_line);
     }
@@ -304,12 +610,8 @@ mod tests {
     fn a_brace_on_the_next_line() {
         let source = "void add()\n{\n    count++;\n}\n";
         let (mask, lines, starts) = scan(source);
-        let header = Header {
-            start: source.find(')').unwrap() + 1,
-            end: crate::mask::end_of_line(&mask, 0),
-            last: 0,
-        };
-        let span = body_span(&mask, &lines, &starts, 0, header).unwrap();
+        let from = after_name(source, "add");
+        let span = body_span(&mask, &lines, &starts, 0, from, from, false).unwrap();
         assert_eq!(Some(1), span.open_line, "the brace opens on line 2");
         assert_eq!(Some(3), span.close_line);
     }
@@ -318,14 +620,39 @@ mod tests {
     fn an_indented_body() {
         let source = "def add(a)\n    a + 1\nend\n";
         let (mask, lines, starts) = scan(source);
-        let header = Header {
-            start: source.find(')').unwrap() + 1,
-            end: crate::mask::end_of_line(&mask, 0),
-            last: 0,
-        };
-        let span = body_span(&mask, &lines, &starts, 0, header).unwrap();
+        let from = after_name(source, "add");
+        let span = body_span(&mask, &lines, &starts, 0, from, from, false).unwrap();
         assert!(span.indented);
         assert_eq!(Some(1), span.body_end_line);
+        assert_eq!(Some(1), span.body_from, "the body starts after the header");
+    }
+
+    #[test]
+    fn a_wrapped_headers_own_lines_are_not_its_body() {
+        // The header's `{` is on line 2, so the body's first line is 1 (`max(next, last + 1)`), not
+        // the line after the declaration.
+        let source = "class Cart<\n    T> {\n    void add() {}\n}\n";
+        let (mask, lines, starts) = scan(source);
+        let from = after_name(source, "Cart");
+        let span = body_span(&mask, &lines, &starts, 0, from, from, false).unwrap();
+        assert!(span.indented, "the brace's own line does not end this header");
+        assert_eq!(Some(1), span.body_from);
+    }
+
+    #[test]
+    fn an_expression_body_a_wrapped_header_pushed_down() {
+        // The `=` only exists on the line the wrapped parameter list drove the `)` to.
+        let source = "    fun label(\n        upper: Boolean\n    ): String = if (upper) name.uppercase() else name\n";
+        let (mask, lines, starts) = scan(source);
+        let from = source.find("): String").unwrap() + 1;
+        let span = body_span(&mask, &lines, &starts, 0, from, 0, false).unwrap();
+        assert_eq!(
+            Some(source.find("if (upper)").unwrap()),
+            span.expression,
+            "the expression starts after the `=`"
+        );
+        assert_eq!(Some(2), span.expression_end_line);
+        assert_eq!(2, span.end_line(0));
     }
 
     #[test]

@@ -27,6 +27,11 @@ pub struct Block {
     pub close_line: Option<usize>,
     pub end_line: Option<usize>,
     pub expression: Option<usize>,
+    /// The last line an expression body runs to, when it is not the line it starts on.
+    pub expression_end_line: Option<usize>,
+    /// The first line an indented body covers: the declaration's own line + 1, or the line after a
+    /// wrapped header's own lines.
+    pub body_from: Option<usize>,
     pub line_end: Option<usize>,
     pub single_line: bool,
     pub shared_close: bool,
@@ -59,6 +64,8 @@ impl Block {
             close_line: None,
             end_line: None,
             expression: None,
+            expression_end_line: None,
+            body_from: None,
             line_end: None,
             single_line: false,
             shared_close: false,
@@ -127,13 +134,19 @@ pub fn apply_span(block: &BlockRef, span: &Span) {
     let mut block = block.borrow_mut();
     if span.indented {
         block.indented = true;
+        // The body starts at `bodyFrom` when the header wrapped (its own lines are the declaration's,
+        // not the body's) and runs to `bodyEndLine`.
+        block.body_from = Some(span.body_from.unwrap_or(block.decl_line + 1));
         block.close_line = span.body_end_line;
         block.end_line = span.body_end_line;
         return;
     }
     if let Some(expression) = span.expression {
         block.expression = Some(expression);
-        block.end_line = Some(block.decl_line);
+        block.expression_end_line = span.expression_end_line;
+        // An expression body is rendered from its own offset, so no `endLine` may be left behind for
+        // the renderer to prefer over it.
+        block.end_line = None;
         return;
     }
     block.open = span.open;

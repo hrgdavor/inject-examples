@@ -152,6 +152,7 @@ public final class BlockScanner {
         Integer closeLine;
         Integer bodyEndLine;
         Integer expression;
+        Integer expressionEndLine;
         boolean indented;
     }
 
@@ -170,6 +171,7 @@ public final class BlockScanner {
         Integer closeLine;
         Integer endLine;
         Integer expression;
+        Integer expressionEndLine;
         Integer lineEnd;
         Boolean singleLine;
         Boolean sharedClose;
@@ -305,6 +307,8 @@ public final class BlockScanner {
     private static final Pattern CONTINUES_HEADER = Pattern.compile("[(,;]\\s*$");
     /** A `{` alone on its line: the Allman brace, which only the header rule reaches. */
     private static final Pattern ALLMAN_BRACE = Pattern.compile("^\\s*\\{\\s*$");
+    /** What the character before an expression body's `=` must be: a type, a bracket or a `>`. */
+    private static final Pattern EXPRESSION_BEFORE = Pattern.compile("[\\w$>)\\]}]");
 
     private static final List<String> NOT_A_NAME = List.of(
             "if", "for", "while", "switch", "catch", "return", "new", "do", "else",
@@ -554,10 +558,10 @@ public final class BlockScanner {
      * interface or {@code abstract} method). Read over the mask, so a brace in a string or comment
      * cannot end a body.
      *
-     * <p>{@code from} is where the declaration's header starts in the mask — after its name, for the
-     * matchers that stop there — and {@code nameAt} is where the name itself starts, so that the
-     * header is followed to its {@code {} or {@code ;} wherever that is ({@link #headerEnd}, which is
-     * what lets a wrapped parameter list resolve). The terminators are only looked for inside that
+     * <p>{@code from} is where the body's search starts in the mask — after the declaration's name,
+     * for the matchers that stop there — and {@code nameAt} is where the name itself starts, so that
+     * the header is followed to its {@code {} or {@code ;} wherever that is ({@link #headerEnd}, which
+     * is what lets a wrapped parameter list resolve). The terminators are only looked for inside that
      * header.
      */
     private static Span bodySpan(Lex lex, int declLine, int from, int nameAt) {
@@ -590,17 +594,34 @@ public final class BlockScanner {
         }
 
         if (terminator != null && "arrow".equals(terminator.kind())) {
-            int afterArrow = terminator.at() + 2;
-            int braceInRest = rest.indexOf('{', afterArrow);
-            if (braceInRest == -1) {
-                Span expression = new Span();
-                expression.expression = from + afterArrow;
-                return expression;
+            // The arrow that opens the body is read first: for `(n) => n + 1;` the `=>` is what
+            // declares the member's body, and the `;` after it closes that body rather than declaring a
+            // body-less member. A brace only opens the body when it is on the arrow's own line.
+            int at = from + terminator.at() + 2;
+            int brace = mask.indexOf('{', at);
+            int lineEnd = Masker.endOfLine(mask, at);
+            if (brace == -1 || brace > lineEnd) {
+                return expressionBody(lines, starts, declLine, at);
             }
-            return braceBody(mask, starts, from + braceInRest);
+            return braceBody(mask, starts, brace);
         }
         if (terminator != null) {
             return braceBody(mask, starts, from + terminator.at());
+        }
+
+        // An `=` opens an expression body, and is checked before the indentation rule: an indented
+        // line after a `=` is part of the *expression*, not a body. `expressionAt` wants a word
+        // character before the `=`, which is how a Kotlin `): String = expr` and a `fun f(): T = expr`
+        // both spell one; an `=` that only a space precedes is still the body's, because the caller has
+        // already decided this is a declaration. The remainder may begin *at* the `=` (the header ended
+        // on it), so the expression starts one past whichever `=` was found.
+        int equals = expressionAt(rest);
+        if (equals != -1) {
+            return expressionBody(lines, starts, declLine, from + equals + 2);
+        }
+        int bare = rest.indexOf('=');
+        if (bare != -1 && (bare + 1 >= rest.length() || rest.charAt(bare + 1) != '=')) {
+            return expressionBody(lines, starts, declLine, from + bare + 2);
         }
 
         int next = Masker.nextNonBlank(lines, headerLast + 1);
@@ -674,6 +695,57 @@ public final class BlockScanner {
             firstKind = "arrow";
         }
         return firstKind == null ? null : new Terminator(firstAt, firstKind);
+    }
+
+    /**
+     * The offset of the {@code =} that introduces an expression body, or -1: a port of
+     * {@code expressionAt} ({@code lib/section.mjs:904}).
+     *
+     * <p>{@code fun label(x: Int): String = if (x > 0) "yes" else "no"} is a function whose body is an
+     * expression. A {@code =} that stands for {@code ==}, {@code <=}, {@code >=}, {@code !=} or
+     * {@code +=} is not a body — which is why the character right after the {@code =} must not be
+     * {@code =} — and neither is a type annotation's ({@code name: Type =}), which is why the last
+     * character before it must close something: a type, a bracket or a {@code >}.
+     */
+    private static int expressionAt(String rest) {
+        for (int at = rest.indexOf('='); at != -1; at = rest.indexOf('=', at + 1)) {
+            if (at + 1 < rest.length() && rest.charAt(at + 1) == '=') {
+                continue;
+            }
+            if (at > 0 && EXPRESSION_BEFORE.matcher(rest.substring(at - 1, at)).matches()) {
+                return at;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * An expression body beginning at {@code at}: it runs to the end of its line, and on through the
+     * indented lines that follow it — a {@code do} block, a {@code where} clause — which the
+     * declaration's own indentation governs. Port of {@code expressionBody} ({@code lib/section.mjs:1119}).
+     */
+    private static Span expressionBody(String[] lines, int[] starts, int declLine, int at) {
+        int first = Masker.lineOf(starts, at);
+        int indent = Masker.indentWidth(lines[declLine]);
+        // A body that starts on the declaration's own line is the rest of that line
+        // (`const inc = (n) => n + 1;`); the lines below belong to it only when it starts on a later
+        // one and they are indented under the declaration — a `do` block under a wrapped `main = do`.
+        int last = first > declLine ? first : declLine;
+        if (first > declLine) {
+            for (int i = first + 1; i < lines.length; i++) {
+                if (lines[i].trim().isEmpty()) {
+                    break;
+                }
+                if (Masker.indentWidth(lines[i]) <= indent) {
+                    break;
+                }
+                last = i;
+            }
+        }
+        Span span = new Span();
+        span.expression = at;
+        span.expressionEndLine = last;
+        return span;
     }
 
     private static Span braceBody(String mask, int[] starts, int open) {
@@ -827,7 +899,12 @@ public final class BlockScanner {
         }
         if (span.expression != null) {
             block.expression = span.expression;
-            block.endLine = block.declLine;
+            if (span.expressionEndLine != null) {
+                block.expressionEndLine = span.expressionEndLine;
+            }
+            // An expression body is rendered from its own offset, so no `endLine` may be left behind
+            // for the resolver to prefer over it.
+            block.endLine = null;
             return;
         }
         block.open = span.open;

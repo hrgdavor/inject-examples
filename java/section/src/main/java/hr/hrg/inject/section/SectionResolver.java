@@ -596,7 +596,10 @@ public final class SectionResolver {
         // `;` ends it, a SQL `CREATE TABLE` the lexer declares. The JavaScript leaves `endLine` and
         // `closeLine` null there and slices an empty range around the declaration line, which is what
         // the two branches below reproduce.
-        Integer endLine = range.endLine != null ? range.endLine : range.closeLine;
+        // An expression body carries the line its expression ends on; every other shape carries the
+        // line its body closes on.
+        Integer endLine = range.expressionEndLine != null ? range.expressionEndLine
+                : range.endLine != null ? range.endLine : range.closeLine;
         if (scope == Scope.BODY) {
             if (endLine == null) {
                 // `openLine === endLine` is `null === null` in the JavaScript, and the slice
@@ -611,9 +614,15 @@ public final class SectionResolver {
                         endLine + 1);
             }
             if (range.expression != null) {
+                int at = Masker.lineOf(starts, range.expression);
+                // The expression may be a block, whose lines the declaration's own indentation
+                // governs (`main = do` then an indented body).
+                int last = range.expressionEndLine == null ? at : range.expressionEndLine;
+                if (last > at) {
+                    return span(slice(lines, at, last + 1), at, last + 1);
+                }
                 return single(source.substring(range.expression,
-                        Masker.endOfLine(source, range.expression)).trim(),
-                        Masker.lineOf(starts, range.expression));
+                        Masker.endOfLine(source, range.expression)).trim(), at);
             }
             if (range.openLine == endLine) {
                 return single(source.substring(range.open + 1, range.close).trim(), range.openLine);

@@ -132,6 +132,10 @@ pub const Wrapped_java =
 pub const Wrapped_kt =
     "package demo\n\nclass Wrapped {\n    fun render(\n        name: String,\n        quantity: Int\n    ): String {\n        return \"$name x$quantity\"\n    }\n\n    fun label(\n        upper: Boolean\n    ): String = if (upper) name.uppercase() else name\n}\n";
 
+/// `test/fixtures/Wrapped.py`
+pub const Wrapped_py =
+    "class Wrapped:\n    def render(\n            self,\n            name: str,\n            quantity: int) -> str:\n        return f\"{name} x{quantity}\"\n\n    def label(self) -> str:\n        return self.name\n\n    def describe(\n            self,\n            prefix: str):\n        first = prefix + self.name\n        return first\n";
+
 /// `test/fixtures/WrappedClass.java`
 pub const WrappedClass_java =
     "package demo;\n\n/**\n * A class whose own header wraps: type parameters, `extends` and `implements`\n * each on their own line, which is how a long declaration is usually formatted.\n */\npublic class Wrapped<\n        T extends Comparable<T>,\n        U extends CharSequence>\n        extends AbstractBase\n        implements Renderer<T> {\n\n    public T best(\n            T left,\n            T right) {\n        return left.compareTo(right) >= 0 ? left : right;\n    }\n}\n";
@@ -159,6 +163,7 @@ pub fn sourceOf(input: ?[]const u8) ?[]const u8 {
     if (std.mem.eql(u8, path, "test/fixtures/Widget.cs")) return Widget_cs;
     if (std.mem.eql(u8, path, "test/fixtures/Wrapped.java")) return Wrapped_java;
     if (std.mem.eql(u8, path, "test/fixtures/Wrapped.kt")) return Wrapped_kt;
+    if (std.mem.eql(u8, path, "test/fixtures/Wrapped.py")) return Wrapped_py;
     if (std.mem.eql(u8, path, "test/fixtures/WrappedClass.java")) return WrappedClass_java;
     if (std.mem.eql(u8, path, "test/fixtures/example.ts")) return example_ts;
     return null;
@@ -1073,6 +1078,42 @@ pub const cases = [_]Case{
         .start_line = 13,
         .end_line = 13,
         .ranges = &.{.{ .from = 13, .to = 13 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "wrapped-indented-body",
+        .input = "test/fixtures/Wrapped.py",
+        .reference = "Wrapped/describe",
+        .text = "    def describe(\n            self,\n            prefix: str):\n        first = prefix + self.name\n        return first",
+        .start_line = 11,
+        .end_line = 15,
+        .ranges = &.{.{ .from = 11, .to = 15 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "wrapped-indented-body-inner",
+        .input = "test/fixtures/Wrapped.py",
+        .reference = "Wrapped/describe-",
+        .text = "        first = prefix + self.name\n        return first",
+        .start_line = 14,
+        .end_line = 15,
+        .ranges = &.{.{ .from = 14, .to = 15 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "wrapped-indented-existing",
+        .input = "test/fixtures/Wrapped.py",
+        .reference = "Wrapped/render-",
+        .text = "        return f\"{name} x{quantity}\"",
+        .start_line = 6,
+        .end_line = 6,
+        .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .declaration,
         .error_message = null,
         .warning = null,
