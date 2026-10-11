@@ -838,8 +838,14 @@ pub const Span = struct {
     open_line: ?usize = null,
     close_line: ?usize = null,
     body_end_line: ?usize = null,
+    /// The line the body starts on, when the header wrapped and its own lines
+    /// are the declaration's rather than the body's.
+    body_from: ?usize = null,
     indented: bool = false,
     expression: ?usize = null,
+    /// The last line an expression body extends onto (a `do` block). The
+    /// JavaScript only copies this onto a block for a language's own shape.
+    expression_end_line: ?usize = null,
 };
 
 pub const Kind = enum { root, class, method, property, statement, anchor };
@@ -862,6 +868,8 @@ pub const Block = struct {
     close_line: ?usize = null,
     indented: bool = false,
     expression: ?usize = null,
+    expression_end_line: ?usize = null,
+    body_from: ?usize = null,
     end_line: ?usize = null,
     single_line: bool = false,
     shared_close: bool = false,
@@ -1030,12 +1038,9 @@ fn matchingBracket(text: Str, open: usize, closer: u16) ?usize {
     return null;
 }
 
-/// A declaration's header as a slice of the mask: the line the declaration
-/// starts on, or the several a wrapped parameter list spans, through the `{` or
-/// `;` that ends the header — **including** it. (The JavaScript window also
-/// carries the last line it reached and a reader for the line an offset sits
-/// on; no caller reads either.)
-const Header = struct { start: usize, end: usize };
+/// A declaration's header, as the scanner followed it: the offset just past the
+/// `{` or `;` that ended it — or the end of its last line — and that line.
+const HeaderEnd = struct { end: usize, last: usize };
 
 fn braceBody(mask: Str, starts: []const usize, open: usize) ?Span {
     const close = matchingBracket(mask, open, '}') orelse return null;
@@ -1047,123 +1052,168 @@ fn braceBody(mask: Str, starts: []const usize, open: usize) ?Span {
     };
 }
 
-/// A body span, or null when the member has no body to inject (an interface or
-/// `abstract` method). `header` is the declaration's header as a slice of the
-/// mask — one line, or the several a wrapped parameter list spans — ending at
-/// the `{` or `;` that ends it.
-fn bodySpan(
-    mask: Str,
-    lines: []const Str,
-    starts: []const usize,
-    decl_line: usize,
-    header: Header,
-) ?Span {
-    const rest = mask[header.start..@max(header.start, header.end)];
+/// `text.slice(from, to)` with JavaScript's clamping: a `from` past the end is
+/// the empty tail, and a `to` before `from` is empty.
+fn maskSlice(text: Str, from: usize, to: usize) Str {
+    const low = @min(from, text.len);
+    const high = @min(@max(to, low), text.len);
+    return text[low..high];
+}
 
-    // The earliest of `{`, `;` and `=>`.
-    const Terminator = struct { at: usize, kind: enum { brace, none, arrow } };
-    var candidates: [3]Terminator = undefined;
-    var count: usize = 0;
-    if (js.indexOf(rest, &js.lit("{"))) |at| {
-        candidates[count] = .{ .at = at, .kind = .brace };
-        count += 1;
+/// `text.indexOf(unit, from)` — null when it is not there, `from` past the end
+/// included.
+fn indexOfFrom(text: Str, unit: u16, from: usize) ?usize {
+    if (from > text.len) return null;
+    const offset = js.indexOfUnit(text[from..], unit) orelse return null;
+    return from + offset;
+}
+
+/// `text.lastIndexOf(unit, position)`: the search covers `0 ..= position`, and a
+/// negative position is clamped to 0 — which still reads index 0 — as
+/// JavaScript's does.
+fn lastIndexOfAt(text: Str, unit: u16, position: isize) ?usize {
+    if (text.len == 0) return null;
+    const stop: usize = if (position < 0) 0 else @min(@as(usize, @intCast(position)), text.len - 1);
+    return js.lastIndexOfUnit(text[0 .. stop + 1], unit);
+}
+
+/// The offset of the `=` that introduces an expression body, or null.
+///
+/// A `=` that stands for `==`, `<=`, `>=`, `!=` or `+=` is not a body — and
+/// neither is a type annotation's (`name: Type =`), which is why the character
+/// right after the `=` must not be `=`, and the last character before it must
+/// close something: a type, a bracket or a `>`.
+fn expressionAt(rest: Str) ?usize {
+    var at: usize = 0;
+    while (js.indexOfUnit(rest[at..], '=')) |offset| {
+        const index = at + offset;
+        at = index + 1;
+        if (index + 1 < rest.len and rest[index + 1] == '=') continue;
+        if (index == 0) continue;
+        const previous = rest[index - 1];
+        const closes = js.isAsciiWord(previous) or previous == '$' or previous == '>' or
+            previous == ')' or previous == ']' or previous == '}';
+        if (closes) return index;
     }
-    if (js.indexOf(rest, &js.lit(";"))) |at| {
-        candidates[count] = .{ .at = at, .kind = .none };
-        count += 1;
+    return null;
+}
+
+/// The first of `{`, `;` and `=>` in a header, in the order they appear — the
+/// thing that ended it. A `;` means no body, a `{` opens one, and `=>` is an
+/// arrow; whichever comes first is what the header ended with.
+const Terminator = struct { at: usize, kind: enum { brace, none, arrow } };
+
+fn terminatorIn(rest: Str) ?Terminator {
+    var found: ?Terminator = null;
+    if (js.indexOfUnit(rest, '{')) |at| found = .{ .at = at, .kind = .brace };
+    if (js.indexOfUnit(rest, ';')) |at| {
+        if (found == null or at < found.?.at) found = .{ .at = at, .kind = .none };
     }
     if (js.indexOf(rest, &js.lit("=>"))) |at| {
-        candidates[count] = .{ .at = at, .kind = .arrow };
-        count += 1;
+        if (found == null or at < found.?.at) found = .{ .at = at, .kind = .arrow };
     }
-    const terminators = candidates[0..count];
-    std.mem.sort(Terminator, terminators, {}, struct {
-        fn lessThan(_: void, left: Terminator, right: Terminator) bool {
-            return left.at < right.at;
-        }
-    }.lessThan);
+    return found;
+}
 
-    if (terminators.len == 0) {
-        const next = nextNonBlank(lines, decl_line + 1) orelse return null;
-        if (js.startsWith(js.trimStart(lines[next]), &js.lit("{"))) {
-            const brace = js.indexOfUnit(lines[next], '{').?;
-            return braceBody(mask, starts, starts[next] + brace);
-        }
-        const indent = indentWidth(lines[decl_line]);
-        if (indentWidth(lines[next]) > indent) {
-            var end = next;
-            var index = next + 1;
-            while (index < lines.len) : (index += 1) {
-                if (js.trim(lines[index]).len == 0) continue;
-                if (indentWidth(lines[index]) <= indent) break;
-                end = index;
-            }
-            return .{ .indented = true, .body_end_line = end };
-        }
-        return null;
-    }
+/// `/^\s*\{\s*$/` — a line that is nothing but an Allman brace.
+fn isBraceOnly(text: Str) bool {
+    var at: usize = 0;
+    while (at < text.len and js.isWhitespace(text[at])) at += 1;
+    if (at >= text.len or text[at] != '{') return false;
+    at += 1;
+    while (at < text.len and js.isWhitespace(text[at])) at += 1;
+    return at == text.len;
+}
 
-    const first = terminators[0];
-    if (first.kind == .none) return null;
-    if (first.kind == .arrow) {
-        const after = rest[first.at + 2 ..];
-        if (js.indexOfUnit(after, '{')) |offset| {
-            return braceBody(mask, starts, header.start + first.at + 2 + offset);
+/// `/^\s*\{/` — a line that opens with a brace.
+fn isBraceStart(text: Str) bool {
+    var at: usize = 0;
+    while (at < text.len and js.isWhitespace(text[at])) at += 1;
+    return at < text.len and text[at] == '{';
+}
+
+/// How much `text` opens across every bracket a header can hold, from `from`.
+///
+/// This is JavaScript's separate `bracketDepth` helper: it seeds a header's
+/// count from the text **before** the header starts, where a `>` is counted
+/// plainly — only the header's own scan knows an arrow's `>` from a closing
+/// angle bracket.
+fn bracketDepth(text: Str, from: usize, to: usize) isize {
+    var depth: isize = 0;
+    const stop = @min(to, text.len);
+    var at = from;
+    while (at < stop) : (at += 1) {
+        const char = text[at];
+        if (char == '(' or char == '[' or char == '{' or char == '<') {
+            depth += 1;
+        } else if (char == ')' or char == ']' or char == '}' or char == '>') {
+            depth -= 1;
         }
-        return .{ .expression = header.start + first.at + 2 };
     }
-    return braceBody(mask, starts, header.start + first.at);
+    return depth;
 }
 
 /// How far a declaration's header may run past the line it starts on.
 const HEADER_LINES = 200;
 
-/// The header of a declaration that starts on `line`: the mask from that line's
-/// first character through the `{` or `;` that ends the header, **including** it.
+/// Where a declaration's header ends, starting at `from` on `line`.
 ///
-/// A wrapped parameter list is formatting, so the header of a member may span
-/// lines — but only while the text could still be a header. It ends at the first
-/// `{` or `;` met with every bracket closed, and stops at the blank line or the
-/// code line that proves it ended without one (a body-less interface method, a
-/// declaration the mask cut short). Counting every bracket — `(`, `[`, `{`, `<`
-/// — is what makes a wrapped parameter list, a wrapped generic list and a
-/// wrapped `throws` clause one rule; a `{` inside the header's own brackets (a
-/// lambda default, an array initialiser) is not the body's brace, because a
-/// bracket is open.
-fn headerWindow(facts: Facts, line: usize) Header {
-    const mask_lines = facts.mask_lines;
-    const starts = facts.starts;
-    const last = @min(mask_lines.len - 1, line + HEADER_LINES - 1);
-    const window_start = starts[line];
-
+/// Wrapping a parameter list is formatting, not a different declaration, so a
+/// header may span lines — but only while it could still be a header. It ends at
+/// the first `{` or `;` met with every bracket closed, and stops at the blank
+/// line or the line that cannot continue it (a body-less member, a declaration
+/// the mask cut short). The window starts at the offset the caller passes — the
+/// declaration's own name, or a shape's offset — and its end is never clamped
+/// back to the line start.
+fn headerEnd(mask_lines: []const Str, starts: []const usize, line: usize, from: usize) HeaderEnd {
+    const stop = @min(mask_lines.len - 1, line + HEADER_LINES - 1);
+    // Everything before where the header starts is already the declaration's
+    // name; its brackets are not the header's, so the count begins after them.
     var depth: isize = 0;
+    var start = from;
     var index = line;
-    while (index <= last) : (index += 1) {
+    while (index <= stop) : (index += 1) {
         const text = mask_lines[index];
-        const from = starts[index];
-        const continues = depth > 0 or headerContinues(text);
-
-        var column: usize = 0;
+        if (index > line and js.trim(text).len == 0) break;
+        if (depth == 0) {
+            const before = if (start > starts[index]) start - starts[index] else 0;
+            depth = bracketDepth(text, 0, before);
+        }
+        var column: usize = if (start > starts[index]) start - starts[index] else 0;
         while (column < text.len) : (column += 1) {
-            const unit = text[column];
-            if (depth == 0 and (unit == '{' or unit == ';')) {
-                return .{ .start = window_start, .end = from + column + 1 };
+            const char = text[column];
+            // A `{` or `;` with every bracket closed ends the header, and is
+            // part of it: the body starts after it.
+            if (depth == 0 and (char == '{' or char == ';')) {
+                return .{ .end = starts[index] + column + 1, .last = index };
             }
-            if (unit == '(' or unit == '[' or unit == '{' or unit == '<') {
+            // An arrow's `>` is not a closing angle bracket: `=>` and `->` are
+            // punctuation, and counting one as a bracket ends a header that was
+            // still open.
+            const previous: ?u16 = if (column == 0) null else text[column - 1];
+            if (char == '(' or char == '[' or char == '{' or char == '<') {
                 depth += 1;
-            } else if (unit == ')' or unit == ']' or unit == '}' or unit == '>') {
+            } else if (char == ')' or char == ']' or char == '}') {
                 depth -= 1;
+            } else if (char == '>') {
+                const arrow = previous != null and (previous.? == '=' or previous.? == '-');
+                if (!arrow) depth -= 1;
             }
-            if (depth < 0) return .{ .start = window_start, .end = from + column + 1 };
+            if (depth < 0) return .{ .end = starts[index] + column + 1, .last = index };
         }
         depth = @max(0, depth);
-        // A line that is blank, or that opened nothing the next line could
-        // continue, ends a header that never found its brace — and the caller
-        // then finds no body to inject, which is the honest answer for a
-        // body-less declaration.
-        if (!continues) return .{ .start = window_start, .end = from + text.len };
+        start = starts[index] + text.len;
+        // A header continues while a bracket is open, while the line ends on a
+        // separator, and onto a `{` alone on the next line — the Allman brace,
+        // which no other rule reaches. A `{` at the end of the header's own line
+        // was already found above.
+        const next = nextNonBlank(mask_lines, index + 1);
+        const continues = depth > 0 or headerContinues(text) or
+            (next != null and isBraceOnly(mask_lines[next.?]));
+        if (!continues) return .{ .end = start, .last = index };
     }
-    return .{ .start = window_start, .end = window_start + mask_lines[line].len };
+    index = @min(index, mask_lines.len - 1);
+    return .{ .end = starts[index] + mask_lines[index].len, .last = index };
 }
 
 /// `/[(,;]\s*$/` — whether the next line could continue a header this one ends.
@@ -1173,6 +1223,149 @@ fn headerContinues(text: Str) bool {
     if (at == 0) return false;
     const unit = text[at - 1];
     return unit == '(' or unit == ',' or unit == ';';
+}
+
+/// An expression body beginning at `at`: it runs to the end of its line, and on
+/// through the indented lines that follow it — a `do` block, a `where` clause —
+/// which the declaration's own indentation governs.
+fn expressionBody(lines: []const Str, starts: []const usize, decl_line: usize, at: usize) Span {
+    const first = lineOf(starts, at);
+    const indent = indentWidth(lines[decl_line]);
+    var last = first;
+    var index = first + 1;
+    while (index < lines.len) : (index += 1) {
+        if (js.trim(lines[index]).len == 0) break;
+        if (indentWidth(lines[index]) <= indent) break;
+        last = index;
+    }
+    return .{ .expression = at, .expression_end_line = last };
+}
+
+/// A body span, or null when the member has no body to inject (an interface or
+/// `abstract` method).
+///
+/// `from` is where the declaration's header starts in the mask — after its name,
+/// for the matchers that stop there — and the header is followed to its `{` or
+/// `;` wherever that is, which is what lets a wrapped parameter list resolve.
+fn bodySpan(
+    mask: Str,
+    lines: []const Str,
+    starts: []const usize,
+    decl_line: usize,
+    from: usize,
+    name_at: usize,
+    shape_at_body: bool,
+) ?Span {
+    // A shape whose own `headerFrom` is the `=` itself (a Haskell binding, a
+    // Rust `const`) states its expression body directly; the expression is what
+    // follows, and its own lines are indented under the declaration. Only a shape
+    // says this.
+    if (shape_at_body and from < mask.len and mask[from] == '=') {
+        return expressionBody(lines, starts, decl_line, from + 1);
+    }
+
+    const header = headerEnd(lines, starts, decl_line, name_at);
+    const rest = maskSlice(mask, from, header.end);
+
+    // The arrow that opens the body, read first: for `(n) => n + 1;` the `=>` is
+    // what declares the member's body, and the `;` after it closes that body
+    // rather than declaring a body-less member. A caller's `from` may also sit on
+    // the `=` or the `>` of the arrow itself.
+    const arrow = js.indexOf(rest, &js.lit("=>"));
+    var arrow_at: ?usize = null;
+    if (arrow) |offset| {
+        arrow_at = from + offset;
+    } else if (from < mask.len and (mask[from] == '=' or mask[from] == '>')) {
+        arrow_at = from;
+    }
+    const arrow_here: ?usize = if (arrow_at) |at| at - from else null;
+
+    // The header's own scan ended on the `{` that opens the body (a shape like
+    // `impl Cart {`, or any caller whose `from` sits just after it), so the body
+    // is cut from that column and never from a later brace in the body.
+    if (arrow_here == null and from > 0 and mask[from - 1] == '{') {
+        return braceBody(mask, starts, from - 1);
+    }
+
+    if (arrow_here) |here| {
+        const at = from + here + 2;
+        const brace = indexOfFrom(mask, '{', at);
+        const line_end = endOfLine(mask, @min(at, mask.len));
+        if (brace == null or brace.? > line_end) {
+            return expressionBody(lines, starts, decl_line, at);
+        }
+        return braceBody(mask, starts, brace.?);
+    }
+
+    const terminator = terminatorIn(rest);
+
+    // A `;` with every bracket closed is a member with no body to inject.
+    if (terminator != null and terminator.?.kind == .none) return null;
+
+    if (terminator) |term| {
+        // `from` may already be the terminator's own column (a shape whose offset
+        // is the `{`) or a character or two before it.
+        const brace = indexOfFrom(mask, '{', from);
+        const at = @max(
+            if (brace) |value| @as(isize, @intCast(value)) else -1,
+            @as(isize, @intCast(from + term.at)),
+        );
+        return braceBody(mask, starts, @intCast(at));
+    }
+
+    // The header itself ended on the `{` that opens the body (a shape like
+    // `impl Cart {`), so the body is cut from that column.
+    const opened_at = lastIndexOfAt(mask, '{', @as(isize, @intCast(header.end)) - 1);
+    if (opened_at) |at| {
+        if (at >= from) return braceBody(mask, starts, at);
+    }
+
+    // An `=` opens an expression body, and is checked before the indentation
+    // rule: an indented line after a `=` is part of the *expression*, not a body.
+    if (expressionAt(rest)) |equals| {
+        return expressionBody(lines, starts, decl_line, from + equals + 1);
+    }
+
+    // No terminator on the header's own lines. The body is then the next block:
+    // a `{` on a later line (a wrapped `) throws X` line, an Allman brace) or the
+    // indented block the declaration's own indentation governs.
+    const next = nextNonBlank(lines, header.last + 1) orelse return null;
+    const indent = indentWidth(lines[decl_line]);
+
+    // The next line, if it opens the body itself.
+    const first = lines[next];
+    if (isBraceStart(first)) {
+        const brace = js.indexOfUnit(first, '{').?;
+        return braceBody(mask, starts, starts[next] + brace);
+    }
+
+    // A line that still belongs to the declaration — a `throws` clause, a return
+    // type — puts the `{` after it. A wrapped header's body starts after the last
+    // of its lines, so the search begins there.
+    const search_from = @max(next, header.last);
+    const after = maskSlice(mask, from, starts[search_from] + lines[search_from].len);
+    const deferred = terminatorIn(after);
+    if (deferred != null and deferred.?.kind == .none) return null;
+    if (deferred != null and deferred.?.kind == .brace) {
+        return braceBody(mask, starts, from + deferred.?.at);
+    }
+
+    if (indentWidth(first) > indent) {
+        var last = next;
+        var index = next + 1;
+        while (index < lines.len) : (index += 1) {
+            if (js.trim(lines[index]).len == 0) continue;
+            if (indentWidth(lines[index]) <= indent) break;
+            last = index;
+        }
+        // A wrapped header's own lines are not part of its body.
+        return .{
+            .indented = true,
+            .body_end_line = last,
+            .body_from = @max(next, header.last + 1),
+        };
+    }
+    return null;
 }
 
 /// A body closed by a terminator keyword line (`end` in Ruby, `End` in VB),
@@ -1289,10 +1482,12 @@ fn nextCallMatch(line: Str, name: Str, from: usize) ?CallMatch {
     return null;
 }
 
-/// A hit of the assigned pattern: the end of the whole `const name = …` match,
-/// and where that match begins — the window reading compares the text before
-/// the match to the return-type prefix, and the head is part of the match.
-const AssignedMatch = struct { start: usize, end: usize };
+/// A hit of the assigned pattern: the whole `const name = …` match's start and
+/// end, and how much its leading `(^|[^\w$.])` group consumed — 0 when the match
+/// opened at `^`, 1 when it ate a separator character. `start + lead` is the
+/// payload's offset (`match.index + match[1].length`), which is where the
+/// JavaScript puts a `nameAt` and where it starts comparing the prefix.
+const AssignedMatch = struct { start: usize, lead: usize, end: usize };
 
 /// `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?name\b(?:\s*:\s*[^=\n]+)?\s*=\s*(?:async\s+)?`.
 fn nextAssignedMatch(line: Str, name: Str, from: usize) ?AssignedMatch {
@@ -1321,84 +1516,69 @@ fn nextAssignedMatch(line: Str, name: Str, from: usize) ?AssignedMatch {
             scan += async_kw.len;
             while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
         }
-        return .{ .start = assignedMatchStart(line, start), .end = scan };
+        const head = assignedMatchLead(line, start);
+        return .{ .start = head.start, .lead = head.lead, .end = scan };
     }
     return null;
 }
 
-/// Where the assigned pattern's whole match begins for a name found at
-/// `name_at`. The pattern is `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?name…`, so
-/// the match begins at the `const`/`let`/`var` head's own separator — or at
-/// offset 0 when the head, or the name itself, opens the text — and otherwise
-/// at the one separator character just before the name.
-fn assignedMatchStart(text: Str, name_at: usize) usize {
+/// Where the assigned pattern's whole match begins for a name found at `name_at`,
+/// and how much its leading group consumed. The pattern is
+/// `(^|[^\w$.])(?:const\s+|let\s+|var\s+)?name…`, so the match begins at the
+/// `const`/`let`/`var` head's own separator — or at offset 0 when the head, or
+/// the name itself, opens the text — and otherwise at the one separator
+/// character just before the name.
+const AssignedLead = struct { start: usize, lead: usize };
+
+fn assignedMatchLead(text: Str, name_at: usize) AssignedLead {
     const heads = [_][]const u8{ "const ", "let ", "var " };
     for (heads) |head| {
         if (name_at < head.len) continue;
         if (!js.eqlBytes(text[name_at - head.len .. name_at], head)) continue;
         const head_start = name_at - head.len;
-        if (head_start == 0) return 0;
-        if (isSeparatorUnit(text[head_start - 1])) return head_start - 1;
+        if (head_start == 0) return .{ .start = 0, .lead = 0 };
+        if (isSeparatorUnit(text[head_start - 1])) return .{ .start = head_start - 1, .lead = 1 };
     }
-    return if (name_at == 0) 0 else name_at - 1;
+    return if (name_at == 0) .{ .start = 0, .lead = 0 } else .{ .start = name_at - 1, .lead = 1 };
 }
 
 const Declaration = struct {
     kind: Kind,
     name: Str,
-    /// The header the body reader slices: where the name's own shape ends,
-    /// through the `{` or `;` that ends the declaration's header.
-    header: Header,
+    /// Where the declared name starts, for a header scan that counts brackets
+    /// from it.
+    name_at: usize,
+    /// Where the body's search starts in the mask.
+    header_from: usize,
 };
 
-/// Whether a masked line declares `name`, and the header window its body is
-/// read from.
+/// Whether a masked line declares `name`, and where its header starts.
 ///
 /// The declaration is read from its own line whenever that line says everything
 /// there is to say, which is the only shape the matcher ever had to read. A
 /// header that wraps — a parameter list, a generic list, a `throws` clause — is
 /// not readable that way, because the closing bracket sits on a later line; for
-/// those, {@link declarationAcross} reads the header window instead. The line's
-/// own reading is what decides *whether* there is a declaration at all — a bare
-/// name that merely appears inside a wrapped construct must not become one — and
-/// the window is only asked where it ends.
-///
-/// `header` is the line's window when the caller has one; the wrapped reading
-/// needs it, and without one the window is the line itself.
+/// those, {@link declarationAcross} reads the header the scanner followed. The
+/// line's own reading is what decides *whether* there is a declaration at all —
+/// a bare name that merely appears inside a wrapped construct must not become
+/// one.
 fn declarationOn(
     alloc: Allocator,
     facts: Facts,
     masked_line: Str,
     start: usize,
     name: Str,
-    header: ?Header,
 ) !?Declaration {
     if (name.len == 0 or isNotAName(name)) return null;
-    const window = header orelse Header{ .start = start, .end = start + masked_line.len };
-
-    for (facts.declarations) |entry| {
-        const hit = entry.match(masked_line) orelse continue;
-        if (!js.eql(hit.name, name)) continue;
-        return .{
-            .kind = switch (entry.kind) {
-                .class => .class,
-                .method => .method,
-                .property => .property,
-            },
-            .name = name,
-            .header = .{ .start = start + hit.header_from, .end = window.end },
-        };
-    }
 
     if (matchDeclarationKeyword(masked_line)) |keyword| {
         if (js.eql(keyword.name, name)) {
+            const within = js.indexOf(masked_line[keyword.index..], keyword.name) orelse 0;
             return .{
                 .kind = .class,
                 .name = name,
-                .header = .{
-                    .start = start + keyword.index + keyword.length,
-                    .end = window.end,
-                },
+                .name_at = start + keyword.index + within,
+                .header_from = start + keyword.index + keyword.length,
             };
         }
     }
@@ -1415,15 +1595,14 @@ fn declarationOn(
         return .{
             .kind = .method,
             .name = name,
-            .header = .{ .start = start + close + 1, .end = window.end },
+            .name_at = start + hit.name_at,
+            .header_from = start + close + 1,
         };
     }
 
-    if (window.end > start + masked_line.len) {
-        // The header continues past this line, so the closing bracket a wrapped
-        // parameter list put there is only visible to the whole-window reading.
-        return declarationAcross(alloc, facts, window, name);
-    }
+    // The parameter list may close on a later line, where only the whole
+    // header can see it.
+    if (try declarationAcross(alloc, facts, start, name)) |across| return across;
 
     from = 0;
     while (nextAssignedMatch(masked_line, name, from)) |hit| {
@@ -1431,60 +1610,80 @@ fn declarationOn(
         const rest = masked_line[hit.end..];
         const arrow = js.indexOf(rest, &js.lit("=>"));
         const keyword = functionKeywordEnd(rest);
-        if (arrow != null and (keyword == null or arrow.? < keyword.?)) {
-            const header_from = start + hit.end + arrow.?;
-            return .{ .kind = .method, .name = name, .header = .{ .start = header_from, .end = window.end } };
-        }
-        if (keyword) |end| {
-            const header_from = start + hit.end + end;
-            return .{ .kind = .method, .name = name, .header = .{ .start = header_from, .end = window.end } };
-        }
+        const body_at: ?usize = if (arrow != null and (keyword == null or arrow.? < keyword.?))
+            start + hit.end + arrow.?
+        else if (keyword) |end|
+            start + hit.end + end
+        else
+            null;
+        const header_from = body_at orelse continue;
+        return .{
+            .kind = .method,
+            .name = name,
+            .name_at = start + hit.start + hit.lead,
+            .header_from = header_from,
+        };
     }
     return null;
 }
 
-/// The same matchers, run over the whole header window instead of one line.
+/// The same matchers, run over the whole header instead of one line.
 ///
-/// The window exists because a wrapped parameter list closes its bracket on a
-/// later line, and the matchers compare the text before a name to a return type
-/// / modifier list — so the name is looked for where it is written, and the
-/// brackets are matched across the lines that hold them. `name(` must still open
-/// the name, and the window still ends at the `{` or `;` that ends the header,
-/// so a name appearing inside a wrapped argument list is not a declaration.
-fn declarationAcross(alloc: Allocator, facts: Facts, header: Header, name: Str) !?Declaration {
-    const text = facts.mask[header.start..@max(header.start, header.end)];
+/// The header is followed from the declaration's line to its `{` or `;`
+/// ({@link headerEnd}), because that is the only slice in which the closing
+/// bracket of a wrapped parameter list exists. `name(` must still open the name,
+/// and the text before it — on the line it is written on — must still read as a
+/// return type, a modifier list or nothing, so a name that merely appears inside
+/// a wrapped argument list is not a declaration.
+fn declarationAcross(alloc: Allocator, facts: Facts, start: usize, name: Str) !?Declaration {
+    const mask = facts.mask;
     const starts = facts.starts;
     const mask_lines = facts.mask_lines;
+    const line = lineOf(starts, start);
+    const from = start + (mask_lines[line].len - js.trimStart(mask_lines[line]).len);
+    const header = headerEnd(mask_lines, starts, line, from);
+    if (header.last == line) return null;
+    const text = maskSlice(mask, start, header.end);
 
-    var from: usize = 0;
-    while (nextCallMatch(text, name, from)) |hit| {
-        from = hit.name_at + 1;
+    var at: usize = 0;
+    while (nextCallMatch(text, name, at)) |hit| {
+        at = hit.name_at + 1;
         // The prefix is the name's **own line** before the name, so a wrapped
         // receiver or return type on an earlier line is not part of it.
         const column = hit.name_at;
-        const line = lineOf(starts, header.start + column);
-        const before = mask_lines[line][0 .. header.start + column - starts[line]];
+        const on = lineOf(starts, start + column);
+        const before = mask_lines[on][0 .. start + column - starts[on]];
         const prefix = try withFuncReceiver(alloc, before);
         if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or startsWithStatementBefore(prefix))) continue;
-        // The bracket is matched inside the window's own text: `matchingBracket`
+        // The bracket is matched inside the header's own text: `matchingBracket`
         // counts from the index it is given, so an absolute offset would read
         // the wrong bracket.
-        if (matchingBracket(text, hit.paren, ')') == null) continue;
-        return .{ .kind = .method, .name = name, .header = header };
+        const close = matchingBracket(text, hit.paren, ')') orelse continue;
+        return .{
+            .kind = .method,
+            .name = name,
+            .name_at = start + column,
+            .header_from = start + close + 1,
+        };
     }
 
     var assigned_from: usize = 0;
     while (nextAssignedMatch(text, name, assigned_from)) |hit| {
         assigned_from = hit.end;
-        const column = hit.start;
-        const line = lineOf(starts, header.start + column);
-        const before = mask_lines[line][0 .. header.start + column - starts[line]];
+        const column = hit.start + hit.lead;
+        const on = lineOf(starts, start + column);
+        const before = mask_lines[on][0 .. start + column - starts[on]];
         const prefix = js.trim(before);
         if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or startsWithStatementBefore(prefix))) continue;
         const rest = text[hit.end..];
-        if (js.indexOf(rest, &js.lit("=>")) != null or functionKeywordEnd(rest) != null) {
-            return .{ .kind = .method, .name = name, .header = header };
-        }
+        const arrow = js.indexOf(rest, &js.lit("=>"));
+        if (arrow == null and functionKeywordEnd(rest) == null) continue;
+        return .{
+            .kind = .method,
+            .name = name,
+            .name_at = start + column,
+            .header_from = start + hit.end + (arrow orelse 0),
+        };
     }
     return null;
 }
@@ -1642,11 +1841,18 @@ const Build = struct {
 
             if (matchDeclarationKeyword(mask_line)) |keyword| {
                 if (!isNotAName(keyword.name)) {
+                    const within = js.indexOf(mask_line[keyword.index..], keyword.name) orelse 0;
+                    const name_at = start + keyword.index + within;
                     const header_from = start + keyword.index + keyword.length;
-                    const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, .{
-                        .start = header_from,
-                        .end = headerWindow(self.facts, i).end,
-                    });
+                    const span = bodySpan(
+                        self.facts.mask,
+                        self.facts.mask_lines,
+                        self.facts.starts,
+                        i,
+                        header_from,
+                        name_at,
+                        false,
+                    );
                     const block = try alloc.create(Block);
                     block.* = makeBlock(.class, keyword.name, i);
                     applySpan(block, span);
@@ -1658,16 +1864,33 @@ const Build = struct {
                 }
             }
 
-            if (try methodDeclOn(self, mask_line, i, start)) |found| {
-                const span = bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, i, found.header);
-                const block = try alloc.create(Block);
-                block.* = makeBlock(.method, found.name, i);
-                applySpan(block, span);
-                applyAnchor(self, block, if (span) |found_span| found_span.open else null);
-                try register(self, &list, block);
-                try descend(self, block, i, span);
-                i = endLineOf(span, i) + 1;
-                continue;
+            switch (try methodDeclOn(self, mask_line, start)) {
+                .none => {},
+                .found => |read| {
+                    const span = bodySpan(
+                        self.facts.mask,
+                        self.facts.mask_lines,
+                        self.facts.starts,
+                        i,
+                        read.declaration.header_from,
+                        read.declaration.name_at,
+                        false,
+                    );
+                    // A bare `foo();` call is not a declaration; an assigned
+                    // function carries a prefix (the `=`), so it always counts.
+                    if (span == null and !read.has_prefix) {
+                        i += 1;
+                        continue;
+                    }
+                    const block = try alloc.create(Block);
+                    block.* = makeBlock(.method, read.declaration.name, i);
+                    applySpan(block, span);
+                    applyAnchor(self, block, if (span) |found_span| found_span.open else null);
+                    try register(self, &list, block);
+                    try descend(self, block, i, span);
+                    i = endLineOf(span, i) + 1;
+                    continue;
+                },
             }
 
             if (matchStatementKeyword(mask_line)) |stmt| {
@@ -1757,13 +1980,75 @@ fn declaredHere(
     var last_end = line;
     for (hits.items) |found| {
         const entry = found.entry;
-        const span: ?Span = if (entry.end_kw) |word| blk: {
-            const body = keywordBody(self.facts.lines, line, word) orelse break :blk null;
-            break :blk Span{ .open_line = body.open_line, .close_line = body.close_line };
-        } else bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, line, .{
-            .start = start + found.hit.header_from,
-            .end = start + mask_line.len,
-        });
+        // A shape that declares itself complete on its own line (a Rust field, a
+        // one-line Haskell binding) is a selection of that line; only a shape
+        // that opens a body is followed for one.
+        const is_line_shape = entry.line;
+
+        // A one-line shape (`add x y = x + y`) is a selection of its own line.
+        // Its *body* is what an expression it states extends into — an indented
+        // `do` block — and is empty when it states none, so the body starts where
+        // it ends and the slice comes out empty.
+        var span: ?Span = null;
+        if (is_line_shape) {
+            const eq = js.indexOfUnit(mask_line, '=');
+            var first = line;
+            var last = line;
+            if (eq) |at| {
+                first = lineOf(self.facts.starts, start + at + 1);
+                last = first;
+                const indent = indentWidth(self.facts.lines[line]);
+                var index = first + 1;
+                while (index < self.facts.lines.len) : (index += 1) {
+                    if (js.trim(self.facts.lines[index]).len == 0) break;
+                    if (indentWidth(self.facts.lines[index]) <= indent) break;
+                    last = index;
+                }
+            }
+            span = .{ .indented = true, .body_end_line = last, .body_from = first };
+        }
+
+        if (entry.end_kw) |word| {
+            // A shape whose body a keyword line closes (Ruby `end`, VB `End`)
+            // keeps the declaration line as its header.
+            span = if (keywordBody(self.facts.lines, line, word)) |body|
+                Span{ .open_line = body.open_line, .close_line = body.close_line }
+            else
+                null;
+        } else if (!is_line_shape) {
+            // A shape says where its body begins. An `=` is an expression body
+            // and is read as such. A `{` — or an offset just past one, which is
+            // how a shape that opens a brace body states it — is a brace body,
+            // scanned from the shape's own name so brackets before it cannot
+            // offset the depth. Anything else is followed normally: a class whose
+            // members are indented, a wrapped shape, or a shape that carries no
+            // body of its own.
+            const within = js.indexOf(mask_line, found.hit.name) orelse 0;
+            const name_at = start + within;
+            const at = start + found.hit.header_from;
+            const opened: ?usize = if (at < self.facts.mask.len and
+                (self.facts.mask[at] == '{' or self.facts.mask[at] == ' ' or self.facts.mask[at] == '\t'))
+                at
+            else if (at > 0 and self.facts.mask[at - 1] == '{')
+                at - 1
+            else
+                null;
+            if (at < self.facts.mask.len and self.facts.mask[at] == '=') {
+                span = expressionBody(self.facts.lines, self.facts.starts, line, at + 1);
+            } else if (opened) |open| {
+                span = bodySpan(
+                    self.facts.mask,
+                    self.facts.mask_lines,
+                    self.facts.starts,
+                    line,
+                    open,
+                    name_at,
+                    false,
+                );
+            } else {
+                span = .{ .indented = true, .body_end_line = line, .body_from = line };
+            }
+        }
 
         const block = try alloc.create(Block);
         block.* = makeBlock(switch (entry.kind) {
@@ -1774,6 +2059,9 @@ fn declaredHere(
 
         if (span) |value| {
             applySpan(block, value);
+            if (value.expression_end_line) |expression_end| {
+                block.expression_end_line = expression_end;
+            }
         } else if (entry.line) {
             block.end_line = line;
             block.single_line = true;
@@ -1796,65 +2084,69 @@ fn isNotAType(word: Str) bool {
     return false;
 }
 
-/// The method/function reader of `buildScope`: a `name(` declaration, or an
-/// assignment that defines a function.
-fn methodDeclOn(self: *Build, mask_line: Str, line: usize, start: usize) Error!?Declaration {
-    const alloc = self.facts.alloc;
+/// The method reader's verdict for one line.
+const MethodRead = union(enum) {
+    /// No method/function declaration on the line: the statement and property
+    /// matchers get their turn.
+    none,
+    found: struct {
+        declaration: Declaration,
+        /// Whether the declaration carries a prefix (a modifier list, a return
+        /// type, an `=`). A bare `foo();` call does not, and is then only a
+        /// declaration when its body is non-empty.
+        has_prefix: bool,
+    },
+};
 
-    // The declaration's header, and the lines it spans (a wrapped parameter
-    // list is one header over several lines). Computed once per line, and only
-    // for a name that is read as a declaration.
-    var header: ?Header = null;
+/// A `name(` mention of any name on a line, as `buildScope`'s own call scan sees
+/// it: a `(^|[^\w$.])([A-Za-z_$][\w$]*)\s*\(` match.
+const AnyCall = struct { name: Str, name_at: usize, paren: usize };
 
-    // A bare `name(` mention: the generic scan picks the name, `declarationOn`
-    // confirms it and the body decides whether it is a call or a declaration.
-    var at: usize = 0;
-    while (at < mask_line.len) : (at += 1) {
-        if (at > 0 and !isSeparatorUnit(mask_line[at - 1])) continue;
-        if (!js.isIdentStart(mask_line[at])) continue;
+fn nextAnyCallMatch(line: Str, from: usize) ?AnyCall {
+    var at = from;
+    while (at < line.len) : (at += 1) {
+        if (at > 0 and !isSeparatorUnit(line[at - 1])) continue;
+        if (!js.isIdentStart(line[at])) continue;
         const name_start = at;
         var scan = at + 1;
-        while (scan < mask_line.len and js.isIdentPart(mask_line[scan])) scan += 1;
-        const name = mask_line[name_start..scan];
-        at = scan - 1;
-        if (isNotAName(name)) continue;
+        while (scan < line.len and js.isIdentPart(line[scan])) scan += 1;
+        var after = scan;
+        while (after < line.len and js.isWhitespace(line[after])) after += 1;
+        if (after >= line.len or line[after] != '(') continue;
+        return .{ .name = line[name_start..scan], .name_at = name_start, .paren = after };
+    }
+    return null;
+}
 
-        const prefix = try withFuncReceiver(alloc, mask_line[0..name_start]);
+/// The method/function reader of `buildScope`: a `name(` declaration, or an
+/// assignment that defines a function.
+fn methodDeclOn(self: *Build, mask_line: Str, start: usize) Error!MethodRead {
+    const alloc = self.facts.alloc;
+
+    // The call-shaped scan comes first and in line order, exactly as the
+    // JavaScript's global `name(` regex reads it: the first candidate
+    // `declarationOn` accepts wins.
+    var from: usize = 0;
+    while (nextAnyCallMatch(mask_line, from)) |hit| {
+        from = hit.paren + 1;
+        if (isNotAName(hit.name)) continue;
+        const prefix = try withFuncReceiver(alloc, mask_line[0..hit.name_at]);
         if (prefix.len != 0 and (!isDeclarationPrefix(prefix) or startsWithStatementBefore(prefix))) continue;
-
-        // The window is the wrapped reading's, and only a `name(` written on
-        // this line is read that way; a name the line spells only as an
-        // assignment is read from the line itself, as `buildScope` does.
-        const is_call = if (nextCallMatch(mask_line, name, name_start)) |hit| hit.name_at == name_start else false;
-        if (is_call and header == null) header = headerWindow(self.facts, line);
-        const found = (try declarationOn(
-            alloc,
-            self.facts,
-            mask_line,
-            start,
-            name,
-            if (is_call) header else null,
-        )) orelse continue;
+        const found = (try declarationOn(alloc, self.facts, mask_line, start, hit.name)) orelse continue;
         if (found.kind != .method) continue;
-
-        // A bare `foo();` call is not a declaration; an assigned function
-        // carries a prefix (the `=`), so it always counts.
-        if (is_call and prefix.len == 0) {
-            if (bodySpan(self.facts.mask, self.facts.lines, self.facts.starts, line, found.header) == null) continue;
-        }
-        return found;
+        return .{ .found = .{ .declaration = found, .has_prefix = prefix.len != 0 } };
     }
 
     // The assigned form: `const name = (…) => …`, `name = function …`. The
-    // line's own spelling is complete or it is nothing, so no window is asked.
+    // line's own spelling is complete or it is nothing.
     var assigned_from: usize = 0;
     while (assignedCandidate(mask_line, assigned_from)) |candidate| {
         assigned_from = candidate.name_end;
-        const found = (try declarationOn(alloc, self.facts, mask_line, start, candidate.name, null)) orelse continue;
+        const found = (try declarationOn(alloc, self.facts, mask_line, start, candidate.name)) orelse continue;
         if (found.kind != .method) continue;
-        return found;
+        return .{ .found = .{ .declaration = found, .has_prefix = true } };
     }
-    return null;
+    return .none;
 }
 
 fn register(self: *Build, list: *std.ArrayList(*Block), block: *Block) Error!void {
@@ -1897,6 +2189,11 @@ fn applySpan(block: *Block, span: ?Span) void {
     const found = span orelse return;
     if (found.indented) {
         block.indented = true;
+        // The body starts at `bodyFrom` when the header wrapped (its own lines
+        // are the declaration's, not the body's) and runs to `bodyEndLine`. A
+        // one-line shape that was not extended has its body before it starts,
+        // which is what makes that body empty.
+        block.body_from = found.body_from orelse (block.decl_line + 1);
         block.close_line = found.body_end_line;
         block.end_line = found.body_end_line;
         return;
@@ -2715,11 +3012,23 @@ fn renderDeclaration(
     const last = end_line orelse 0;
     if (scope == .body) {
         if (block.single_line) return renderSpan(alloc, lines, block.decl_line, last);
-        if (block.indented) return renderSpan(alloc, lines, block.decl_line + 1, last);
+        if (block.indented) {
+            // A wrapped header's lines belong to the declaration, not the body,
+            // so the body starts after the last of them.
+            const first = block.body_from orelse (block.decl_line + 1);
+            return renderSpan(alloc, lines, first, last);
+        }
         if (block.expression) |expression| {
+            const at = lineOf(starts, expression);
+            // The expression may be a block, whose lines the declaration's own
+            // indentation governs (`main = do` then an indented body). The
+            // scanner only carries `expressionEndLine` for a language's own
+            // shape, as the JavaScript does.
+            const expression_end = block.expression_end_line orelse at;
+            if (expression_end > at) return renderSpan(alloc, lines, at, expression_end);
             return single(
                 try alloc.dupe(u16, js.trim(source[expression..endOfLine(source, expression)])),
-                lineOf(starts, expression),
+                at,
             );
         }
         if (block.open_line == end_line) {

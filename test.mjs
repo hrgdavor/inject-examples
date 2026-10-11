@@ -821,6 +821,22 @@ test('an enum whose constants take their own lines is a declaration too', () => 
         /no section named "CALL" in "OrgFeature"/, 'a constant is not a member');
 });
 
+test('an expression body survives a wrapped parameter list', () => {
+    // A Kotlin expression body puts the declaration's `=` on the line the
+    // parameter list closes on, which is a later line than the one the name is
+    // written on. The body is the expression, and the indented block below it is
+    // the caller's business, not the declaration's.
+    const source = readFileSync(new URL('test/fixtures/Wrapped.kt', import.meta.url), 'utf8');
+    assert.equal(extractDeclaration(source, 'label'),
+        '    fun label(\n        upper: Boolean\n    ): String = if (upper) name.uppercase() else name');
+    assert.equal(extractDeclaration(source, 'label', 'body'),
+        'if (upper) name.uppercase() else name');
+    // The one-line spelling has to keep working, since that is the shape the
+    // expression-body rule was written for.
+    const oneLine = 'class A {\n    fun label(upper: Boolean): String = if (upper) "y" else "n"\n}';
+    assert.equal(extractDeclaration(oneLine, 'label', 'body'), 'if (upper) "y" else "n"');
+});
+
 test('a wrapped header does not invent declarations', () => {
     // A call whose arguments wrap is still a call: without a body there is
     // nothing to inject, and `calls/wrappedCall` must keep failing.

@@ -120,12 +120,16 @@ fn header_window(lex: &Lex, line: usize) -> Header {
                 || unit == b'<' as u16
             {
                 depth += 1;
-            } else if unit == b')' as u16
-                || unit == b']' as u16
-                || unit == b'}' as u16
-                || unit == b'>' as u16
-            {
+            } else if unit == b')' as u16 || unit == b']' as u16 || unit == b'}' as u16 {
                 depth -= 1;
+            } else if unit == b'>' as u16 {
+                // An arrow's `>` is not a closing angle bracket: `=>` and `->` are punctuation, and
+                // counting one as a bracket ends a header that was still open — a Rust
+                // `fn remove(&mut self) -> Option<String> {` would end at the `>` and never reach
+                // its `{`, dropping the body's closing brace.
+                if !is_arrow_head(text, column) {
+                    depth -= 1;
+                }
             }
             if depth < 0 {
                 return Header {
@@ -152,6 +156,13 @@ fn header_window(lex: &Lex, line: usize) -> Header {
         end: start + first_line.len(),
         last,
     }
+}
+
+/// Whether the `>` at `column` is the head of an arrow rather than a closing angle bracket. The
+/// JavaScript reads the character before it (`text[column - 1]`, `undefined` in the first column);
+/// only `=>` and `->` make it punctuation.
+fn is_arrow_head(text: &[u16], column: usize) -> bool {
+    column > 0 && (text[column - 1] == b'=' as u16 || text[column - 1] == b'-' as u16)
 }
 
 /// Whether a line ends on `(`, `,` or `;` — the JavaScript's `/[(,;]\s*$/`, so a wrapped parameter

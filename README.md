@@ -213,7 +213,8 @@ A class name beats a same-named constructor, and nothing matching at all is an
 error (`--lenient` reports it and leaves the block as written).
 
 A header may span lines: a wrapped parameter list, a wrapped `throws` clause, a
-class's type parameters and `implements` clause on their own lines are all one
+class's type parameters and `implements` clause on their own lines, and a Java
+`enum` whose constants each take a line before the body's `{`, are all one
 declaration, because the matchers follow the header to the `{` or `;` that ends
 it. A wrapped *call* stays a call — `#map` resolves the method, never the
 `map(\n  1, 2);` inside another method.

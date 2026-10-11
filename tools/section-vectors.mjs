@@ -61,6 +61,8 @@ const VB_FORM = 'test/fixtures/Form.vb';
 // or type parameters do not fit on one line.
 const WRAPPED = 'test/fixtures/Wrapped.java';
 const WRAPPED_CLASS = 'test/fixtures/WrappedClass.java';
+const WRAPPED_KT = 'test/fixtures/Wrapped.kt';
+const ENUM = 'test/fixtures/Enum.java';
 
 const cases = [
     // Grammar — parse only: canonical form and (lack of) errors.
@@ -136,7 +138,18 @@ const cases = [
     // A body-less member whose header wraps is still a name with nothing to
     // inject, not a section with a body.
     { name: 'wrapped-bodyless-member', input: WRAPPED, reference: 'label' },
-
+    // An expression body that the wrapped parameter list pushed onto a later
+    // line: the `=` is on the line the `)` closes on, not on the name's line.
+    { name: 'wrapped-expression-body', input: WRAPPED_KT, reference: 'label' },
+    { name: 'wrapped-expression-body-inner', input: WRAPPED_KT, reference: 'label-' },
+    // A Java enum's constants stand between the declaration and its `{`, one per
+    // line, so the header has to be followed past several lines to reach the body.
+    { name: 'enum-declaration', input: ENUM, reference: 'OrgFeature' },
+    { name: 'enum-member', input: ENUM, reference: 'OrgFeature/label' },
+    { name: 'enum-nested', input: ENUM, reference: 'OrgFeature/Tier' },
+    { name: 'enum-nested-member', input: ENUM, reference: 'OrgFeature/Tier/rank' },
+    // …and a constant is not a member.
+    { name: 'enum-constant-is-not-a-member', input: ENUM, reference: 'OrgFeature/CALL' },
     // Resolution — Example.java.
     { name: 'ex-tostring', input: EXAMPLE, reference: 'toString' },
     { name: 'ex-tostring-body', input: EXAMPLE, reference: 'toString-' },

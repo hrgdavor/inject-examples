@@ -80,6 +80,10 @@ pub const Cart_rb =
 pub const Cart_rs =
     "struct Cart {\n    items: Vec<String>,\n}\n\nimpl Cart {\n    fn add(&mut self, x: String) {\n        self.items.push(x);\n    }\n}\n\nimpl Cart {\n    fn remove(&mut self) -> Option<String> {\n        self.items.pop()\n    }\n}\n";
 
+/// `test/fixtures/Enum.java`
+pub const Enum_java =
+    "package demo;\n\n/**\n * An enum whose constants each take a line of their own \xe2\x80\x94 the body is a list,\n * not a brace block, and the declaration is only complete once the last constant\n * (and its optional constructor arguments) has been read.\n */\npublic enum OrgFeature {\n    CALL,\n    CHAT,\n    CHAT_AUDIO;\n\n    private final String label;\n\n    OrgFeature() {\n        this.label = name().toLowerCase();\n    }\n\n    public String label() {\n        return label;\n    }\n\n    /** A constant that carries arguments, so its line does not end on a comma. */\n    enum Tier {\n        FREE(0),\n        PAID(1);\n\n        private final int rank;\n\n        Tier(int rank) {\n            this.rank = rank;\n        }\n\n        int rank() {\n            return rank;\n        }\n    }\n}\n";
+
 /// `test/fixtures/Example.java`
 pub const Example_java =
     "package example;\n\nimport java.util.ArrayList;\nimport java.util.List;\n\n/** A cart of items, by name and quantity. */\npublic class Cart {\n    private final List<String> items = new ArrayList<>();\n\n    /** Add one item to this cart. */\n    @Override\n    public String toString() {\n        return String.join(\",\", items);\n    }\n\n    /** One line of a cart. */\n    public static class Line {\n        private final String name;\n        private final int quantity;\n\n        Line(String name, int quantity) {\n            this.name = name;\n            this.quantity = quantity;\n        }\n\n        String render() {\n            return name + \" x\" + quantity;\n        }\n    }\n}";
@@ -124,6 +128,10 @@ pub const Widget_cs =
 pub const Wrapped_java =
     "package demo;\n\n/** A declaration whose header does not fit on one line. */\npublic class Wrapped {\n\n    public String render(\n            String name,\n            int quantity) {\n        return name + \" x\" + quantity;\n    }\n\n    public <T extends Comparable<T>> T widest(\n            T left,\n            T right) {\n        return left.compareTo(right) >= 0 ? left : right;\n    }\n\n    /** The header wraps, and so does the class line below it. */\n    @Override\n    public String toString(\n    ) {\n        return name;\n    }\n\n    public void store(\n            String name,\n            int quantity)\n            throws IllegalStateException {\n        this.name = name;\n    }\n\n    private String name;\n\n    /** A body-less member whose header wraps, beside the members that have one. */\n    abstract String label(\n            int width);\n}\n";
 
+/// `test/fixtures/Wrapped.kt`
+pub const Wrapped_kt =
+    "package demo\n\nclass Wrapped {\n    fun render(\n        name: String,\n        quantity: Int\n    ): String {\n        return \"$name x$quantity\"\n    }\n\n    fun label(\n        upper: Boolean\n    ): String = if (upper) name.uppercase() else name\n}\n";
+
 /// `test/fixtures/WrappedClass.java`
 pub const WrappedClass_java =
     "package demo;\n\n/**\n * A class whose own header wraps: type parameters, `extends` and `implements`\n * each on their own line, which is how a long declaration is usually formatted.\n */\npublic class Wrapped<\n        T extends Comparable<T>,\n        U extends CharSequence>\n        extends AbstractBase\n        implements Renderer<T> {\n\n    public T best(\n            T left,\n            T right) {\n        return left.compareTo(right) >= 0 ? left : right;\n    }\n}\n";
@@ -138,6 +146,7 @@ pub fn sourceOf(input: ?[]const u8) ?[]const u8 {
     if (std.mem.eql(u8, path, "test/fixtures/Anchors.java")) return Anchors_java;
     if (std.mem.eql(u8, path, "test/fixtures/Cart.rb")) return Cart_rb;
     if (std.mem.eql(u8, path, "test/fixtures/Cart.rs")) return Cart_rs;
+    if (std.mem.eql(u8, path, "test/fixtures/Enum.java")) return Enum_java;
     if (std.mem.eql(u8, path, "test/fixtures/Example.java")) return Example_java;
     if (std.mem.eql(u8, path, "test/fixtures/Form.vb")) return Form_vb;
     if (std.mem.eql(u8, path, "test/fixtures/Generics.rs")) return Generics_rs;
@@ -149,6 +158,7 @@ pub fn sourceOf(input: ?[]const u8) ?[]const u8 {
     if (std.mem.eql(u8, path, "test/fixtures/Store.hs")) return Store_hs;
     if (std.mem.eql(u8, path, "test/fixtures/Widget.cs")) return Widget_cs;
     if (std.mem.eql(u8, path, "test/fixtures/Wrapped.java")) return Wrapped_java;
+    if (std.mem.eql(u8, path, "test/fixtures/Wrapped.kt")) return Wrapped_kt;
     if (std.mem.eql(u8, path, "test/fixtures/WrappedClass.java")) return WrappedClass_java;
     if (std.mem.eql(u8, path, "test/fixtures/example.ts")) return example_ts;
     return null;
@@ -1041,6 +1051,90 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 35, .to = 35 }},
         .kind = .declaration,
         .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "wrapped-expression-body",
+        .input = "test/fixtures/Wrapped.kt",
+        .reference = "label",
+        .text = "    fun label(\n        upper: Boolean\n    ): String = if (upper) name.uppercase() else name",
+        .start_line = 11,
+        .end_line = 13,
+        .ranges = &.{.{ .from = 11, .to = 13 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "wrapped-expression-body-inner",
+        .input = "test/fixtures/Wrapped.kt",
+        .reference = "label-",
+        .text = "if (upper) name.uppercase() else name",
+        .start_line = 13,
+        .end_line = 13,
+        .ranges = &.{.{ .from = 13, .to = 13 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "enum-declaration",
+        .input = "test/fixtures/Enum.java",
+        .reference = "OrgFeature",
+        .text = "public enum OrgFeature {\n    CALL,\n    CHAT,\n    CHAT_AUDIO;\n\n    private final String label;\n\n    OrgFeature() {\n        this.label = name().toLowerCase();\n    }\n\n    public String label() {\n        return label;\n    }\n\n    /** A constant that carries arguments, so its line does not end on a comma. */\n    enum Tier {\n        FREE(0),\n        PAID(1);\n\n        private final int rank;\n\n        Tier(int rank) {\n            this.rank = rank;\n        }\n\n        int rank() {\n            return rank;\n        }\n    }\n}",
+        .start_line = 8,
+        .end_line = 38,
+        .ranges = &.{.{ .from = 8, .to = 38 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "enum-member",
+        .input = "test/fixtures/Enum.java",
+        .reference = "OrgFeature/label",
+        .text = "    public String label() {\n        return label;\n    }",
+        .start_line = 19,
+        .end_line = 21,
+        .ranges = &.{.{ .from = 19, .to = 21 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "enum-nested",
+        .input = "test/fixtures/Enum.java",
+        .reference = "OrgFeature/Tier",
+        .text = "    enum Tier {\n        FREE(0),\n        PAID(1);\n\n        private final int rank;\n\n        Tier(int rank) {\n            this.rank = rank;\n        }\n\n        int rank() {\n            return rank;\n        }\n    }",
+        .start_line = 24,
+        .end_line = 37,
+        .ranges = &.{.{ .from = 24, .to = 37 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "enum-nested-member",
+        .input = "test/fixtures/Enum.java",
+        .reference = "OrgFeature/Tier/rank",
+        .text = "        int rank() {\n            return rank;\n        }",
+        .start_line = 34,
+        .end_line = 36,
+        .ranges = &.{.{ .from = 34, .to = 36 }},
+        .kind = .declaration,
+        .error_message = null,
+        .warning = null,
+    },
+    .{
+        .name = "enum-constant-is-not-a-member",
+        .input = "test/fixtures/Enum.java",
+        .reference = "OrgFeature/CALL",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "no section named \"CALL\" in \"OrgFeature\"",
         .warning = null,
     },
     .{

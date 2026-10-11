@@ -658,20 +658,28 @@ AST would add nothing the matcher uses. A matching step is:
 list or a `throws` clause is formatting, not a different declaration, so a
 member is *not* required to fit its header on one line. When the line a
 declaration starts on does not say everything there is to say — the closing `)`
-is on a later line — the matchers are run over the **header window** instead: the
-mask from the declaration's first character through the `{` or `;` that ends the
-header.
+is on a later line — the matchers are run over the **header** instead: the mask
+from the declaration's own name through the `{` or `;` that ends it.
 
-The window ends at the first `{` or `;` met with every bracket closed, and stops
+The header ends at the first `{` or `;` met with every bracket closed, and stops
 at a blank line or a line that opened nothing the next line could continue. Every
 bracket counts — `(`, `[`, `{` and `<` — which is what makes a wrapped parameter
 list, a wrapped generic list, a wrapped `throws` and a wrapped class header one
 rule; a `{` inside the header's own brackets (a lambda default, an array
 initialiser) is not the body's brace, because a bracket is open, and a line whose
-brackets are balanced ends the header there. The window is bounded (200 lines), so
-a header that is never closed is not followed through the rest of the file.
+brackets are balanced ends the header there. The one `>` that is *not* a closer
+is the one an arrow spells: `->` and `=>` are punctuation, so counting them as
+angle brackets would end a Rust `fn f() -> T {` header at the arrow and lose its
+body. The header is bounded (200 lines), so one that is never closed is not
+followed through the rest of the file.
 
-What the window must **not** do is invent a declaration. The name is looked for
+The same rule is what reads a Java `enum`, where the constants come before the
+body's brace and each takes a line of its own — `enum Tier {\n  FREE(0),\n
+PAID(1);\n … }` — so the declaration is only complete at the `{`, several lines
+below the line it starts on. The constants are not members: what follows them is
+an ordinary class body, and only that is reachable by name.
+
+What the header must **not** do is invent a declaration. The name is looked for
 where it is written, and only a statement that would declare it counts: the text
 before the name must be a return type, a modifier list or nothing at all, and the
 `(` must belong to the name. A wrapped *call* — `return map(\n  1, 2);` — is
