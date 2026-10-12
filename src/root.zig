@@ -991,7 +991,14 @@ pub fn parseMarker(line: Str) ?Marker {
     const path = if (hash) |at| link.destination[0..at] else link.destination;
     const fragment = if (hash) |at| link.destination[at + 1 ..] else link.destination[0..0];
 
-    if (!eql(dropDotSlash(link.label), dropDotSlash(path))) return null;
+    // The label mirrors what the link points at: a link that names a section
+    // writes the fragment in both places, so the label is accepted as either
+    // the path alone or the whole destination.
+    if (!eql(dropDotSlash(link.label), dropDotSlash(path)) and
+        !eql(dropDotSlash(link.label), dropDotSlash(link.destination)))
+    {
+        return null;
+    }
     const relative_path = dropDotSlash(path);
     if (relative_path.len == 0) return null;
 
@@ -2839,7 +2846,9 @@ test "a wrapped class header is a declaration too" {
 
     // The class line is two lines longer than the rule of thumb allows: the type
     // parameters, the `extends` and the `implements` each get their own line, and
-    // the body only opens after them.
+    // the body only opens after them. The class's own `}` is the file's last line,
+    // and it belongs to the declaration: a span that stops on the last line it
+    // *read* loses it.
     try expectText(
         "public class Wrapped<\n" ++
             "        T extends Comparable<T>,\n" ++
@@ -2851,7 +2860,8 @@ test "a wrapped class header is a declaration too" {
             "            T left,\n" ++
             "            T right) {\n" ++
             "        return left.compareTo(right) >= 0 ? left : right;\n" ++
-            "    }",
+            "    }\n" ++
+            "}",
         try extractCodeRegion(alloc, java, try context.units("Wrapped"), file, &failure),
     );
 

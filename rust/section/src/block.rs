@@ -32,7 +32,13 @@ pub struct Block {
     /// The first line an indented body covers: the declaration's own line + 1, or the line after a
     /// wrapped header's own lines.
     pub body_from: Option<usize>,
+    /// The last line a property's *statement* covers: for a lambda or an array initialiser that is
+    /// several lines below the line the name is written on, and for a plain field it is that line.
     pub line_end: Option<usize>,
+    /// The offset of the `=` that opened a property's initialiser, or `None` when it has none.
+    pub equals_at: Option<usize>,
+    /// One past the `;` that ended a property's statement, which is where its initialiser stops.
+    pub statement_to: Option<usize>,
     pub single_line: bool,
     pub shared_close: bool,
     pub indented: bool,
@@ -67,6 +73,8 @@ impl Block {
             expression_end_line: None,
             body_from: None,
             line_end: None,
+            equals_at: None,
+            statement_to: None,
             single_line: false,
             shared_close: false,
             indented: false,

@@ -19,7 +19,8 @@ use crate::matchers::{
     property_decl, starts_with_statement_before, statement_keyword, take_identifier,
 };
 use crate::span::{
-    body_span, header_end, indent_width_units, is_blank_unit, keyword_body, trim_units, Span,
+    body_span, header_end, indent_width_units, is_blank_unit, keyword_body, statement_end,
+    trim_units, Span,
 };
 use crate::SectionError;
 
@@ -648,9 +649,48 @@ fn build_scope(
                 && !is_not_a_type(first_type)
             {
                 let block = Block::new("property", Some(&property.name), i);
-                block.borrow_mut().line_end = Some(i);
+                // The whole statement is the selection, `;` and all. The scan starts at the top of
+                // the declaration's own line, where every bracket is closed by construction, and
+                // follows it to its `;` — so a lambda, an array or an anonymous-class initialiser
+                // inside it is the statement's own brace and not the end of the statement. The `=` is
+                // the one the matcher's own look-ahead found, so the initialiser is read from the same
+                // place in every shape.
+                let line_start = lex.starts.get(i).copied().unwrap_or(0);
+                // This port's `PropertyDeclaration::value_from` counts **bytes** into the line, so it
+                // cannot give a UTF-16 offset directly. The matcher's own look-ahead puts the `=` at the
+                // end of what it matched, so it is found from the line's end, counted in characters —
+                // the unit the mask uses everywhere — and never in bytes, which a multi-byte character
+                // before it would inflate.
+                let trimmed = masked_line.trim_end();
+                let equals_at = trimmed
+                    .chars()
+                    .rev()
+                    .position(|unit| unit == '=')
+                    .map(|from_end| line_start + trimmed.chars().count() - 1 - from_end);
+                // The statement-end rule reads the **source** for everything that decides the span: the
+                // mask blanks a literal's delimiters, so neither its line lengths nor its line breaks can
+                // answer where a statement ends.
+                let source_units = units(&lex.source);
+                let source_lines: Vec<Vec<u16>> =
+                    lex.source.split('\n').map(crate::mask::units).collect();
+                let source_starts = line_starts(&source_units);
+                let (statement_to, last, equals) = statement_end(
+                    &lex.mask,
+                    &lex.starts,
+                    &source_lines,
+                    &source_starts,
+                    line_start,
+                    lex.mask.len(),
+                    equals_at,
+                );
+                {
+                    let mut block = block.borrow_mut();
+                    block.line_end = Some(last);
+                    block.equals_at = equals;
+                    block.statement_to = Some(statement_to);
+                }
                 register(&mut list, block.clone(), blocks);
-                i += 1;
+                i = last.max(i) + 1;
                 continue;
             }
         }

@@ -61,6 +61,27 @@ const VB_FORM = 'test/fixtures/Form.vb';
 // or type parameters do not fit on one line.
 const WRAPPED = 'test/fixtures/Wrapped.java';
 const WRAPPED_CLASS = 'test/fixtures/WrappedClass.java';
+// The same wrapped class header with the brace on a line of its own, so the
+// class's closing brace is the file's **last** line. The two fixtures differ
+// only there: the header has to be followed past the `{` line to reach the
+// body's `}`, which is what tells a span that ends at the end of the file from
+// one that stops a line early.
+const WRAPPED_GENERIC = 'test/fixtures/WrappedGeneric.java';
+// The property shapes: a field's statement is not its line. A lambda, an array
+// or an anonymous class makes it several lines, and its `{` is the expression's,
+// not the one that ends the statement.
+const PROPERTY_SHAPES = 'test/fixtures/PropertyShapes.java';
+// A language that does not end its statements with `;`, and properties whose
+// initialiser is a raw string (braces and all), a raw string that spans lines,
+// or a wrapped call. Without a `;` the statement has to end where the statement
+// ends — on a line that closes every bracket it opened and that the next line
+// does not continue — or the property swallows the member after it.
+const CART_KT = 'test/fixtures/Cart.kt';
+// A field whose *type* is more than one plain token: a qualified name, a generic
+// list, an array (of arrays), or any nesting of those. The declaration matcher
+// reads the type to find where the name begins, so a type it does not recognise
+// hides the field completely — the reference then names nothing at all.
+const PROPERTY_TYPES = 'test/fixtures/PropertyTypes.java';
 const WRAPPED_KT = 'test/fixtures/Wrapped.kt';
 const WRAPPED_PY = 'test/fixtures/Wrapped.py';
 const ENUM = 'test/fixtures/Enum.java';
@@ -152,6 +173,12 @@ const cases = [
     { name: 'wrapped-annotation-scope', input: WRAPPED, reference: 'toString/+' },
     { name: 'wrapped-class-header', input: WRAPPED_CLASS, reference: 'Wrapped' },
     { name: 'wrapped-class-member', input: WRAPPED_CLASS, reference: 'Wrapped/best' },
+    // The same declaration whose body closes on the file's last line: the
+    // closing `}` belongs to the span, and a matcher that stops at the last line
+    // it *read* rather than the last line the block reaches loses it.
+    { name: 'wrapped-class-header-at-end-of-file', input: WRAPPED_GENERIC, reference: 'WrappedGeneric' },
+    { name: 'wrapped-class-body-at-end-of-file', input: WRAPPED_GENERIC, reference: 'WrappedGeneric/-' },
+    { name: 'wrapped-class-member-at-end-of-file', input: WRAPPED_GENERIC, reference: 'WrappedGeneric/best' },
     // A body-less member whose header wraps is still a name with nothing to
     // inject, not a section with a body.
     { name: 'wrapped-bodyless-member', input: WRAPPED, reference: 'label' },
@@ -210,6 +237,73 @@ const cases = [
     // An arrow-assigned member is a declaration with an expression body.
     { name: 'shapes-arrow', input: SHAPES, reference: 'arrow' },
     { name: 'shapes-arrow-body', input: SHAPES, reference: 'arrow/-' },
+    // A property is a *statement*, so its span is the whole statement and not
+    // the line its name is written on. A lambda initialiser runs to its own `;`
+    // several lines below — and its `{` is the expression's brace, so a matcher
+    // that takes the first `{` for the end of the statement injects half of it.
+    { name: 'property-lambda-second-shape', input: PROPERTY_SHAPES, reference: 'plain' },
+    { name: 'property-lambda-second-shape-body', input: PROPERTY_SHAPES, reference: 'plain/-' },
+    // The same statement with the body's brace on the line after the arrow: the
+    // `;` is still the end of the field, whichever line the brace fell on.
+    { name: 'property-lambda-wrapped-body', input: PROPERTY_SHAPES, reference: 'wrapped' },
+    { name: 'property-lambda-wrapped-body-body', input: PROPERTY_SHAPES, reference: 'wrapped/-' },
+    // A generic type name and a lambda body that holds statements of its own.
+    { name: 'property-lambda-generic-type', input: PROPERTY_SHAPES, reference: 'value' },
+    { name: 'property-lambda-generic-type-body', input: PROPERTY_SHAPES, reference: 'value/-' },
+    // An anonymous class initialiser: the braces nest, and the statement still
+    // ends at the `;` that closes it.
+    { name: 'property-anonymous-class', input: PROPERTY_SHAPES, reference: 'byLength' },
+    { name: 'property-anonymous-class-body', input: PROPERTY_SHAPES, reference: 'byLength/-' },
+    // A one-line body: the bytes between the braces, trimmed, reported on the
+    // line they came from.
+    { name: 'property-one-line-body', input: PROPERTY_SHAPES, reference: 'only' },
+    { name: 'property-one-line-body-body', input: PROPERTY_SHAPES, reference: 'only/-' },
+    // An anchor block that closes on the line it opens on has no body at all,
+    // and the empty selection still reports the line it came from.
+    { name: 'property-anchor-closes-on-its-own-line', input: PROPERTY_SHAPES, reference: 'handler/tick' },
+    { name: 'property-anchor-closes-on-its-own-line-body', input: PROPERTY_SHAPES, reference: 'handler/tick/-' },
+    // The same rule in a language that writes no `;` at all. A Kotlin property is
+    // still a statement, and it ends where the statement ends: the member after it
+    // must stay addressable, so a raw string's braces — hidden by the mask — cannot
+    // carry the scan into the next declaration.
+    { name: 'kt-property-raw-string-with-braces', input: CART_KT, reference: 'note' },
+    { name: 'kt-property-raw-string-with-braces-body', input: CART_KT, reference: 'note/-' },
+    // A raw string that *spans* lines: the statement ends after its closing
+    // quotes, not on the line it opened on, and the braces inside it stay inside
+    // it. Its own lines are not blank lines — in the mask they are, which is what
+    // a matcher that reads the mask for its line boundaries gets wrong.
+    { name: 'kt-property-multiline-raw-string', input: CART_KT, reference: 'banner' },
+    { name: 'kt-property-multiline-raw-string-body', input: CART_KT, reference: 'banner/-' },
+    // A wrapped call: the initialiser continues while a bracket is open, and ends
+    // on the line that closes it.
+    { name: 'kt-property-wrapped-call', input: CART_KT, reference: 'total' },
+    { name: 'kt-property-wrapped-call-body', input: CART_KT, reference: 'total/-' },
+    // …and the members after all three are still members.
+    { name: 'kt-member-after-a-raw-string-property', input: CART_KT, reference: 'Cart/add' },
+    { name: 'kt-member-after-a-raw-string-property-by-name', input: CART_KT, reference: 'add' },
+    { name: 'kt-second-member-after-a-raw-string-property', input: CART_KT, reference: 'Cart/remove' },
+    // The shape of a field's *type*. A qualified name, a generic list, an array,
+    // an array of arrays, and a field carrying an annotation: every one is a
+    // property, and a matcher that cannot read its type finds nothing at all.
+    { name: 'property-type-qualified', input: PROPERTY_TYPES, reference: 'dotted' },
+    { name: 'property-type-qualified-body', input: PROPERTY_TYPES, reference: 'dotted/-' },
+    { name: 'property-type-generic-and-lambda', input: PROPERTY_TYPES, reference: 'supplier' },
+    { name: 'property-type-generic-and-lambda-body', input: PROPERTY_TYPES, reference: 'supplier/-' },
+    { name: 'property-type-array', input: PROPERTY_TYPES, reference: 'numbers' },
+    { name: 'property-type-array-body', input: PROPERTY_TYPES, reference: 'numbers/-' },
+    { name: 'property-type-array-with-new', input: PROPERTY_TYPES, reference: 'names' },
+    { name: 'property-type-array-with-new-body', input: PROPERTY_TYPES, reference: 'names/-' },
+    { name: 'property-type-array-of-arrays', input: PROPERTY_TYPES, reference: 'grid' },
+    { name: 'property-type-array-of-arrays-body', input: PROPERTY_TYPES, reference: 'grid/-' },
+    { name: 'property-type-generic-qualified-initialiser', input: PROPERTY_TYPES, reference: 'counts' },
+    { name: 'property-type-generic-qualified-initialiser-body', input: PROPERTY_TYPES, reference: 'counts/-' },
+    { name: 'property-type-plain', input: PROPERTY_TYPES, reference: 'annotated' },
+    // A field is a declaration, so `+` takes the annotation above it exactly as
+    // it does for a method.
+    { name: 'property-annotated', input: PROPERTY_TYPES, reference: 'annotated/+' },
+    { name: 'property-type-plain-body', input: PROPERTY_TYPES, reference: 'annotated/-' },
+    // …and the class that holds them all is still one declaration.
+    { name: 'property-types-class', input: PROPERTY_TYPES, reference: 'PropertyTypes' },
     // An `if` with no literal is not a condition.
     { name: 'shapes-chains-if-miss', input: SHAPES, reference: 'chains/chain' },
     { name: 'shapes-chains', input: SHAPES, reference: 'chains' },

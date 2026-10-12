@@ -1059,18 +1059,31 @@ fn render_block(
         return render_declaration(block, scope, lex, lexer);
     }
     if !is_anchor && block_kind == "property" {
-        let decl_line = block.borrow().decl_line;
+        let (decl_line, line_end, equals_at, statement_to) = {
+            let block_ref = block.borrow();
+            (
+                block_ref.decl_line,
+                block_ref.line_end.unwrap_or(block_ref.decl_line).max(block_ref.decl_line),
+                block_ref.equals_at,
+                block_ref.statement_to,
+            )
+        };
         if scope == Scope::Body {
-            let line_start = lex.starts.get(decl_line).copied().unwrap_or(0);
-            if let Some(offset) = lex.source.get(line_start..).and_then(|tail| tail.find('=')) {
-                let equals = line_start + offset;
-                let line_end = end_of_line(&crate::mask::units(&lex.source), line_start);
-                let tail = slice_units(&lex.source, equals + 1, line_end);
-                return single(trim_trailing_semicolon(tail.trim_end()).trim(), decl_line);
+            // `-` selects the initialiser expression: the bytes between the `=` that opens it and the
+            // `;` that ends the statement. A member with no initialiser has an empty body, reported on
+            // its own line.
+            let (Some(equals), Some(statement_to)) = (equals_at, statement_to) else {
+                return single(String::new(), decl_line);
+            };
+            if equals >= statement_to {
+                return single(String::new(), decl_line);
             }
+            return trimmed_slice(&lex.source, &lex.starts, equals + 1, statement_to);
         }
-        let line = lex.source_line(decl_line).trim_end().to_string();
-        return single(line, decl_line);
+        // The statement's own last line is what the `+`/`++` scopes extend from, so a field takes its
+        // `@Annotation` and its doc comment exactly as a method does — a field is a declaration too.
+        block.borrow_mut().end_line = Some(line_end);
+        return render_declaration(block, scope, lex, lexer);
     }
 
     let (decl_line, open, close, open_line, close_line, anchor_line, shared_close) = {
@@ -1248,6 +1261,34 @@ fn single(text: impl Into<String>, at: usize) -> Rendered {
     }
 }
 
+/// The bytes strictly between two UTF-16 offsets of `source`, trimmed, with the line range the
+/// trimmed text still covers — the JavaScript's `trimmedSlice`.
+///
+/// A slice that is trimmed has to answer for the lines the trim removed: a click on a body belongs to
+/// its first real line, not to the blank line above it, and a slice that trims to nothing still
+/// reports the line it would have started on rather than a range that runs backwards.
+fn trimmed_slice(source: &str, starts: &[usize], from: usize, to: usize) -> Rendered {
+    let raw = slice_units(source, from, to.max(from));
+    let text = raw.trim().to_string();
+    let at = crate::mask::line_of(starts, from.min(source.encode_utf16().count()));
+    if text.is_empty() {
+        return Rendered {
+            text,
+            from: at + 1,
+            to: at + 1,
+        };
+    }
+    let skipped = raw.len() - raw.trim_start().len();
+    let dropped = raw.len() - raw.trim_end().len();
+    let first = from + raw[..skipped].encode_utf16().count();
+    let last = (from + raw[..raw.len() - dropped].encode_utf16().count()).saturating_sub(1);
+    Rendered {
+        text,
+        from: crate::mask::line_of(starts, first) + 1,
+        to: crate::mask::line_of(starts, last.max(first)) + 1,
+    }
+}
+
 /// `lines.slice(from, to)`, half-open and forgiving of odd ranges.
 fn slice(lines: &[String], from: usize, to: usize) -> Vec<String> {
     let start = from.min(lines.len());
@@ -1265,13 +1306,6 @@ fn slice_units(source: &str, from: usize, to: usize) -> String {
     let start = from.min(units.len());
     let end = to.min(units.len()).max(start);
     crate::mask::from_units(&units[start..end])
-}
-
-fn trim_trailing_semicolon(text: &str) -> &str {
-    match text.strip_suffix(';') {
-        Some(head) => head.trim_end(),
-        None => text,
-    }
 }
 
 /// The first line of the annotation block directly above `decl_line`, or `usize::MAX`.

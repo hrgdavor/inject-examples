@@ -192,10 +192,12 @@ This is the real code that decides whether a line is a marker, injected from
  * Read one line as an injection marker, or return null.
  *
  * A marker is a line that is nothing but a link to a real path, labelled with
- * that same path — optionally naming a section in the fragment:
+ * that same path — optionally naming a section in the fragment, which both the
+ * label and the destination may carry:
  *
  *     [fixtures/example-1/before.md](./fixtures/example-1/before.md)
  *     [fixtures/example-4/source.md](./fixtures/example-4/source.md#table)
+ *     [fixtures/example-4/source.md#table](./fixtures/example-4/source.md#table)
  *
  * @returns {{ raw: string, path: string, reference: string | null } | null}
  */
@@ -211,7 +213,16 @@ export function parseMarker(line) {
     const fragment = hash === -1 ? '' : destination.slice(hash + 1);
 
     const withoutDotSlash = (value) => value.replace(/^\.\//, '');
-    if (withoutDotSlash(label) !== withoutDotSlash(path)) return null;
+    // The label mirrors what the link points at. A link that names a section
+    // writes the fragment in both places — `[path#section](./path#section)` — so
+    // the label is accepted as either the path alone or the whole destination;
+    // comparing it against the path alone rejected every section marker.
+    if (
+        withoutDotSlash(label) !== withoutDotSlash(path) &&
+        withoutDotSlash(label) !== withoutDotSlash(destination)
+    ) {
+        return null;
+    }
 
     // Normalise away a leading `./` so `path` is directly usable as a path.
     const relativePath = withoutDotSlash(path);

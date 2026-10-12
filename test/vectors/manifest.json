@@ -68,7 +68,7 @@
       "layer": 5,
       "name": "resolution",
       "file": "test/vectors/section-vectors.json",
-      "rows": 137,
+      "rows": 177,
       "selector": "rows with input !== null (they name a fixture)",
       "asserts": [
         "text",
@@ -112,7 +112,7 @@
   "corpora": [
     {
       "path": "test/vectors/section-vectors.json",
-      "rows": 195,
+      "rows": 235,
       "shape": "array",
       "row_fields": {
         "name": "unique; `<category>:<case>` for parse rows, a slug for resolution rows",
@@ -127,18 +127,18 @@
         "error": "the exact thrown message, or null"
       },
       "counts": {
-        "total": 195,
+        "total": 235,
         "parse": 58,
-        "resolution": 137,
+        "resolution": 177,
         "errors": 65,
         "by_kind": {
-          "anchor": 9,
+          "anchor": 11,
           "condition": 2,
-          "declaration": 68,
+          "declaration": 77,
           "lines": 6,
           "multiple": 5,
           "null": 32,
-          "property": 10,
+          "property": 39,
           "region": 5
         }
       },

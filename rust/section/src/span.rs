@@ -121,20 +121,28 @@ pub fn header_end(mask_lines: &[Vec<u16>], starts: &[usize], line: usize, from: 
                     depth -= 1;
                 }
             }
-            if depth < 0 {
-                return Header {
-                    end: line_start + column + 1,
-                    last: i,
-                };
-            }
             column += 1;
         }
+        // A closer with nothing open is not an error and does not end the header. A `<` that a
+        // generic list should have balanced may have been a less-than
+        // (`class Wrapped<\n        T extends Comparable<T>,`), and the first `>` then reads as one
+        // closer too many; ending the header there would leave the whole declaration bodyless. The
+        // count is therefore taken from the top of the next line, so a line never ends in debt.
         depth = depth.max(0);
         start = line_start + text.len();
         // A header continues while a bracket is open, while the line ends on a separator, and onto a
         // `{` alone on the next line — the Allman brace, which no other rule reaches.
+        //
+        // A *name* may end a header line that is still mid-declaration, which no separator reveals: a
+        // wrapped class header writes its supertype on a line of its own
+        // (`implements Renderer<T>`), and the `{` follows on the next one. Only the heads that can
+        // open such a tail are followed — a `throws`, or an `extends`/`implements` clause with an
+        // identifier still after the keyword — so a bodyless member that happens to end on a word
+        // (`abstract String label(\n  int width)`) keeps its indented body.
         let continues = depth > 0
             || line_ends_on_separator(text)
+            || ends_on_a_word(text)
+                && (mentions_throws(text) || mentions_extends_or_implements(text))
             || next_non_blank_units(mask_lines, i + 1)
                 .is_some_and(|next| reads_as_alone_brace(&mask_lines[next]));
         if !continues {
@@ -173,7 +181,6 @@ fn bracket_depth(text: &[u16], from: usize, to: usize) -> i32 {
     }
     depth
 }
-
 /// Whether a line ends on `(`, `,` or `;` — the JavaScript's `/[(,;]\s*$/`.
 fn line_ends_on_separator(text: &[u16]) -> bool {
     let mut at = text.len();
@@ -191,6 +198,88 @@ fn line_ends_on_separator(text: &[u16]) -> bool {
 fn reads_as_alone_brace(text: &[u16]) -> bool {
     let trimmed = trim_units(text);
     trimmed.len() == 1 && trimmed[0] == b'{' as u16
+}
+
+/// Whether a line ends on a name — the JavaScript's `/\w[\w$]*[>)\]}\s]*$/`.
+///
+/// The trailing closers may be there: a wrapped supertype ends on `Renderer<T>`, and the `>` is not
+/// what decides that the declaration is unfinished.
+fn ends_on_a_word(text: &[u16]) -> bool {
+    let mut at = text.len();
+    while at > 0 && (is_blank_unit(text[at - 1]) || closes_a_trailing_name(text[at - 1])) {
+        at -= 1;
+    }
+    at > 0 && is_name_unit(text[at - 1])
+}
+
+/// A unit the JavaScript's `[>)\]}\s]` accepts after a name.
+fn closes_a_trailing_name(unit: u16) -> bool {
+    matches!(
+        unit as u8 as char,
+        '>' | ')' | ']' | '}'
+    ) || is_blank_unit(unit)
+}
+
+/// Whether the masked line carries `throws` followed by a name — the JavaScript's `/\bthrows\s+\w/`.
+fn mentions_throws(text: &[u16]) -> bool {
+    contains_word_then_name(text, b"throws")
+}
+
+/// Whether the masked line carries an `extends`/`implements` clause with a name after the keyword —
+/// the JavaScript's `/\b(?:extends|implements)\s+[\w$][\w$.,<>?\[\]\s]*\w/`.
+fn mentions_extends_or_implements(text: &[u16]) -> bool {
+    contains_word_then_name(text, b"extends") || contains_word_then_name(text, b"implements")
+}
+
+/// `word`, whitespace, then a name at the end of the line's non-blank text.
+fn contains_word_then_name(text: &[u16], word: &[u8]) -> bool {
+    let end = text.len();
+    let mut at = 0;
+    while at + word.len() <= end {
+        let hit = word
+            .iter()
+            .enumerate()
+            .all(|(offset, byte)| text[at + offset] == *byte as u16);
+        let boundary_before = at == 0 || !is_name_unit(text[at - 1]);
+        if hit && boundary_before && at + word.len() < end {
+            // `\s+` between the keyword and the name.
+            let after_word = at + word.len();
+            let mut named = after_word;
+            while named < end && is_blank_unit(text[named]) {
+                named += 1;
+            }
+            if named > after_word && named < end && is_name_unit(text[named]) {
+                let tail = trim_units(&text[named..end]);
+                // The clause must *end* on a name, which the JavaScript tests over the raw tail with
+                // `\w` last: `Renderer<T>` ends on a generic list and still does, while `Renderer<`
+                // does not.
+                let ends_on_name = ends_on_a_word(tail);
+                // Only a name, a dotted or generic type, and separators may sit between the two, so a
+                // Only a name, a dotted or generic type, and separators may sit between the two, so a
+                // word that merely occurs inside a longer expression does not read as a clause.
+                let only_a_type = tail
+                    .iter()
+                    .all(|unit| is_name_unit(*unit) || is_type_punctuation(*unit) || is_blank_unit(*unit));
+                if ends_on_name && only_a_type {
+                    return true;
+                }
+            }
+        }
+        at += 1;
+    }
+    false
+}
+
+fn is_name_unit(unit: u16) -> bool {
+    unit == b'_' as u16 || unit == b'$' as u16 || (unit as u8 as char).is_ascii_alphanumeric()
+}
+
+/// The punctuation a supertype clause may carry — the JavaScript's `[\w$.,<>?\[\]\s]`.
+fn is_type_punctuation(unit: u16) -> bool {
+    matches!(
+        unit as u8 as char,
+        '.' | ',' | '<' | '>' | '?' | '[' | ']'
+    )
 }
 
 /// A body span, or `None` when the member has no body to inject (an interface or `abstract` method).
@@ -359,6 +448,141 @@ pub fn body_span(
 fn last_index_of(text: &[u16], unit: u16, from: usize) -> Option<usize> {
     let end = from.min(text.len().saturating_sub(1));
     (0..=end).rev().find(|at| text[*at] == unit)
+}
+
+/// Where a *property's* statement ends.
+///
+/// A field is a statement, and the statement is the selection — so the span has to be the whole of it
+/// and not the line its name is written on. For a language that terminates its statements the `;`
+/// decides, and it is the first one met with every bracket closed: a `{` with every bracket closed is
+/// ordinarily the body and would end a declaration header, but inside a field's *expression* a `{`
+/// opens one — the lambda of `Runnable arrow = () -> { … };`, an array or an anonymous-class
+/// initialiser — so the scan tracks the brackets themselves and the `;` closes the statement wherever
+/// the initialiser left it.
+///
+/// A language with no `;` (Kotlin, Go, C#, Python) needs the other half of the rule: the statement also
+/// ends at the end of a line that closes every bracket it opened, when nothing about the next line
+/// continues it — a line that ends on an operator, a comma or an opening bracket, or a next line
+/// indented **deeper** than the declaration. A next line at the declaration's own indentation starts a
+/// sibling instead, and reading on would take that sibling's text into the property.
+///
+/// `equals` is the offset of the `=` that opened the initialiser, or `None`.
+pub fn statement_end(
+    mask: &[u16],
+    starts: &[usize],
+    source_lines: &[Vec<u16>],
+    source_starts: &[usize],
+    from: usize,
+    to: usize,
+    equals: Option<usize>,
+) -> (usize, usize, Option<usize>) {
+    let decl_line = line_of(starts, from);
+    let indent = indent_width_units(&source_lines[decl_line.min(source_lines.len().saturating_sub(1))]);
+    // The first source line at or after `line` that has text on it, or `None`. The mask is the wrong
+    // test: a line inside a multi-line string or a raw string is all spaces in the mask, and treating it
+    // as a blank line would end a statement in the middle of its own literal.
+    let next_text_line = |line: usize| -> Option<usize> {
+        (line..source_lines.len()).find(|at| !trim_units(&source_lines[*at]).is_empty())
+    };
+    let mut depth = 0i32;
+    let mut last = from;
+    let mut content_end = from;
+    let mut line = decl_line;
+    while line < source_starts.len() && source_starts[line] < to {
+        // Every level is read from the **source**, never the mask: the mask blanks a literal's
+        // delimiters, so a line of it is shorter than the line of source it stands for.
+        let line_start = source_starts[line].max(from);
+        let text_line = &source_lines[line.min(source_lines.len() - 1)];
+        let line_end = (line_start + text_line.len()).min(to);
+        // The line's text without its trailing blanks, so its end is the offset just past the last real
+        // character the line has — the mask cannot give one, because it blanks a literal's delimiters.
+        let text = trim_end_units(text_line);
+        let in_literal = line > decl_line
+            && trim_units(&mask[line_start.min(mask.len())..line_end.min(mask.len())]).is_empty()
+            && !text.is_empty();
+        if line > decl_line && text.is_empty() {
+            break;
+        }
+        if in_literal {
+            // A line the mask blanked but the source did not is part of a string literal that spans
+            // lines. It is not a statement boundary — neither its indentation nor its own braces mean
+            // anything, since both are the literal's own text — so the statement simply reaches through
+            // it, and the literal's closing line comes with it.
+            last = last.max(line_end);
+            content_end = line_start + text.len();
+            line += 1;
+            continue;
+        }
+        let mut stop = false;
+        let mut at = line_start;
+        while at < line_end && at < mask.len() {
+            let unit = mask[at];
+            if unit == b'(' as u16 || unit == b'[' as u16 || unit == b'{' as u16 {
+                depth += 1;
+            } else if unit == b')' as u16 || unit == b']' as u16 || unit == b'}' as u16 {
+                if depth == 0 {
+                    stop = true;
+                    break;
+                }
+                depth -= 1;
+            } else if unit == b';' as u16 && depth == 0 {
+                return (at, line_of(starts, at), equals);
+            }
+            at += 1;
+        }
+        // The statement so far reaches the end of this line, `;` or not, and its text ends there —
+        // before the newline, and before any trailing blank.
+        last = last.max(line_end);
+        if !text.is_empty() {
+            content_end = line_start + text.len();
+        }
+        if stop {
+            break;
+        }
+        if line > decl_line && depth == 0 {
+            // Nothing continues this line: it closes what it opened and does not end on an operator or
+            // an opening bracket. An `=` that ends a line is not punctuation here — the initialiser may
+            // be an expression the next line carries, which the indentation decides.
+            if !ends_on_an_operator(mask, line_start, line_end) {
+                let Some(next) = next_text_line(line + 1) else { break };
+                if indent_width_units(&source_lines[next]) <= indent {
+                    break;
+                }
+            }
+        }
+        line += 1;
+    }
+    // The scan stopped on a line that ends the statement. Its declaration reaches the end of that line,
+    // and its initialiser's own text stops at the last real character the statement has — never at the
+    // newline, and never at the end of the file.
+    let block_end = last.max(content_end);
+    let initializer_end = if content_end == from { block_end } else { content_end };
+    (initializer_end, line_of(starts, block_end), equals)
+}
+
+/// A line without its trailing blanks — the unit slice the JavaScript's `trimEnd` returns.
+fn trim_end_units(line: &[u16]) -> &[u16] {
+    let mut end = line.len();
+    while end > 0 && is_blank_unit(line[end - 1]) {
+        end -= 1;
+    }
+    &line[..end]
+}
+
+/// Whether a line ends on an operator or an opening bracket — the JavaScript's
+/// `/[,+\-*/%&|?<(\[{!~^]\s*$/`.
+fn ends_on_an_operator(mask: &[u16], from: usize, to: usize) -> bool {
+    let mut at = to.min(mask.len());
+    while at > from && is_blank_unit(mask[at - 1]) {
+        at -= 1;
+    }
+    if at == from {
+        return false;
+    }
+    matches!(
+        mask[at - 1] as u8 as char,
+        ',' | '+' | '-' | '*' | '/' | '%' | '&' | '|' | '?' | '<' | '(' | '[' | '{' | '!' | '~' | '^'
+    )
 }
 
 /// The first of `{`, `;` and `=>` in a header, in the order they appear — the thing that ended it.
@@ -550,6 +774,23 @@ mod tests {
         assert_eq!(Some(2), span.close_line);
         assert_eq!(2, span.end_line(0));
         assert!(!span.indented);
+    }
+
+    #[test]
+    fn a_wrapped_class_header_reaches_a_brace_on_a_later_line() {
+        // A wrapped class header writes its supertype on a line of its own and its `{` on the next:
+        // `implements Renderer<T>` ends on a name, so it is the tail rule and not a separator that
+        // follows the header to its body. The generic list is unbalanced on the line the name is on
+        // (`class Wrapped<`), which is what the debt rule keeps from ending the header there.
+        let source = "public class Wrapped<\n        T extends Comparable<T>,\n        U extends CharSequence>\n        extends AbstractBase\n        implements Renderer<T>\n{\n    public T best(T left, T right) {\n        return left;\n    }\n}\n";
+        let (mask, lines, starts) = scan(source);
+        let from = after_name(source, "Wrapped");
+        let header = header_end(&lines, &starts, 0, from);
+        assert_eq!(5, header.last, "the header reaches the brace line");
+        let span = body_span(&mask, &lines, &starts, 0, header.end, from, false)
+            .expect("the class has a body");
+        assert_eq!(Some(5), span.open_line);
+        assert_eq!(Some(9), span.close_line);
     }
 
     #[test]

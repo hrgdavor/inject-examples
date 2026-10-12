@@ -482,32 +482,48 @@ fn take_identifier_from_end(text: &str) -> Option<(&str, usize)> {
 
 /// The trailing *type* token of `text`, and the offset it starts at.
 ///
-/// A type token is one word, optionally followed by a single `<…>` group — the reference's
-/// `[\w$]+(?:<[^<>]*>)?`. `List<String>` is a token; `List<String>[]` is not, and neither is a bare
-/// `>`.
+/// A type token is a whole type: a qualified name (`java.util.List`), a generic list (`Map<String,
+/// Integer>`), an array (`int[]`, `String[][]`), or any nesting of the three — the reference's
+/// `[\w$]+(?:\.[\w$]+)*(?:\s*<[^<>]*>)?(?:\s*\[\s*\])*`. `List<String>` is a token, `List<String>[]` is
+/// too, and so is `java.util.List<String>[]`, while a bare `>` or a stray `[` is not.
 fn take_type_token_from_end(text: &str) -> Option<(&str, usize)> {
-    let trimmed = text.trim_end();
-    if trimmed.is_empty() {
+    let mut end = text.trim_end().len();
+    if end == 0 {
         return None;
     }
-    let word_end = match trimmed.strip_suffix('>') {
-        // `<[^<>]*>`: the nearest `<` with no angle bracket between it and the closer.
-        Some(head) => {
-            let open = head.rfind('<')?;
-            if head[open + 1..].contains(['<', '>']) {
-                return None;
-            }
-            open
+    // `(?:\s*\[\s*\])*`: the array suffix, innermost bracket last.
+    loop {
+        let head = text[..end].trim_end();
+        let Some(without_close) = head.strip_suffix(']') else { break };
+        let without_open = without_close.trim_end().strip_suffix('[')?;
+        end = without_open.trim_end().len();
+    }
+    // `(?:\s*<[^<>]*>)?`: one generic group, with no angle bracket inside it.
+    let head = text[..end].trim_end();
+    if let Some(without_close) = head.strip_suffix('>') {
+        let open = without_close.rfind('<')?;
+        if without_close[open + 1..].contains(['<', '>']) {
+            return None;
         }
-        None => trimmed.len(),
-    };
-    let start = trimmed[..word_end]
-        .char_indices()
-        .rev()
-        .take_while(|(_, character)| is_word_char(*character))
-        .last()
-        .map(|(index, _)| index)?;
-    Some((&trimmed[start..], start))
+        end = open;
+    }
+    // `[\w$]+(?:\.[\w$]+)*`: the name, and every qualification of it.
+    let mut start = end;
+    loop {
+        let scanned = text[..start]
+            .char_indices()
+            .rev()
+            .take_while(|(_, character)| is_word_char(*character))
+            .last()
+            .map(|(index, _)| index)?;
+        start = scanned;
+        if text[..start].ends_with('.') {
+            start -= 1;
+            continue;
+        }
+        break;
+    }
+    Some((&text[start..end], start))
 }
 
 /// The first word of the type sequence that ends `text` (the reference's `prop[2]`), or `None`.

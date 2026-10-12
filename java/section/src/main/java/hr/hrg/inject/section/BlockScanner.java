@@ -175,6 +175,10 @@ public final class BlockScanner {
         Integer expression;
         Integer expressionEndLine;
         Integer lineEnd;
+        /** The offset of the `=` that opened a property's initialiser, or null when it has none. */
+        Integer equalsAt;
+        /** One past the `;` that ended a property's statement, where its initialiser stops. */
+        Integer statementTo;
         Boolean singleLine;
         Boolean sharedClose;
         boolean indented;
@@ -281,8 +285,11 @@ public final class BlockScanner {
     private static final Pattern PREFIX = Pattern.compile("^[\\w$<>\\[\\],.?*&:@\\s]*$");
     private static final Pattern STATEMENT_KEYWORD =
             Pattern.compile("\\b(if|else|for|while|do|switch|try|catch|finally|synchronized)\\b");
+    /** A whole type: a qualified name, a generic list, an array, or any nesting of the three. */
+    private static final String TYPE_TOKEN =
+            "[\\w$]+(?:\\.[\\w$]+)*(?:\\s*<[^<>]*>)?(?:\\s*\\[\\s*\\])*";
     private static final Pattern PROPERTY_DECL = Pattern.compile(
-            "(?<!\\.)\\b(?:(const|let|var)\\s+|((?:[\\w$]+(?:<[^<>]*>)?)(?:\\s+[\\w$]+(?:<[^<>]*>)?)*?)\\s+)"
+            "(?<!\\.)\\b(?:(const|let|var)\\s+|((?:" + TYPE_TOKEN + ")(?:\\s+(?:" + TYPE_TOKEN + "))*?)\\s+)"
                     + "([A-Za-z_$][\\w$]*)\\b\\s*=(?!=)");
     private static final Pattern REGION_DIRECTIVE =
             Pattern.compile("^(#?)(region|endregion)\\b\\s*(.*)$", Pattern.CASE_INSENSITIVE);
@@ -307,6 +314,16 @@ public final class BlockScanner {
     private static final int HEADER_LINES = 200;
     /** A line that opens a header the next line could continue: a bracket, a comma or a semicolon. */
     private static final Pattern CONTINUES_HEADER = Pattern.compile("[(,;]\\s*$");
+    /** A line that ends on an operator or an opening bracket — the punctuation a wrapped line trails. */
+    private static final Pattern ENDS_ON_AN_OPERATOR =
+            Pattern.compile("[,+\\-*/%&|?<(\\[{!~^]\\s*$");
+    /** A line whose last non-blank character is a name — the JavaScript's `/\w[\w$]*[>)\]}\s]*$/`. */
+    private static final Pattern ENDS_ON_A_WORD = Pattern.compile("\\w[\\w$]*[>)\\]}\\s]*$");
+    /** A wrapped `throws` clause, whose exception list ends the line. */
+    private static final Pattern TAIL_THROWS = Pattern.compile("\\bthrows\\s+\\w");
+    /** A wrapped `extends`/`implements` clause with a name still after the keyword. */
+    private static final Pattern TAIL_SUPERTYPE =
+            Pattern.compile("\\b(?:extends|implements)\\s+[\\w$][\\w$.,<>?\\[\\]\\s]*\\w");
     /** A `{` alone on its line: the Allman brace, which only the header rule reaches. */
     private static final Pattern ALLMAN_BRACE = Pattern.compile("^\\s*\\{\\s*$");
     /** What the character before an expression body's `=` must be: a type, a bracket or a `>`. */
@@ -548,9 +565,20 @@ public final class BlockScanner {
                     && !(property.group(2) != null
                             && NOT_A_TYPE.contains(property.group(2).trim().split("\\s+")[0]))) {
                 Block block = new Block("property", property.group(3), i);
-                block.lineEnd = i;
+                // The whole statement is the selection, `;` and all. The scan starts at the top of the
+                // declaration's own line, where every bracket is closed by construction, and follows it
+                // to its `;` — so a lambda, an array or an anonymous-class initialiser inside it is the
+                // statement's own brace and not the end of the statement. The `=` is the one the
+                // matcher's own look-ahead found, so the initialiser is read from the same place in
+                // every shape.
+                int equalsAt = lex.starts[i] + property.end() - 1;
+                int[] propertyStatement =
+                        statementEnd(lex.mask, lex.lines, lex.starts[i], lex.mask.length());
+                block.lineEnd = propertyStatement[1];
+                block.equalsAt = equalsAt;
+                block.statementTo = propertyStatement[0];
                 register(list, block, blocks);
-                i++;
+                i = Math.max(i, propertyStatement[1]) + 1;
                 continue;
             }
 
@@ -876,17 +904,28 @@ public final class BlockScanner {
                 } else if (character == '>' && previous != '=' && previous != '-') {
                     depth--;
                 }
-                if (depth < 0) {
-                    return new HeaderEnd(starts[i] + column + 1, i);
-                }
             }
+            // A closer with nothing open is not an error and does not end the header. A `<` that a
+            // generic list should have balanced may have been a less-than
+            // (`class Wrapped<` / `T extends Comparable<T>,`), and the first `>` then reads as one
+            // closer too many; ending the header there would leave the whole declaration bodyless. The
+            // count is therefore taken from the top of the next line, so a line never ends in debt.
             depth = Math.max(0, depth);
             start = starts[i] + text.length();
             // A header continues while a bracket is open, while the line ends on a separator, and onto
             // a `{` alone on the next line — the Allman brace, which no other rule reaches. A `{` at
             // the end of the header's own line was already found above.
+            //
+            // A *name* may end a header line that is still mid-declaration, which no separator
+            // reveals: a wrapped class header writes its supertype on a line of its own
+            // (`implements Renderer<T>`), and the `{` follows on the next one. Only the heads that can
+            // open such a tail are followed — a `throws`, or an `extends`/`implements` clause with an
+            // identifier still after the keyword — so a bodyless member that happens to end on a word
+            // (`abstract String label(` / `  int width)`) keeps its indented body.
             int next = Masker.nextNonBlank(maskLines, i + 1);
             boolean continues = depth > 0 || CONTINUES_HEADER.matcher(text).find()
+                    || (ENDS_ON_A_WORD.matcher(text).find()
+                        && (TAIL_THROWS.matcher(text).find() || TAIL_SUPERTYPE.matcher(text).find()))
                     || (next != -1 && ALLMAN_BRACE.matcher(maskLines[next]).matches());
             if (!continues) {
                 return new HeaderEnd(start, i);
@@ -908,6 +947,133 @@ public final class BlockScanner {
             }
         }
         return depth;
+    }
+
+    /**
+     * Where a *property's* statement ends.
+     *
+     * <p>A field is a statement, and the statement is the selection — so the span has to be the whole
+     * of it and not the line its name is written on. For a language that terminates its statements the
+     * {@code ;} decides, and it is the first one met with every bracket closed: a {@code {} with every
+     * bracket closed is ordinarily the body and would end a declaration header, but inside a field's
+     * <em>expression</em> a {@code {} opens one — the lambda of
+     * {@code Runnable arrow = () -> { … };}, an array or an anonymous-class initialiser — so the scan
+     * tracks the brackets themselves and the {@code ;} closes the statement wherever the initialiser
+     * left it.
+     *
+     * <p>A language with no {@code ;} (Kotlin, Go, C#, Python) needs the other half of the rule: the
+     * statement also ends at the end of a line that closes every bracket it opened, when nothing about
+     * the next line continues it — a line that ends on an operator, a comma or an opening bracket, or a
+     * next line indented <em>deeper</em> than the declaration. A next line at the declaration's own
+     * indentation starts a sibling instead, and reading on would take that sibling's text into the
+     * property.
+     *
+     * @param sourceLines the <em>source</em> lines, for the blank test: a line inside a multi-line
+     *     string or a raw string is all spaces in the mask, and treating it as blank would end a
+     *     statement in the middle of its own literal
+     * @return {@code {statementEnd, lastLine}}: one past the {@code ;} that ended the statement (or the
+     *     end of its last line when nothing did), and the 0-based line of its last character
+     */
+    private static int[] statementEnd(String mask, String[] sourceLines, int from, int to) {
+        // The statement's levels are read from the **source**, never the mask: the mask blanks a
+        // literal's delimiters, so a line of it is shorter than the line of source it stands for.
+        StringBuilder joined = new StringBuilder();
+        for (int at = 0; at < sourceLines.length; at++) {
+            if (at > 0) {
+                joined.append('\n');
+            }
+            joined.append(sourceLines[at]);
+        }
+        int[] sourceStarts = Masker.lineStarts(joined.toString());
+        int declLine = Masker.lineOf(sourceStarts, from);
+        int indent = Masker.indentWidth(sourceLines[declLine]);
+        int depth = 0;
+        int last = from;
+        int contentEnd = from;
+        for (int line = declLine; line < sourceStarts.length && sourceStarts[line] < to; line++) {
+            int lineStart = Math.max(sourceStarts[line], from);
+            String textLine = sourceLines[Math.min(line, sourceLines.length - 1)];
+            int lineEnd = Math.min(lineStart + textLine.length(), to);
+            String text = stripTrailing(textLine);
+            boolean inLiteral = line > declLine
+                    && mask.substring(Math.min(lineStart, mask.length()), Math.min(lineEnd, mask.length()))
+                            .trim().isEmpty()
+                    && !text.isEmpty();
+            if (line > declLine && text.isEmpty()) {
+                break;
+            }
+            if (inLiteral) {
+                // A line the mask blanked but the source did not is part of a string literal that spans
+                // lines. It is not a statement boundary — neither its indentation nor its own braces mean
+                // anything, since both are the literal's own text — so the statement simply reaches
+                // through it, and the literal's closing line comes with it.
+                last = Math.max(last, lineEnd);
+                contentEnd = lineStart + text.length();
+                continue;
+            }
+            boolean stop = false;
+            for (int at = lineStart; at < lineEnd; at++) {
+                char character = mask.charAt(at);
+                if (character == '(' || character == '[' || character == '{') {
+                    depth++;
+                } else if (character == ')' || character == ']' || character == '}') {
+                    if (depth == 0) {
+                        stop = true;
+                        break;
+                    }
+                    depth--;
+                } else if (character == ';' && depth == 0) {
+                    return new int[] {at, Masker.lineOf(sourceStarts, at), at + 1};
+                }
+            }
+            // The statement so far reaches the end of this line, `;` or not, and its text ends there —
+            // before the newline, and before any trailing blank.
+            last = Math.max(last, lineEnd);
+            if (!text.isEmpty()) {
+                contentEnd = lineStart + text.length();
+            }
+            if (stop) {
+                break;
+            }
+            if (line > declLine && depth == 0) {
+                // Nothing continues this line: it closes what it opened and does not end on an operator
+                // or an opening bracket. An `=` that ends a line is not punctuation here — the
+                // initialiser may be an expression the next line carries, which the indentation decides.
+                if (!ENDS_ON_AN_OPERATOR.matcher(
+                        mask.substring(Math.min(lineStart, mask.length()), Math.min(lineEnd, mask.length())))
+                        .find()) {
+                    int next = nextSourceLine(sourceLines, line + 1);
+                    if (next == -1 || Masker.indentWidth(sourceLines[next]) <= indent) {
+                        break;
+                    }
+                }
+            }
+        }
+        // The scan stopped on a line that ends the statement. Its declaration reaches the end of that
+        // line, and its initialiser's own text stops at the last real character the statement has —
+        // never at the newline, and never at the end of the file.
+        int blockEnd = Math.max(last, contentEnd);
+        int initializerEnd = contentEnd == from ? blockEnd : contentEnd;
+        return new int[] {initializerEnd, Masker.lineOf(sourceStarts, blockEnd), blockEnd};
+    }
+
+    /** A line without its trailing blanks — the JavaScript's {@code trimEnd}. */
+    private static String stripTrailing(String line) {
+        int end = line.length();
+        while (end > 0 && Character.isWhitespace(line.charAt(end - 1))) {
+            end--;
+        }
+        return line.substring(0, end);
+    }
+
+    /** The first line at or after {@code line} the source has text on, or -1. */
+    private static int nextSourceLine(String[] sourceLines, int line) {
+        for (int at = line; at < sourceLines.length; at++) {
+            if (!sourceLines[at].trim().isEmpty()) {
+                return at;
+            }
+        }
+        return -1;
     }
 
     /**

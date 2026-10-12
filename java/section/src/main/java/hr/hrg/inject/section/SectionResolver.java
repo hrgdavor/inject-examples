@@ -571,15 +571,28 @@ public final class SectionResolver {
                     line -> ctx.lexer.isAnnotationLine(line));
         }
         if (!isAnchor && "property".equals(block.kind)) {
+            // The whole statement, from the line its name is written on through the line its `;` is on
+            // — which is a later line for a lambda or an array initialiser, and the same line for a
+            // plain field.
+            int last = block.lineEnd == null || block.lineEnd < block.declLine
+                    ? block.declLine : block.lineEnd;
             if (scope == Scope.BODY) {
-                int equals = ctx.source.indexOf('=', ctx.starts[block.declLine]);
-                if (equals != -1) {
-                    int lineEnd = Masker.endOfLine(ctx.source, ctx.starts[block.declLine]);
-                    return single(TRAILING_SEMICOLON.matcher(ctx.source.substring(equals + 1, lineEnd))
-                            .replaceFirst("").trim(), block.declLine);
+                // `-` selects the initialiser expression: the bytes between the `=` that opens it and
+                // the `;` that ends the statement. A member with no initialiser has an empty body,
+                // reported on its own line.
+                Integer equalsAt = block.equalsAt;
+                Integer statementTo = block.statementTo;
+                if (equalsAt == null || statementTo == null || equalsAt >= statementTo) {
+                    return single("", block.declLine);
                 }
+                return trimmedSlice(ctx.source, ctx.starts, equalsAt + 1, statementTo);
             }
-            return single(ctx.lines[block.declLine].stripTrailing(), block.declLine);
+            // The statement's own last line is what the `+`/`++` scopes extend from, so a field takes
+            // its `@Annotation` and its doc comment exactly as a method does — a field is a
+            // declaration too, and the annotation above it belongs to it.
+            block.endLine = last;
+            return renderDeclaration(ctx.lines, ctx.source, ctx.starts, block, scope,
+                    line -> ctx.lexer.isAnnotationLine(line));
         }
 
         // A condition literal or comment anchor: the block is the unit. Its first line is the
@@ -760,6 +773,28 @@ public final class SectionResolver {
     /** A one-line section: the same as {@link #span} with both bounds on that 0-based line. */
     private static Rendered single(String text, int at) {
         return new Rendered(text, at + 1, at + 1);
+    }
+
+    /**
+     * The bytes strictly between two offsets of {@code source}, trimmed, with the line range the
+     * trimmed text still covers — the JavaScript's {@code trimmedSlice}.
+     *
+     * <p>A slice that is trimmed has to answer for the lines the trim removed: a click on a body
+     * belongs to its first real line, not to the blank line above it, and a slice that trims to
+     * nothing still reports the line it would have started on rather than a range that runs backwards.
+     */
+    private static Rendered trimmedSlice(String source, int[] starts, int from, int to) {
+        String raw = source.substring(Math.min(from, source.length()), Math.min(Math.max(from, to), source.length()));
+        String text = raw.trim();
+        int at = Masker.lineOf(starts, Math.min(from, source.length()));
+        if (text.isEmpty()) {
+            return new Rendered(text, at + 1, at + 1);
+        }
+        int skipped = raw.length() - raw.stripLeading().length();
+        int dropped = raw.length() - raw.stripTrailing().length();
+        int first = from + skipped;
+        int last = Math.max(first, from + raw.length() - dropped - 1);
+        return new Rendered(text, Masker.lineOf(starts, first) + 1, Masker.lineOf(starts, last) + 1);
     }
 
     private static final Pattern TRAILING_SEMICOLON = Pattern.compile(";\\s*$");

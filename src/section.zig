@@ -663,6 +663,16 @@ pub const Block = struct {
     expression_end_line: ?usize = null,
     body_from: ?usize = null,
     end_line: ?usize = null,
+    /// The last line a property's *statement* covers: for a lambda or an array
+    /// initialiser that is several lines below the line the name is written on,
+    /// and for a plain field it is that line.
+    line_end: ?usize = null,
+    /// The offset of the `=` that opened a property's initialiser, or null when
+    /// it has none.
+    equals_at: ?usize = null,
+    /// One past the `;` that ended a property's statement, which is where its
+    /// initialiser stops.
+    statement_to: ?usize = null,
     single_line: bool = false,
     shared_close: bool = false,
     children: std.ArrayList(*Block) = .empty,
@@ -991,16 +1001,29 @@ fn headerEnd(mask_lines: []const Str, starts: []const usize, line: usize, from: 
                 const arrow = previous != null and (previous.? == '=' or previous.? == '-');
                 if (!arrow) depth -= 1;
             }
-            if (depth < 0) return .{ .end = starts[index] + column + 1, .last = index };
         }
+        // A closer with nothing open is not an error and does not end the header.
+        // A `<` that a generic list should have balanced may have been a
+        // less-than (`class Wrapped<` then `T extends Comparable<T>,`), and the
+        // first `>` then reads as one closer too many; ending the header there
+        // would leave the whole declaration bodyless. The count is therefore taken
+        // from the top of the next line, so a line never ends in debt.
         depth = @max(0, depth);
         start = starts[index] + text.len;
         // A header continues while a bracket is open, while the line ends on a
         // separator, and onto a `{` alone on the next line — the Allman brace,
         // which no other rule reaches. A `{` at the end of the header's own line
         // was already found above.
+        //
+        // A *name* may end a header line that is still mid-declaration, which no
+        // separator reveals: a wrapped class header writes its supertype on a line
+        // of its own (`implements Renderer<T>`), and the `{` follows on the next
+        // one. Only the heads that can open such a tail are followed — a `throws`,
+        // or an `extends`/`implements` clause with an identifier still after the
+        // keyword — so a bodyless member that happens to end on a word
+        // (`abstract String label(` then `  int width)`) keeps its indented body.
         const next = nextNonBlank(mask_lines, index + 1);
-        const continues = depth > 0 or headerContinues(text) or
+        const continues = depth > 0 or headerContinues(text) or headerTail(text) or
             (next != null and isBraceOnly(mask_lines[next.?]));
         if (!continues) return .{ .end = start, .last = index };
     }
@@ -1015,6 +1038,195 @@ fn headerContinues(text: Str) bool {
     if (at == 0) return false;
     const unit = text[at - 1];
     return unit == '(' or unit == ',' or unit == ';';
+}
+
+/// The end of a property's *statement*.
+///
+/// A field is a statement, and the statement is the selection — so the span has
+/// to be the whole of it and not the line its name is written on. For a language
+/// that terminates its statements the `;` decides, and it is the first one met
+/// with every bracket closed: a `{` with every bracket closed is ordinarily the
+/// body and would end a declaration header, but inside a field's *expression* a
+/// `{` opens one — the lambda of `Runnable arrow = () -> { … };`, an array or an
+/// anonymous-class initialiser — so the scan tracks the brackets themselves and
+/// the `;` closes the statement wherever the initialiser left it.
+///
+/// A language with no `;` (Kotlin, Go, C#, Python) needs the other half of the
+/// rule: the statement also ends at the end of a line that closes every bracket
+/// it opened, when nothing about the next line continues it — a line that ends on
+/// an operator, a comma or an opening bracket, or a next line indented *deeper*
+/// than the declaration. A next line at the declaration's own indentation starts
+/// a sibling instead, and reading on would take that sibling's text into the
+/// property.
+///
+/// `source_lines` are the **source** lines and `source_starts` their own offsets:
+/// every level is read from the source, never the mask, because the mask blanks
+/// a literal's delimiters — a line of it is shorter than the line of source it
+/// stands for, and a closing delimiter reads as blank.
+fn statementEnd(
+    mask: Str,
+    source_lines: []const Str,
+    source_starts: []const usize,
+    from: usize,
+    to: usize,
+) struct { end: usize, last: usize } {
+    const decl_line = lineOf(source_starts, from);
+    const indent = if (decl_line < source_lines.len) indentWidth(source_lines[decl_line]) else 0;
+    const limit = @min(to, mask.len);
+    var depth: isize = 0;
+    var last = from;
+    var content_end = from;
+    var line = decl_line;
+    while (line < source_starts.len and source_starts[line] < to) : (line += 1) {
+        const line_start = @max(source_starts[line], from);
+        const text_line = source_lines[@min(line, source_lines.len - 1)];
+        const line_end = @min(line_start + text_line.len, limit);
+        // The line without its trailing blanks, so its end is the offset just
+        // past the last real character the line has.
+        const text = js.trimEnd(text_line);
+        const in_literal = line > decl_line and
+            js.trim(mask[@min(line_start, mask.len)..@min(line_end, mask.len)]).len == 0 and
+            text.len != 0;
+        if (line > decl_line and text.len == 0) break;
+        if (in_literal) {
+            // A line the mask blanked but the source did not is part of a string
+            // literal that spans lines. It is not a statement boundary — neither
+            // its indentation nor its own braces mean anything, since both are the
+            // literal's own text — so the statement simply reaches through it, and
+            // the literal's closing line comes with it.
+            if (line_end > last) last = line_end;
+            content_end = line_start + text.len;
+            continue;
+        }
+        var stop = false;
+        var at = line_start;
+        while (at < line_end) : (at += 1) {
+            const char = mask[at];
+            if (char == '(' or char == '[' or char == '{') {
+                depth += 1;
+            } else if (char == ')' or char == ']' or char == '}') {
+                if (depth == 0) {
+                    stop = true;
+                    break;
+                }
+                depth -= 1;
+            } else if (char == ';' and depth == 0) {
+                return .{ .end = at, .last = lineOf(source_starts, at) };
+            }
+        }
+        // The statement so far reaches the end of this line, `;` or not, and its
+        // text ends there — before the newline, and before any trailing blank.
+        if (line_end > last) last = line_end;
+        if (text.len != 0) content_end = line_start + text.len;
+        if (stop) break;
+        if (line > decl_line and depth == 0) {
+            // Nothing continues this line: it closes what it opened and does not
+            // end on an operator or an opening bracket. An `=` that ends a line is
+            // not punctuation here — the initialiser may be an expression the next
+            // line carries, which the indentation decides.
+            if (!endsOnAnOperator(mask, line_start, line_end)) {
+                const next = nextSourceLine(source_lines, line + 1) orelse break;
+                if (indentWidth(source_lines[next]) <= indent) break;
+            }
+        }
+    }
+    // The scan stopped on a line that ends the statement. Its declaration reaches
+    // the end of that line, and its initialiser's own text stops at the last real
+    // character the statement has — never at the newline, and never at the end of
+    // the file.
+    const block_end = @max(last, content_end);
+    const initializer_end = if (content_end == from) block_end else content_end;
+    return .{ .end = initializer_end, .last = lineOf(source_starts, block_end) };
+}
+
+/// The offset of each line's first unit, for a scan that has to measure lines in the source.
+fn lineStarts(alloc: Allocator, text: Str) ![]usize {
+    var starts = std.ArrayList(usize).empty;
+    try starts.append(alloc, 0);
+    for (text, 0..) |unit, at| {
+        if (unit == '\n') try starts.append(alloc, at + 1);
+    }
+    return starts.toOwnedSlice(alloc);
+}
+
+/// The first line at or after `line` the source has text on, or null.
+fn nextSourceLine(source_lines: []const Str, line: usize) ?usize {
+    var at = line;
+    while (at < source_lines.len) : (at += 1) {
+        if (js.trim(source_lines[at]).len != 0) return at;
+    }
+    return null;
+}
+
+/// `[,+\-*/%&|?<(\[{!~^]\s*$` — whether a line ends on an operator or an opening
+/// bracket.
+fn endsOnAnOperator(mask: Str, from: usize, to: usize) bool {
+    var at = @min(to, mask.len);
+    while (at > from and js.isWhitespace(mask[at - 1])) at -= 1;
+    if (at == from) return false;
+    const unit = mask[at - 1];
+    return switch (unit) {
+        ',', '+', '-', '*', '/', '%', '&', '|', '?', '<', '(', '[', '{', '!', '~', '^' => true,
+        else => false,
+    };
+}
+
+/// `/\w[\w$]*[>)\]}\s]*$/` — whether the line's last non-blank character is a
+/// name. The trailing closers may be there: a wrapped supertype ends on
+/// `Renderer<T>`, and the `>` is not what decides that the declaration is
+/// unfinished.
+fn endsOnAWord(text: Str) bool {
+    var at = text.len;
+    while (at > 0) {
+        const unit = text[at - 1];
+        if (js.isWhitespace(unit) or unit == '>' or unit == ')' or unit == ']' or unit == '}') {
+            at -= 1;
+            continue;
+        }
+        break;
+    }
+    return at > 0 and js.isAsciiWord(text[at - 1]);
+}
+
+/// `/\b(?:extends|implements)\s+[\w$][\w$.,<>?\[\]\s]*\w/` and `/\bthrows\s+\w/`
+/// together — the heads that can open a tail ending on a name.
+fn headerTail(text: Str) bool {
+    return wordThenName(text, "throws") or wordThenName(text, "extends") or
+        wordThenName(text, "implements");
+}
+
+/// `word`, whitespace, then a type that ends the line: the clause's own spelling.
+fn wordThenName(text: Str, word: []const u8) bool {
+    var at: usize = 0;
+    while (at + word.len <= text.len) : (at += 1) {
+        if (!js.eqlBytes(text[at .. at + word.len], word)) continue;
+        if (!js.isWordBoundary(text, at)) continue;
+        if (at + word.len >= text.len) continue;
+        // `\s+` between the keyword and the name.
+        var named = at + word.len;
+        while (named < text.len and js.isWhitespace(text[named])) named += 1;
+        if (named == at + word.len or named >= text.len) continue;
+        if (!js.isIdentPart(text[named])) continue;
+        const tail = text[named..];
+        if (!endsOnAWord(tail)) continue;
+        // Only a name, a dotted or generic type, and separators may sit between
+        // the two, so a word that merely occurs inside a longer expression does
+        // not read as a clause.
+        var only_a_type = true;
+        for (tail) |unit| {
+            if (js.isIdentPart(unit) or isTypePunctuation(unit) or js.isWhitespace(unit)) continue;
+            only_a_type = false;
+            break;
+        }
+        if (only_a_type) return true;
+    }
+    return false;
+}
+
+/// `[\w$.,<>?\[\]\s]` — the punctuation a supertype clause may carry.
+fn isTypePunctuation(unit: u16) bool {
+    return unit == '.' or unit == ',' or unit == '<' or unit == '>' or unit == '?' or
+        unit == '[' or unit == ']';
 }
 
 /// An expression body beginning at `at`: it runs to the end of its line, and on
@@ -1550,7 +1762,15 @@ fn matchStatementKeyword(line: Str) ?StatementHit {
 /// `PROPERTY_DECL`: `Type name = …`, `static final Type name = …`,
 /// `const name = …`. A `const`/`let`/`var` needs no type; otherwise at least
 /// one type token must precede the name, which keeps body assignments out.
-const Property = struct { name: Str, match_end: usize, typed_head: bool, type_word: Str };
+const Property = struct {
+    name: Str,
+    match_end: usize,
+    typed_head: bool,
+    type_word: Str,
+    /// The line-relative offset of the `=` that opens the initialiser, which is
+    /// where a `-` body selection starts.
+    equals_at: usize,
+};
 
 fn matchProperty(line: Str) ?Property {
     var at: usize = 0;
@@ -1582,7 +1802,13 @@ fn matchProperty(line: Str) ?Property {
                 type_word = firstWord(head);
             }
         }
-        return .{ .name = name, .match_end = scan, .typed_head = typed, .type_word = type_word };
+        return .{
+            .name = name,
+            .match_end = scan,
+            .typed_head = typed,
+            .type_word = type_word,
+            .equals_at = scan,
+        };
     }
     return null;
 }
@@ -1604,29 +1830,63 @@ fn firstWord(text: Str) Str {
     return text[0..at];
 }
 
-/// Whether the head is `Type`, `Type Type`, `Type<T>`, `Type<T> Type<U>` — the
-/// shape `((?:[\w$]+(?:<[^<>]*>)?)(?:\s+[\w$]+(?:<[^<>]*>)?)*?)` accepts.
+/// Whether the head is `Type`, `Type Type`, `Type<T> Type<U>` — the shape
+/// `((?:TOKEN)(?:\s+(?:TOKEN))*?)` accepts, where a TOKEN is a whole type.
 fn isTypeRun(head: Str) bool {
     var at: usize = 0;
     var tokens: usize = 0;
     while (at < head.len) {
-        if (!js.isAsciiWord(head[at]) and head[at] != '$') return false;
-        at += 1;
-        while (at < head.len and (js.isAsciiWord(head[at]) or head[at] == '$')) at += 1;
+        at = typeTokenEnd(head, at) orelse return false;
         tokens += 1;
-        if (at < head.len and head[at] == '<') {
-            const close = js.indexOfUnit(head[at..], '>') orelse return false;
-            for (head[at + 1 .. at + close]) |unit| {
-                if (unit == '<' or unit == '>') return false;
-            }
-            at += close + 1;
-        }
         if (at >= head.len) break;
         if (!js.isWhitespace(head[at])) return false;
         while (at < head.len and js.isWhitespace(head[at])) at += 1;
         if (at >= head.len) return false;
     }
     return tokens > 0;
+}
+
+/// One type token starting at `at`, or null: a qualified name
+/// (`java.util.List`), a generic list of names (`Map<String, Integer>`), an
+/// array (`int[]`, `String[][]`), or any nesting of the three — the reference's
+/// `[\w$]+(?:\.[\w$]+)*(?:\s*<[^<>]*>)?(?:\s*\[\s*\])*`. Returns the offset just
+/// past the token, and never sits still (a caller that loops on it must make
+/// progress).
+fn typeTokenEnd(text: Str, start: usize) ?usize {
+    var at = start;
+    if (at >= text.len or (!js.isAsciiWord(text[at]) and text[at] != '$')) return null;
+    // The name, and every qualification of it: `a.b.c`.
+    while (true) {
+        while (at < text.len and (js.isAsciiWord(text[at]) or text[at] == '$')) at += 1;
+        if (at < text.len and text[at] == '.' and at + 1 < text.len and js.isIdentStart(text[at + 1])) {
+            at += 1;
+            continue;
+        }
+        break;
+    }
+    // `(?:\s*<[^<>]*>)?` — one generic group, with no angle bracket inside it.
+    {
+        var probe = at;
+        while (probe < text.len and js.isWhitespace(text[probe])) probe += 1;
+        if (probe < text.len and text[probe] == '<') {
+            const close = js.indexOfUnit(text[probe..], '>') orelse return null;
+            for (text[probe + 1 .. probe + close]) |unit| {
+                if (unit == '<' or unit == '>') return null;
+            }
+            at = probe + close + 1;
+        }
+    }
+    // `(?:\s*\[\s*\])*` — the array suffix, one bracket pair at a time.
+    while (true) {
+        var probe = at;
+        while (probe < text.len and js.isWhitespace(text[probe])) probe += 1;
+        if (probe >= text.len or text[probe] != '[') break;
+        probe += 1;
+        while (probe < text.len and js.isWhitespace(text[probe])) probe += 1;
+        if (probe >= text.len or text[probe] != ']') break;
+        at = probe + 1;
+    }
+    return at;
 }
 
 // --- buildScope -------------------------------------------------------------
@@ -1755,10 +2015,33 @@ const Build = struct {
                 if (!isNotAName(prop.name) and !startsWithStatementBefore(mask_line[0..prop.match_end])) {
                     const skip = prop.typed_head and prop.type_word.len > 0 and isNotAType(prop.type_word);
                     if (!skip) {
+                        // The whole statement is the selection, `;` and all. The
+                        // scan starts at the top of the declaration's own line,
+                        // where every bracket is closed by construction, and
+                        // follows it to its `;` — so a lambda, an array or an
+                        // anonymous-class initialiser inside it is the statement's
+                        // own brace and not the end of the statement. The `=` is
+                        // the one the matcher's own look-ahead found.
+                        const equals_at = start + prop.equals_at;
+                        // Every level the statement-end rule reads comes from the **source**: the mask
+                        // blanks a literal's delimiters, so its lines are neither the right lengths nor
+                        // the right content for deciding where a statement ends.
+                        const source_lines = try js.splitLines(alloc, self.facts.source);
+                        const source_starts = try lineStarts(alloc, self.facts.source);
+                        const statement = statementEnd(
+                            self.facts.mask,
+                            source_lines,
+                            source_starts,
+                            start,
+                            self.facts.mask.len,
+                        );
                         const block = try alloc.create(Block);
                         block.* = makeBlock(.property, prop.name, i);
+                        block.line_end = statement.last;
+                        block.equals_at = equals_at;
+                        block.statement_to = statement.end;
                         try register(self, &list, block);
-                        i += 1;
+                        i = @max(i, statement.last) + 1;
                         continue;
                     }
                 }
@@ -2906,6 +3189,40 @@ fn single(text: []u16, at: usize) Render {
     return .{ .text = text, .from = at + 1, .to = at + 1 };
 }
 
+/// The bytes strictly between two offsets of `source`, trimmed, with the line
+/// range the trimmed text still covers — the JavaScript's `trimmedSlice`.
+///
+/// A slice that is trimmed has to answer for the lines the trim removed: a click
+/// on a body belongs to its first real line, not to the blank line above it, and
+/// a slice that trims to nothing still reports the line it would have started on
+/// rather than a range that runs backwards.
+fn trimmedSlice(
+    alloc: Allocator,
+    source: Str,
+    starts: []const usize,
+    from: usize,
+    to: usize,
+) !Render {
+    const start = @min(from, source.len);
+    const end = @max(start, @min(to, source.len));
+    const raw = source[start..end];
+    const text = js.trim(raw);
+    const at = lineOf(starts, @min(from, source.len));
+    if (text.len == 0) {
+        return .{ .text = try alloc.dupe(u16, &.{}), .from = at + 1, .to = at + 1 };
+    }
+    const skipped = raw.len - js.trimStart(raw).len;
+    const dropped = raw.len - js.trimEnd(raw).len;
+    const first = @min(start + skipped, source.len);
+    // The offset of the last surviving character, and never before `first`.
+    const last = @max(first, start + raw.len - dropped - 1);
+    return .{
+        .text = try alloc.dupe(u16, text),
+        .from = lineOf(starts, first) + 1,
+        .to = lineOf(starts, last) + 1,
+    };
+}
+
 /// The text one declaration contributes, under one scope, and where it is.
 ///
 /// `end_line` is the declaration's last line, and null when it has none to
@@ -3007,18 +3324,42 @@ fn renderBlock(
         );
     }
     if (!is_anchor and block.kind == .property) {
+        // The whole statement, from the line its name is written on through the
+        // line its `;` is on — which is a later line for a lambda or an array
+        // initialiser, and the same line for a plain field.
+        const last = if (block.line_end) |line_end| @max(block.decl_line, line_end) else block.decl_line;
         if (scope == .body) {
-            const line_start = facts.starts[block.decl_line];
-            if (js.indexOfUnit(facts.source[line_start..], '=')) |offset| {
-                const eq = line_start + offset;
-                const line_end = endOfLine(facts.source, line_start);
-                return single(
-                    try alloc.dupe(u16, js.trim(stripSemicolon(facts.source[eq + 1 .. line_end]))),
-                    block.decl_line,
-                );
+            // `-` selects the initialiser expression: the bytes between the `=`
+            // that opens it and the `;` that ends the statement. A member with no
+            // initialiser has an empty body, reported on its own line.
+            const equals_at = block.equals_at;
+            const statement_to = block.statement_to;
+            if (equals_at == null or statement_to == null or equals_at.? >= statement_to.?) {
+                return single(try alloc.dupe(u16, &.{}), block.decl_line);
             }
+            return trimmedSlice(
+                alloc,
+                facts.source,
+                facts.starts,
+                equals_at.? + 1,
+                statement_to.?,
+            );
         }
-        return single(try alloc.dupe(u16, js.trimEnd(facts.lines[block.decl_line])), block.decl_line);
+        // The statement's own last line is what the `+`/`++` scopes extend from,
+        // so a field takes its `@Annotation` and its doc comment exactly as a
+        // method does — a field is a declaration too, and the annotation above it
+        // belongs to it.
+        block.end_line = last;
+        return renderDeclaration(
+            alloc,
+            facts.lines,
+            facts.source,
+            facts.starts,
+            block,
+            last,
+            scope,
+            facts.annotations,
+        );
     }
 
     const anchor_line: ?usize = if (block.anchor) |anchor| anchor.line else null;
