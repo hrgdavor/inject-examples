@@ -3335,6 +3335,8 @@ test('the documentation stays in sync with the files it shows', () => {
 
 import {
     buildDemo,
+    escapeHtml,
+    exampleBlocks,
     highlightCode,
     locateRange,
     parseDemoDoc,
@@ -3360,6 +3362,8 @@ test('demo: the source document is read as numbered sections with targets', () =
         '',
         '## Second section',
         '',
+        'A second reason.',
+        '',
         '[a/b.java](./a/b.java)',
         '',
         '```java',
@@ -3369,13 +3373,67 @@ test('demo: the source document is read as numbered sections with targets', () =
     assert.equal(doc.title, 'A title');
     assert.deepEqual(doc.sections.map((section) => section.title), ['First section', 'Second section']);
 
-    const markers = doc.sections.flatMap((section) => section.blocks.filter((block) => block.type === 'marker'));
-    assert.deepEqual(markers.map((block) => [block.marker.path, block.marker.reference]),
-        [['a/b.java', 'one'], ['a/b.java', null]],
+    const markers = doc.sections.flatMap((section) => section.examples
+        .map((example) => [example.marker.path, example.marker.reference]));
+    assert.deepEqual(markers, [['a/b.java', 'one'], ['a/b.java', null]],
         'a marker inside a fence is content, exactly as the tool reads it');
 
     const first = doc.sections[0].blocks.map((block) => block.type);
     assert.deepEqual(first, ['prose', 'marker'], 'prose and markers keep their document order');
+});
+
+test('demo: an example is explained by the prose written above its marker', () => {
+    const doc = parseDemoDoc([
+        '## Two ways',
+        '',
+        'The section says what it is about.',
+        '',
+        'The first one is the ordinary shape.',
+        '',
+        '[a/b.java](./a/b.java#one)',
+        '',
+        '```java',
+        '```',
+        '',
+        'The second one is the same block, reached twice.',
+        '',
+        '[a/b.java](./a/b.java#two)',
+        '',
+        '```java',
+        '```',
+        '',
+        'A note that closes the section.',
+        '',
+    ].join('\n'));
+
+    const section = doc.sections[0];
+    assert.deepEqual(section.examples.map((example) => example.marker.reference), ['one', 'two']);
+    assert.deepEqual(section.lead.map((block) => block.text), ['A note that closes the section.'],
+        'the prose that names no marker above it is left to the document');
+
+    // The prose above a marker explains it: the section's opening prose and the
+    // lead-in for the first example, and the paragraph above the second.
+    const first = exampleBlocks(section, section.examples[0]);
+    assert.deepEqual(first.map((block) => block.text),
+        ['The section says what it is about.\n\nThe first one is the ordinary shape.']);
+    assert.deepEqual(exampleBlocks(section, section.examples[1]).map((block) => block.text),
+        ['The second one is the same block, reached twice.']);
+
+    // A one-example section whose prose opens by restating the heading does not
+    // say it twice: the pane already heads the description with the section.
+    const single = parseDemoDoc([
+        '## The only one',
+        '',
+        'The only one',
+        '',
+        'What it does.',
+        '',
+        '[a/b.java](./a/b.java#one)',
+        '',
+        '```java',
+        '```',
+    ].join('\n')).sections[0];
+    assert.deepEqual(exampleBlocks(single, single.examples[0]).map((block) => block.text), ['What it does.']);
 });
 
 test('demo: a marker outside any section is an error, not a silent drop', () => {
@@ -3423,6 +3481,21 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
             assert.ok(html.includes(`id="${example.id}"`), `${example.raw}: the target is clickable`);
             assert.ok(!html.includes('chip-lines'),
                 `${example.raw}: the chip shows the target syntax, not line numbers`);
+            // The link carries no footnote of its own: the text a reference
+            // injects is the middle column's business, and what it *means* is
+            // the description pane's, so the link is a link and nothing else.
+            assert.ok(html.includes(`<li class="target-item" id="${example.id}">`),
+                `${example.raw}: the target is one link in the list of examples`);
+            assert.ok(!html.includes(`id="${example.id}-snippet"`),
+                `${example.raw}: nothing is injected below the example link`);
+            assert.ok(html.includes(`aria-controls="${example.id}-desc"`),
+                `${example.raw}: the link points at the description it opens`);
+            assert.ok(html.includes(`id="${example.id}-desc" data-desc="${example.id}"`),
+                `${example.raw}: the description pane holds a block of its own for it`);
+            assert.ok(html.includes(example.description),
+                `${example.raw}: its description is on the page, prose and all`);
+            assert.ok(!/^\s*$/.test(example.description.replace(/<[^>]+>/g, '')),
+                `${example.raw}: its description says something`);
             assert.ok(html.includes(`data-section="${example.section}"`),
                 `${example.raw}: the target names the Markdown section it lives in`);
             assert.ok(html.includes(`data-marker="${example.id}"`),
@@ -3556,6 +3629,15 @@ test('demo: the rendered Markdown keeps its shape and marks each injection', () 
     assert.equal((html.match(/data-md-section="/g) ?? []).length, 1, 'one per "##", and no lead section');
     assert.match(html, /^<section class="md-section" data-md-section="1">/, 'the first "##" is section 1');
 
+    // Links are re-pointed at where the page lives; without a resolver they are
+    // left exactly as the document wrote them.
+    const moved = renderMarkdown(text, {
+        markerIds: new Map([[12, 't-2-1']]),
+        resolveLink: (href) => `docs/${href.replace(/^\.\//, '')}`,
+    });
+    assert.match(moved, /<a href="docs\/a\.md">link<\/a>/);
+    assert.match(moved, /<a href="docs\/a\/b\.java#one">a\/b\.java<\/a>/);
+
     const whole = renderMarkdown('Just prose, no headings.\n');
     assert.equal((whole.match(/data-md-section="/g) ?? []).length, 1,
         'a document with no "##" is rendered whole, as its own section');
@@ -3583,13 +3665,51 @@ test('demo: the page is three titled columns', () => {
     for (const column of ['pane-left', 'pane-mid', 'pane-right']) {
         assert.ok(html.includes(`class="pane ${column}"`), `the ${column} column exists`);
     }
-    for (const title of ['Targets', 'Source file', 'Markdown']) {
+    for (const title of ['Targets', 'Description', 'Source file', 'Markdown']) {
         assert.ok(html.includes(`<div class="col-head">${title}<`), `the ${title} column is titled`);
     }
     assert.ok(html.includes('<article class="md">'), 'the rendered document is the third column');
     assert.equal((html.match(/data-md-section="/g) ?? []).length, model.sections.length,
         'one rendered section per "##", and no lead section');
     assert.ok(!html.includes('data-md-section="0"'), 'the lead is the banner, not a rendered section');
+});
+
+test('demo: the left column is the targets and, below them, the description', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const { html, model } = buildDemo({ root });
+
+    // Two stacked sections, and the targets one holds the titles and their links
+    // and no prose at all.
+    const left = html.slice(html.indexOf('class="pane pane-left"'), html.indexOf('class="pane pane-mid"'));
+    assert.equal((left.match(/class="pane-section"/g) ?? []).length, 2, 'the left column has two sections');
+    const targets = left.slice(0, left.indexOf('Description'));
+    for (const section of model.sections) {
+        assert.ok(targets.includes(escapeHtml(section.title)), `${section.title}: the title is listed`);
+    }
+    for (const example of model.sections.flatMap((section) => section.examples)) {
+        assert.ok(!targets.includes(example.description), `${example.raw}: no prose beside the link`);
+    }
+
+    // One description block per example, in document order, and none of them
+    // shown until one is selected.
+    const blocks = [...html.matchAll(/<div class="desc" id="([^"]+)-desc" data-desc="([^"]+)">/g)];
+    const examples = model.sections.flatMap((section) => section.examples);
+    assert.deepEqual(blocks.map((block) => block[2]), examples.map((example) => example.id),
+        'every example has exactly one description, and in the same order');
+    assert.equal((left.match(/class="desc active"/g) ?? []).length, 0,
+        'nothing is selected until it is clicked');
+});
+
+test('demo: prose links point where the document means them to point', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const { html } = buildDemo({ root });
+    // The page sits at the document's own path, and the document's links are
+    // written beside it: the banner's link to the sample file must still land on
+    // the sample file once the page is opened.
+    assert.ok(html.includes('<a href="docs/samples/Inventory.java">samples/Inventory.java</a>'),
+        'a relative prose link is resolved against the document directory');
+    assert.ok(html.includes('<a href="https://github.com/hrgdavor/inject-examples">GIT source</a>'),
+        'an absolute link is left exactly as it was written');
 });
 
 test('demo: the committed docs/index.html is exactly what the generator writes', () => {

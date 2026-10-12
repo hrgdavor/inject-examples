@@ -43,7 +43,7 @@ body {
   grid-template-columns: minmax(270px, 23%) minmax(0, 38.5%) minmax(0, 38.5%);
 }
 .pane { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
-.pane-left { grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--line); }
+.pane-left { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); border-right: 1px solid var(--line); }
 .pane-mid { grid-template-rows: auto auto minmax(0, 1fr); border-right: 1px solid var(--line); background: var(--panel); }
 .pane-right { grid-template-rows: auto minmax(0, 1fr); background: #ffffff; }
 .col-head {
@@ -54,19 +54,21 @@ body {
 }
 .col-note { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: .74rem; opacity: .85; }
 
-.examples { list-style: none; margin: 0; padding: .3rem 1rem 5rem; overflow: auto; min-height: 0; }
-.example { padding: .9rem 0 1.1rem; border-bottom: 1px solid var(--line); }
+/* The left pane is two stacked sections: the targets, then the description the
+   selected one is explained by. */
+.pane-left > .pane-section { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.pane-left > .pane-section + .pane-section { border-top: 1px solid var(--line); }
+
+.examples { list-style: none; margin: 0; padding: .3rem 1rem 2rem; overflow: auto; min-height: 0; }
+.example { padding: .8rem 0 .9rem; border-bottom: 1px solid var(--line); }
 .example:last-child { border-bottom: 0; }
-.example h2 { display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .4rem; font-size: 1rem; }
-.example h2 .num {
+.example h3 { display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .4rem; font-size: 1rem; }
+.example h3 .num {
   flex: none; min-width: 1.55rem; height: 1.55rem; border-radius: 50%; background: var(--chip);
   color: var(--muted); font: 600 .78rem/1.55rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-align: center;
 }
-.example p { margin: .35rem 0; }
-.example ul { margin: .35rem 0; padding-left: 1.2rem; }
-.example code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
-.targets { list-style: none; margin: .6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
+.targets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
 .target {
   display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; max-width: 100%;
   border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px;
@@ -77,15 +79,30 @@ body {
 .target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chip-file { color: var(--muted); white-space: nowrap; }
 .chip-ref { font-weight: 600; white-space: nowrap; }
-.target-item.selected .target { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.target-item.selected .chip-file { color: inherit; opacity: .75; }
-.snippet {
-  display: none; margin: .5rem 0 0; padding: .55rem .7rem; border: 1px solid var(--line);
-  border-radius: 8px; background: var(--panel); max-height: 18rem; overflow: auto; font-size: 12.5px;
+.target[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+.target[aria-pressed="true"] .chip-file { color: inherit; opacity: .75; }
+
+/* The description pane: the prose of the selected example, and nothing else —
+   no snippet, since the target's text is what the middle column shows. */
+.desc-panel { min-height: 0; overflow: auto; padding: .85rem 1rem 4rem; }
+.desc-panel h2 {
+  display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .5rem;
+  font-size: .95rem; text-transform: none; letter-spacing: 0; color: var(--fg);
 }
-.target-item.selected .snippet { display: block; }
-.snippet .marker { display: block; color: var(--muted); margin-bottom: .4rem; white-space: pre-wrap; word-break: break-all; }
-.snippet code { font: inherit; white-space: pre; }
+.desc-panel h2 .num {
+  flex: none; min-width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--chip);
+  color: var(--muted); font: 600 .74rem/1.4rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: center;
+}
+.desc-panel .desc { display: none; font-size: .92rem; }
+.desc-panel .desc.active { display: block; }
+.desc-panel .desc p { margin: .35rem 0 .7rem; }
+.desc-panel .desc ul { margin: .35rem 0 .7rem; padding-left: 1.2rem; }
+.desc-panel .desc h3 { margin: .9rem 0 .35rem; font-size: .95rem; }
+.desc-panel .desc h4, .desc-panel .desc h5, .desc-panel .desc h6 { margin: .8rem 0 .3rem; font-size: .9rem; }
+.desc-panel .desc code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
+.desc-empty { margin: .3rem 0 0; color: var(--muted); font-size: .84rem; }
+.desc-panel.filled .desc-empty { display: none; }
 
 .file-tabs { display: flex; gap: .3rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .file-tab {
@@ -166,22 +183,189 @@ body {
 <p class="note">Generated from <code>docs/demo.md</code> by <code>tools/build-demo.mjs</code> — edit the Markdown, not this file.</p>
 </div>
 <div class="intro">
-<p>DEMO of what a marker target can say. Click a target: it highlights the lines it selects in <a href="./samples/Inventory.java">samples/Inventory.java</a>, and the same injection in the rendered Markdown (<a href="https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md">source</a>) beside it. / <a href="https://github.com/hrgdavor/inject-examples">GIT source</a> / <a href="https://github.com/hrgdavor/inject-examples/blob/main/doc/section-matching.md">section-matching SPEC</a></p>
+<p>DEMO of what a marker target can say. Click an example link: the description below it opens, the lines it selects are highlighted in <a href="docs/samples/Inventory.java">samples/Inventory.java</a>, and the same injection is marked in the rendered Markdown (<a href="https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md">source</a>) beside it. / <a href="https://github.com/hrgdavor/inject-examples">GIT source</a> / <a href="https://github.com/hrgdavor/inject-examples/blob/main/doc/section-matching.md">section-matching SPEC</a></p>
 </div>
 </header>
 <main class="split">
 <section class="pane pane-left" aria-label="Targets">
-<div class="col-head">Targets<span class="col-note">click one to highlight it</span></div>
+<div class="pane-section">
+<div class="col-head">Targets<span class="col-note">titles and example links</span></div>
 <ol class="examples">
 <li class="example" id="ex-1">
-<h2><span class="num">1</span>A named region</h2>
-<p>Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
+<h3><span class="num">1</span>A named region</h3>
 <ul class="targets">
-<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="10" data-to="11" data-ranges="10-11" aria-pressed="false" aria-controls="t-1-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span></button><pre class="snippet" id="t-1-1-snippet"><span class="marker">[samples/Inventory.java#catalog](./samples/Inventory.java#catalog)</span><code>    /** The catalog, kept as an explicit region directive. */
-    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };</code></pre></li>
+<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="10" data-to="11" data-ranges="10-11" aria-pressed="false" aria-controls="t-1-1-desc" title="[samples/Inventory.java#catalog](./samples/Inventory.java#catalog)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
+<h3><span class="num">2</span>A declaration, and how much of it comes along</h3>
+<ul class="targets">
+<li class="target-item" id="t-2-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="34" data-to="36" data-ranges="34-36" aria-pressed="false" aria-controls="t-2-1-desc" title="[samples/Inventory.java#toString](./samples/Inventory.java#toString)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString</span></button></li>
+<li class="target-item" id="t-2-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="35" data-to="35" data-ranges="35-35" aria-pressed="false" aria-controls="t-2-2-desc" title="[samples/Inventory.java#toString/-](./samples/Inventory.java#toString/-)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString/-</span></button></li>
+<li class="target-item" id="t-2-3"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="33" data-to="36" data-ranges="33-36" aria-pressed="false" aria-controls="t-2-3-desc" title="[samples/Inventory.java#toString/+](./samples/Inventory.java#toString/+)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString/+</span></button></li>
+<li class="target-item" id="t-2-4"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="32" data-to="36" data-ranges="32-36" aria-pressed="false" aria-controls="t-2-4-desc" title="[samples/Inventory.java#toString/++](./samples/Inventory.java#toString/++)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString/++</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-3">
+<h3><span class="num">3</span>A nested declaration</h3>
+<ul class="targets">
+<li class="target-item" id="t-3-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="27" data-to="29" data-ranges="27-29" aria-pressed="false" aria-controls="t-3-1-desc" title="[samples/Inventory.java#Inventory/Item/render](./samples/Inventory.java#Inventory/Item/render)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#Inventory/Item/render</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-4">
+<h3><span class="num">4</span>A condition literal</h3>
+<ul class="targets">
+<li class="target-item" id="t-4-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="4" data-from="40" data-to="42" data-ranges="40-42" aria-pressed="false" aria-controls="t-4-1-desc" title="[samples/Inventory.java#dispatch/count](./samples/Inventory.java#dispatch/count)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#dispatch/count</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-5">
+<h3><span class="num">5</span>A comment anchor</h3>
+<ul class="targets">
+<li class="target-item" id="t-5-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="5" data-from="47" data-to="49" data-ranges="47-49" aria-pressed="false" aria-controls="t-5-1-desc" title="[samples/Inventory.java#legacy/count](./samples/Inventory.java#legacy/count)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#legacy/count</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-6">
+<h3><span class="num">6</span>The whole file</h3>
+<ul class="targets">
+<li class="target-item" id="t-6-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="6" data-from="1" data-to="50" data-ranges="1-50" aria-pressed="false" aria-controls="t-6-1-desc" title="[samples/Inventory.java](./samples/Inventory.java)"><span class="chip-file">Inventory.java</span><span class="chip-ref">whole file</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-7">
+<h3><span class="num">7</span>JavaScript and TypeScript — a template hides its braces</h3>
+<ul class="targets">
+<li class="target-item" id="t-7-1"><button class="target" type="button" data-file="samples/cart.js" data-section="7" data-from="9" data-to="11" data-ranges="9-11" aria-pressed="false" aria-controls="t-7-1-desc" title="[samples/cart.js#Cart/render](./samples/cart.js#Cart/render)"><span class="chip-file">cart.js</span><span class="chip-ref">#Cart/render</span></button></li>
+<li class="target-item" id="t-7-2"><button class="target" type="button" data-file="samples/cart.js" data-section="7" data-from="13" data-to="15" data-ranges="13-15" aria-pressed="false" aria-controls="t-7-2-desc" title="[samples/cart.js#Cart/add](./samples/cart.js#Cart/add)"><span class="chip-file">cart.js</span><span class="chip-ref">#Cart/add</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-8">
+<h3><span class="num">8</span>Go — a raw string is not code</h3>
+<ul class="targets">
+<li class="target-item" id="t-8-1"><button class="target" type="button" data-file="samples/Cart.go" data-section="8" data-from="5" data-to="7" data-ranges="5-7" aria-pressed="false" aria-controls="t-8-1-desc" title="[samples/Cart.go#Add](./samples/Cart.go#Add)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Add</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-9">
+<h3><span class="num">9</span>Rust — the members live in the impl</h3>
+<ul class="targets">
+<li class="target-item" id="t-9-1"><button class="target" type="button" data-file="samples/Cart.rs" data-section="9" data-from="8" data-to="10" data-ranges="8-10" aria-pressed="false" aria-controls="t-9-1-desc" title="[samples/Cart.rs#Cart/add](./samples/Cart.rs#Cart/add)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#Cart/add</span></button></li>
+<li class="target-item" id="t-9-2"><button class="target" type="button" data-file="samples/Cart.rs" data-section="9" data-from="14" data-to="16" data-ranges="14-16" aria-pressed="false" aria-controls="t-9-2-desc" title="[samples/Cart.rs#Cart/remove](./samples/Cart.rs#Cart/remove)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#Cart/remove</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-10">
+<h3><span class="num">10</span>Python — triple quotes and indentation</h3>
+<ul class="targets">
+<li class="target-item" id="t-10-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="10" data-from="9" data-to="10" data-ranges="9-10" aria-pressed="false" aria-controls="t-10-1-desc" title="[samples/Cart.py#Cart/add](./samples/Cart.py#Cart/add)"><span class="chip-file">Cart.py</span><span class="chip-ref">#Cart/add</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-11">
+<h3><span class="num">11</span>C# — a verbatim string keeps its quotes</h3>
+<ul class="targets">
+<li class="target-item" id="t-11-1"><button class="target" type="button" data-file="samples/Cart.cs" data-section="11" data-from="10" data-to="13" data-ranges="10-13" aria-pressed="false" aria-controls="t-11-1-desc" title="[samples/Cart.cs#Cart/Add](./samples/Cart.cs#Cart/Add)"><span class="chip-file">Cart.cs</span><span class="chip-ref">#Cart/Add</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-12">
+<h3><span class="num">12</span>Kotlin — nested comments, raw strings</h3>
+<ul class="targets">
+<li class="target-item" id="t-12-1"><button class="target" type="button" data-file="samples/Cart.kt" data-section="12" data-from="5" data-to="7" data-ranges="5-7" aria-pressed="false" aria-controls="t-12-1-desc" title="[samples/Cart.kt#Cart/add](./samples/Cart.kt#Cart/add)"><span class="chip-file">Cart.kt</span><span class="chip-ref">#Cart/add</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-13">
+<h3><span class="num">13</span>PHP — a heredoc is not code</h3>
+<ul class="targets">
+<li class="target-item" id="t-13-1"><button class="target" type="button" data-file="samples/Cart.php" data-section="13" data-from="5" data-to="13" data-ranges="5-13" aria-pressed="false" aria-controls="t-13-1-desc" title="[samples/Cart.php#Cart/add](./samples/Cart.php#Cart/add)"><span class="chip-file">Cart.php</span><span class="chip-ref">#Cart/add</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-14">
+<h3><span class="num">14</span>Ruby — def, end, and the shift operator</h3>
+<ul class="targets">
+<li class="target-item" id="t-14-1"><button class="target" type="button" data-file="samples/Cart.rb" data-section="14" data-from="2" data-to="4" data-ranges="2-4" aria-pressed="false" aria-controls="t-14-1-desc" title="[samples/Cart.rb#Cart/add](./samples/Cart.rb#Cart/add)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#Cart/add</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-15">
+<h3><span class="num">15</span>SQL — a region, and doubled quotes</h3>
+<ul class="targets">
+<li class="target-item" id="t-15-1"><button class="target" type="button" data-file="samples/report.sql" data-section="15" data-from="4" data-to="9" data-ranges="4-9" aria-pressed="false" aria-controls="t-15-1-desc" title="[samples/report.sql#monthly](./samples/report.sql#monthly)"><span class="chip-file">report.sql</span><span class="chip-ref">#monthly</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-16">
+<h3><span class="num">16</span>Shell — a heredoc is not code</h3>
+<ul class="targets">
+<li class="target-item" id="t-16-1"><button class="target" type="button" data-file="samples/run.sh" data-section="16" data-from="3" data-to="8" data-ranges="3-8" aria-pressed="false" aria-controls="t-16-1-desc" title="[samples/run.sh#deploy](./samples/run.sh#deploy)"><span class="chip-file">run.sh</span><span class="chip-ref">#deploy</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-17">
+<h3><span class="num">17</span>VB — a function and its End</h3>
+<ul class="targets">
+<li class="target-item" id="t-17-1"><button class="target" type="button" data-file="samples/Form.vb" data-section="17" data-from="2" data-to="5" data-ranges="2-5" aria-pressed="false" aria-controls="t-17-1-desc" title="[samples/Form.vb#Form/Add](./samples/Form.vb#Form/Add)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Form/Add</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-18">
+<h3><span class="num">18</span>Haskell — a binding and its signature</h3>
+<ul class="targets">
+<li class="target-item" id="t-18-1"><button class="target" type="button" data-file="samples/Main.hs" data-section="18" data-from="4" data-to="5" data-ranges="4-5" aria-pressed="false" aria-controls="t-18-1-desc" title="[samples/Main.hs#add/+](./samples/Main.hs#add/+)"><span class="chip-file">Main.hs</span><span class="chip-ref">#add/+</span></button></li>
+<li class="target-item" id="t-18-2"><button class="target" type="button" data-file="samples/Main.hs" data-section="18" data-from="7" data-to="7" data-ranges="7-7" aria-pressed="false" aria-controls="t-18-2-desc" title="[samples/Main.hs#Cart](./samples/Main.hs#Cart)"><span class="chip-file">Main.hs</span><span class="chip-ref">#Cart</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-19">
+<h3><span class="num">19</span>Zig — a nested comment hides a decoy</h3>
+<ul class="targets">
+<li class="target-item" id="t-19-1"><button class="target" type="button" data-file="samples/Nesting.zig" data-section="19" data-from="6" data-to="8" data-ranges="6-8" aria-pressed="false" aria-controls="t-19-1-desc" title="[samples/Nesting.zig#target](./samples/Nesting.zig#target)"><span class="chip-file">Nesting.zig</span><span class="chip-ref">#target</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-20">
+<h3><span class="num">20</span>YAML — a key path</h3>
+<ul class="targets">
+<li class="target-item" id="t-20-1"><button class="target" type="button" data-file="samples/app.yaml" data-section="20" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-20-1-desc" title="[samples/app.yaml#server/port](./samples/app.yaml#server/port)"><span class="chip-file">app.yaml</span><span class="chip-ref">#server/port</span></button></li>
+<li class="target-item" id="t-20-2"><button class="target" type="button" data-file="samples/app.yaml" data-section="20" data-from="3" data-to="7" data-ranges="3-3,6-7" aria-pressed="false" aria-controls="t-20-2-desc" title="[samples/app.yaml#server/tls/enabled](./samples/app.yaml#server/tls/enabled)"><span class="chip-file">app.yaml</span><span class="chip-ref">#server/tls/enabled</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-21">
+<h3><span class="num">21</span>TOML — a table and its key</h3>
+<ul class="targets">
+<li class="target-item" id="t-21-1"><button class="target" type="button" data-file="samples/app.toml" data-section="21" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-21-1-desc" title="[samples/app.toml#server/port](./samples/app.toml#server/port)"><span class="chip-file">app.toml</span><span class="chip-ref">#server/port</span></button></li>
+<li class="target-item" id="t-21-2"><button class="target" type="button" data-file="samples/app.toml" data-section="21" data-from="3" data-to="8" data-ranges="3-3,6-8" aria-pressed="false" aria-controls="t-21-2-desc" title="[samples/app.toml#server/hosts](./samples/app.toml#server/hosts)"><span class="chip-file">app.toml</span><span class="chip-ref">#server/hosts</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-22">
+<h3><span class="num">22</span>INI — a section and its key</h3>
+<ul class="targets">
+<li class="target-item" id="t-22-1"><button class="target" type="button" data-file="samples/app.ini" data-section="22" data-from="4" data-to="6" data-ranges="4-4,6-6" aria-pressed="false" aria-controls="t-22-1-desc" title="[samples/app.ini#server/port](./samples/app.ini#server/port)"><span class="chip-file">app.ini</span><span class="chip-ref">#server/port</span></button></li>
+<li class="target-item" id="t-22-2"><button class="target" type="button" data-file="samples/app.ini" data-section="22" data-from="8" data-to="9" data-ranges="8-9" aria-pressed="false" aria-controls="t-22-2-desc" title="[samples/app.ini#logging](./samples/app.ini#logging)"><span class="chip-file">app.ini</span><span class="chip-ref">#logging</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-23">
+<h3><span class="num">23</span>CSS — a rule, an at-rule, and the nesting between</h3>
+<ul class="targets">
+<li class="target-item" id="t-23-1"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="2" data-to="5" data-ranges="2-5" aria-pressed="false" aria-controls="t-23-1-desc" title="[samples/site.css#:root](./samples/site.css#:root)"><span class="chip-file">site.css</span><span class="chip-ref">#:root</span></button></li>
+<li class="target-item" id="t-23-2"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="19" data-to="23" data-ranges="19-23" aria-pressed="false" aria-controls="t-23-2-desc" title="[samples/site.css#@media](./samples/site.css#@media)"><span class="chip-file">site.css</span><span class="chip-ref">#@media</span></button></li>
+<li class="target-item" id="t-23-3"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="21" data-to="21" data-ranges="21-21" aria-pressed="false" aria-controls="t-23-3-desc" title="[samples/site.css#@media/.card/-](./samples/site.css#@media/.card/-)"><span class="chip-file">site.css</span><span class="chip-ref">#@media/.card/-</span></button></li>
+<li class="target-item" id="t-23-4"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="t-23-4-desc" title="[samples/site.css#@keyframes:pulse](./samples/site.css#@keyframes:pulse)"><span class="chip-file">site.css</span><span class="chip-ref">#@keyframes:pulse</span></button></li>
+<li class="target-item" id="t-23-5"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="t-23-5-desc" title="[samples/site.css#pulse](./samples/site.css#pulse)"><span class="chip-file">site.css</span><span class="chip-ref">#pulse</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-24">
+<h3><span class="num">24</span>Line numbers, and several pieces at once</h3>
+<ul class="targets">
+<li class="target-item" id="t-24-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="24" data-from="8" data-to="14" data-ranges="8-14" aria-pressed="false" aria-controls="t-24-1-desc" title="[samples/Inventory.java#L8-L14](./samples/Inventory.java#L8-L14)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L8-L14</span></button></li>
+<li class="target-item" id="t-24-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="24" data-from="7" data-to="50" data-ranges="7-7,32-36,50-50" aria-pressed="false" aria-controls="t-24-2-desc" title="[samples/Inventory.java#L7,toString/++,L50](./samples/Inventory.java#L7,toString/++,L50)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L7,toString/++,L50</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-25">
+<h3><span class="num">25</span>JSON — keys</h3>
+<ul class="targets">
+<li class="target-item" id="t-25-1"><button class="target" type="button" data-file="samples/api.json" data-section="25" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-25-1-desc" title="[samples/api.json#name,server/port](./samples/api.json#name,server/port)"><span class="chip-file">api.json</span><span class="chip-ref">#name,server/port</span></button></li>
+</ul>
+</li>
+</ol>
+</div>
+<div class="pane-section">
+<div class="col-head">Description<span class="col-note">of the selected example</span></div>
+<div class="desc-panel">
+<p class="desc-empty">Click an example link above to read what it demonstrates.</p>
+<div class="desc" id="t-1-1-desc" data-desc="t-1-1">
+<h2><span class="num">1</span>A named region</h2>
+<p>Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
+</div>
+<div class="desc" id="t-2-1-desc" data-desc="t-2-1">
 <h2><span class="num">2</span>A declaration, and how much of it comes along</h2>
 <p>When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A <code>-</code>, <code>+</code> or <code>++</code> <strong>segment</strong> after the path selects how far up the text starts:</p>
 <ul>
@@ -191,349 +375,162 @@ body {
   <li><code>#toString/++</code> — those and the doc comment above them.</li>
 </ul>
 <p>The modifier is the last segment of the path and nothing else, so <code>#toString-</code> is the name <code>toString-</code> and resolves to nothing, and the old spelling says so: <code>&quot;++&quot; is a path segment now; write &quot;#toString/++&quot;</code>.</p>
-<p>The same method, four ways:</p>
-<ul class="targets">
-<li class="target-item" id="t-2-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="34" data-to="36" data-ranges="34-36" aria-pressed="false" aria-controls="t-2-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString</span></button><pre class="snippet" id="t-2-1-snippet"><span class="marker">[samples/Inventory.java#toString](./samples/Inventory.java#toString)</span><code>    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre></li>
-<li class="target-item" id="t-2-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="35" data-to="35" data-ranges="35-35" aria-pressed="false" aria-controls="t-2-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString/-</span></button><pre class="snippet" id="t-2-2-snippet"><span class="marker">[samples/Inventory.java#toString/-](./samples/Inventory.java#toString/-)</span><code>        return items.size() + &quot; item(s)&quot;;</code></pre></li>
-<li class="target-item" id="t-2-3"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="33" data-to="36" data-ranges="33-36" aria-pressed="false" aria-controls="t-2-3-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString/+</span></button><pre class="snippet" id="t-2-3-snippet"><span class="marker">[samples/Inventory.java#toString/+](./samples/Inventory.java#toString/+)</span><code>    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre></li>
-<li class="target-item" id="t-2-4"><button class="target" type="button" data-file="samples/Inventory.java" data-section="2" data-from="32" data-to="36" data-ranges="32-36" aria-pressed="false" aria-controls="t-2-4-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#toString/++</span></button><pre class="snippet" id="t-2-4-snippet"><span class="marker">[samples/Inventory.java#toString/++](./samples/Inventory.java#toString/++)</span><code>    /** Summarise the inventory. */
-    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-3">
+<p>The same method, four ways. <code>#toString</code> is the declaration alone — the signature through its closing brace.</p>
+</div>
+<div class="desc" id="t-2-2-desc" data-desc="t-2-2">
+<h2><span class="num">2</span>A declaration, and how much of it comes along</h2>
+<p><code>#toString/-</code> is the body without the signature.</p>
+</div>
+<div class="desc" id="t-2-3-desc" data-desc="t-2-3">
+<h2><span class="num">2</span>A declaration, and how much of it comes along</h2>
+<p><code>#toString/+</code> keeps the annotations the declaration carries.</p>
+</div>
+<div class="desc" id="t-2-4-desc" data-desc="t-2-4">
+<h2><span class="num">2</span>A declaration, and how much of it comes along</h2>
+<p><code>#toString/++</code> goes on up to the doc comment above them.</p>
+</div>
+<div class="desc" id="t-3-1-desc" data-desc="t-3-1">
 <h2><span class="num">3</span>A nested declaration</h2>
 <p>A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
-<ul class="targets">
-<li class="target-item" id="t-3-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="3" data-from="27" data-to="29" data-ranges="27-29" aria-pressed="false" aria-controls="t-3-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#Inventory/Item/render</span></button><pre class="snippet" id="t-3-1-snippet"><span class="marker">[samples/Inventory.java#Inventory/Item/render](./samples/Inventory.java#Inventory/Item/render)</span><code>        String render() {
-            return name + &quot; x&quot; + quantity;
-        }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-4">
+</div>
+<div class="desc" id="t-4-1-desc" data-desc="t-4-1">
 <h2><span class="num">4</span>A condition literal</h2>
 <p>Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
-<ul class="targets">
-<li class="target-item" id="t-4-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="4" data-from="40" data-to="42" data-ranges="40-42" aria-pressed="false" aria-controls="t-4-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#dispatch/count</span></button><pre class="snippet" id="t-4-1-snippet"><span class="marker">[samples/Inventory.java#dispatch/count](./samples/Inventory.java#dispatch/count)</span><code>        if (&quot;count&quot;.equals(methodName)) {
-            System.out.println(&quot;items: &quot; + items.size());
-        }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-5">
+</div>
+<div class="desc" id="t-5-1-desc" data-desc="t-5-1">
 <h2><span class="num">5</span>A comment anchor</h2>
 <p>A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
-<ul class="targets">
-<li class="target-item" id="t-5-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="5" data-from="47" data-to="49" data-ranges="47-49" aria-pressed="false" aria-controls="t-5-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#legacy/count</span></button><pre class="snippet" id="t-5-1-snippet"><span class="marker">[samples/Inventory.java#legacy/count](./samples/Inventory.java#legacy/count)</span><code>    public void legacy() { //count
-        System.out.println(&quot;items: &quot; + items.size());
-    }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-6">
+</div>
+<div class="desc" id="t-6-1-desc" data-desc="t-6-1">
 <h2><span class="num">6</span>The whole file</h2>
 <p>A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
-<ul class="targets">
-<li class="target-item" id="t-6-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="6" data-from="1" data-to="50" data-ranges="1-50" aria-pressed="false" aria-controls="t-6-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">whole file</span></button><pre class="snippet" id="t-6-1-snippet"><span class="marker">[samples/Inventory.java](./samples/Inventory.java)</span><code>package demo;
-
-import java.util.ArrayList;
-import java.util.List;
-
-/** A small stock inventory: the sample every target on this page reads. */
-public class Inventory {
-
-    // #region catalog
-    /** The catalog, kept as an explicit region directive. */
-    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };
-    // #endregion
-
-    private final List&lt;Item&gt; items = new ArrayList&lt;&gt;();
-
-    /** One stock line of this inventory. */
-    public static class Item {
-        private final String name;
-        private final int quantity;
-
-        Item(String name, int quantity) {
-            this.name = name;
-            this.quantity = quantity;
-        }
-
-        /** Render one line the way the receipt shows it. */
-        String render() {
-            return name + &quot; x&quot; + quantity;
-        }
-    }
-
-    /** Summarise the inventory. */
-    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }
-
-    /** Run one named method. */
-    public void dispatch(String methodName) {
-        if (&quot;count&quot;.equals(methodName)) {
-            System.out.println(&quot;items: &quot; + items.size());
-        } else if (&quot;clear&quot;.equals(methodName)) {
-            items.clear();
-        }
-    }
-
-    public void legacy() { //count
-        System.out.println(&quot;items: &quot; + items.size());
-    }
-}</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-7">
+</div>
+<div class="desc" id="t-7-1-desc" data-desc="t-7-1">
 <h2><span class="num">7</span>JavaScript and TypeScript — a template hides its braces</h2>
 <p>A backtick template spans lines and hides braces, so the <code>}</code> inside one is text. The whole template is blanked before anything is counted, which is why <code>Cart/render</code> is found *through* it rather than ending inside it, and why the <code>{</code> of the nested `<code> </code>{${item}}<code> </code><code> never opens a body. TypeScript uses the same entry, so a </code>.ts<code> file masks exactly as a </code>.js` one does.</p>
-<ul class="targets">
-<li class="target-item" id="t-7-1"><button class="target" type="button" data-file="samples/cart.js" data-section="7" data-from="9" data-to="11" data-ranges="9-11" aria-pressed="false" aria-controls="t-7-1-snippet"><span class="chip-file">cart.js</span><span class="chip-ref">#Cart/render</span></button><pre class="snippet" id="t-7-1-snippet"><span class="marker">[samples/cart.js#Cart/render](./samples/cart.js#Cart/render)</span><code>    render() {
-        return `cart (${this.items.length}): ${this.items.map((item) =&gt; `{${item}}`).join(', ')}`;
-    }</code></pre></li>
-<li class="target-item" id="t-7-2"><button class="target" type="button" data-file="samples/cart.js" data-section="7" data-from="13" data-to="15" data-ranges="13-15" aria-pressed="false" aria-controls="t-7-2-snippet"><span class="chip-file">cart.js</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-7-2-snippet"><span class="marker">[samples/cart.js#Cart/add](./samples/cart.js#Cart/add)</span><code>    add(item) {
-        this.items.push(item);
-    }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-8">
+</div>
+<div class="desc" id="t-7-2-desc" data-desc="t-7-2">
+<h2><span class="num">7</span>JavaScript and TypeScript — a template hides its braces</h2>
+<p><code>Cart/add</code> is an ordinary method with braces of its own — the same path syntax, and nothing about the template above it changes the answer.</p>
+</div>
+<div class="desc" id="t-8-1-desc" data-desc="t-8-1">
 <h2><span class="num">8</span>Go — a raw string is not code</h2>
 <p><code>Add</code> is found through the braces, while the backtick raw string below it — which contains a whole <code>Decoy</code> function — is blanked before anything is counted, so it can never be mistaken for a member.</p>
-<ul class="targets">
-<li class="target-item" id="t-8-1"><button class="target" type="button" data-file="samples/Cart.go" data-section="8" data-from="5" data-to="7" data-ranges="5-7" aria-pressed="false" aria-controls="t-8-1-snippet"><span class="chip-file">Cart.go</span><span class="chip-ref">#Add</span></button><pre class="snippet" id="t-8-1-snippet"><span class="marker">[samples/Cart.go#Add](./samples/Cart.go#Add)</span><code>func Add(items []string, item string) []string {
-	return append(items, item)
-}</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-9">
+</div>
+<div class="desc" id="t-9-1-desc" data-desc="t-9-1">
 <h2><span class="num">9</span>Rust — the members live in the impl</h2>
 <p>Rust keeps a type's methods in <code>impl</code> blocks, which are siblings of the <code>struct</code> with the same name. The path retries them, so <code>Cart/add</code> reaches past the struct to the method and <code>Cart/remove</code> reaches past the first impl to the second. The nested comment at the bottom of the file hides a <code>decoy</code> the matcher never sees.</p>
-<ul class="targets">
-<li class="target-item" id="t-9-1"><button class="target" type="button" data-file="samples/Cart.rs" data-section="9" data-from="8" data-to="10" data-ranges="8-10" aria-pressed="false" aria-controls="t-9-1-snippet"><span class="chip-file">Cart.rs</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-9-1-snippet"><span class="marker">[samples/Cart.rs#Cart/add](./samples/Cart.rs#Cart/add)</span><code>    fn add(&amp;mut self, x: String) {
-        self.items.push(x);
-    }</code></pre></li>
-<li class="target-item" id="t-9-2"><button class="target" type="button" data-file="samples/Cart.rs" data-section="9" data-from="14" data-to="16" data-ranges="14-16" aria-pressed="false" aria-controls="t-9-2-snippet"><span class="chip-file">Cart.rs</span><span class="chip-ref">#Cart/remove</span></button><pre class="snippet" id="t-9-2-snippet"><span class="marker">[samples/Cart.rs#Cart/remove](./samples/Cart.rs#Cart/remove)</span><code>    fn remove(&amp;mut self) -&gt; Option&lt;String&gt; {
-        self.items.pop()
-    }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-10">
+</div>
+<div class="desc" id="t-9-2-desc" data-desc="t-9-2">
+<h2><span class="num">9</span>Rust — the members live in the impl</h2>
+<p><code>Cart/remove</code> is in the *second* impl block, and the path still reaches it: the segments before the last are scopes, and a scope may be spelled more than once.</p>
+</div>
+<div class="desc" id="t-10-1-desc" data-desc="t-10-1">
 <h2><span class="num">10</span>Python — triple quotes and indentation</h2>
 <p>The docstring hides a whole <code>def decoy</code> from the matcher, and the body of <code>add</code> is its indented block, so the selection ends where the indentation ends.</p>
-<ul class="targets">
-<li class="target-item" id="t-10-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="10" data-from="9" data-to="10" data-ranges="9-10" aria-pressed="false" aria-controls="t-10-1-snippet"><span class="chip-file">Cart.py</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-10-1-snippet"><span class="marker">[samples/Cart.py#Cart/add](./samples/Cart.py#Cart/add)</span><code>    def add(self, item):
-        self.items.append(item)</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-11">
+</div>
+<div class="desc" id="t-11-1-desc" data-desc="t-11-1">
 <h2><span class="num">11</span>C# — a verbatim string keeps its quotes</h2>
 <p>A verbatim string escapes its quote by doubling it (<code>&quot;&quot;</code>), so the brace inside <code>@&quot;cart &quot;&quot;}&quot;&quot; decoy&quot;</code> is text, not structure.</p>
-<ul class="targets">
-<li class="target-item" id="t-11-1"><button class="target" type="button" data-file="samples/Cart.cs" data-section="11" data-from="10" data-to="13" data-ranges="10-13" aria-pressed="false" aria-controls="t-11-1-snippet"><span class="chip-file">Cart.cs</span><span class="chip-ref">#Cart/Add</span></button><pre class="snippet" id="t-11-1-snippet"><span class="marker">[samples/Cart.cs#Cart/Add](./samples/Cart.cs#Cart/Add)</span><code>    public void Add(string item)
-    {
-        items.Add(item);
-    }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-12">
+</div>
+<div class="desc" id="t-12-1-desc" data-desc="t-12-1">
 <h2><span class="num">12</span>Kotlin — nested comments, raw strings</h2>
 <p><code>/* /* */ */</code> nests in Kotlin, so the comment above <code>add</code> can swallow anything — including a <code>decoy</code> — and a <code>&quot;&quot;&quot;</code> raw string is text with no escapes at all.</p>
-<ul class="targets">
-<li class="target-item" id="t-12-1"><button class="target" type="button" data-file="samples/Cart.kt" data-section="12" data-from="5" data-to="7" data-ranges="5-7" aria-pressed="false" aria-controls="t-12-1-snippet"><span class="chip-file">Cart.kt</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-12-1-snippet"><span class="marker">[samples/Cart.kt#Cart/add](./samples/Cart.kt#Cart/add)</span><code>    fun add(item: String) {
-        items.add(item)
-    }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-13">
+</div>
+<div class="desc" id="t-13-1-desc" data-desc="t-13-1">
 <h2><span class="num">13</span>PHP — a heredoc is not code</h2>
 <p>The <code>&lt;&lt;&lt;SQL</code> body below is data, the <code>}</code> in it is not PHP syntax, and <code>#[Attribute]</code> — not used here — is an attribute rather than a <code>#</code> comment.</p>
-<ul class="targets">
-<li class="target-item" id="t-13-1"><button class="target" type="button" data-file="samples/Cart.php" data-section="13" data-from="5" data-to="13" data-ranges="5-13" aria-pressed="false" aria-controls="t-13-1-snippet"><span class="chip-file">Cart.php</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-13-1-snippet"><span class="marker">[samples/Cart.php#Cart/add](./samples/Cart.php#Cart/add)</span><code>    public function add(string $item): string
-    {
-        // The heredoc body is data: the brace in it is not PHP syntax.
-        $sql = &lt;&lt;&lt;SQL
-        insert into cart (item) values ('}') -- a decoy
-        SQL;
-
-        return $sql;
-    }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-14">
+</div>
+<div class="desc" id="t-14-1-desc" data-desc="t-14-1">
 <h2><span class="num">14</span>Ruby — def, end, and the shift operator</h2>
 <p><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append, not a heredoc: only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one.</p>
-<ul class="targets">
-<li class="target-item" id="t-14-1"><button class="target" type="button" data-file="samples/Cart.rb" data-section="14" data-from="2" data-to="4" data-ranges="2-4" aria-pressed="false" aria-controls="t-14-1-snippet"><span class="chip-file">Cart.rb</span><span class="chip-ref">#Cart/add</span></button><pre class="snippet" id="t-14-1-snippet"><span class="marker">[samples/Cart.rb#Cart/add](./samples/Cart.rb#Cart/add)</span><code>  def add(item)
-    @items &lt;&lt; item
-  end</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-15">
+</div>
+<div class="desc" id="t-15-1-desc" data-desc="t-15-1">
 <h2><span class="num">15</span>SQL — a region, and doubled quotes</h2>
 <p>SQL has no members to search, so this example uses a region directive the way any comment-bearing language can — and the string <code>'it''s a } decoy'</code> stays one string, because SQL escapes a quote by doubling it.</p>
-<ul class="targets">
-<li class="target-item" id="t-15-1"><button class="target" type="button" data-file="samples/report.sql" data-section="15" data-from="4" data-to="9" data-ranges="4-9" aria-pressed="false" aria-controls="t-15-1-snippet"><span class="chip-file">report.sql</span><span class="chip-ref">#monthly</span></button><pre class="snippet" id="t-15-1-snippet"><span class="marker">[samples/report.sql#monthly](./samples/report.sql#monthly)</span><code>select
-    date_trunc('month', placed_at) as month,
-    count(*) as orders
-from orders
-where note &lt;&gt; 'it''s a } decoy'
-group by 1;</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-16">
+</div>
+<div class="desc" id="t-16-1-desc" data-desc="t-16-1">
 <h2><span class="num">16</span>Shell — a heredoc is not code</h2>
 <p>The heredoc body is data: the <code>}</code> inside it is not shell syntax, and the selection stops at the function's closing brace.</p>
-<ul class="targets">
-<li class="target-item" id="t-16-1"><button class="target" type="button" data-file="samples/run.sh" data-section="16" data-from="3" data-to="8" data-ranges="3-8" aria-pressed="false" aria-controls="t-16-1-snippet"><span class="chip-file">run.sh</span><span class="chip-ref">#deploy</span></button><pre class="snippet" id="t-16-1-snippet"><span class="marker">[samples/run.sh#deploy](./samples/run.sh#deploy)</span><code>deploy() {
-	cat &lt;&lt;EOF
-  } decoy
-EOF
-	echo &quot;deployed&quot;
-}</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-17">
+</div>
+<div class="desc" id="t-17-1-desc" data-desc="t-17-1">
 <h2><span class="num">17</span>VB — a function and its End</h2>
 <p>VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure.</p>
-<ul class="targets">
-<li class="target-item" id="t-17-1"><button class="target" type="button" data-file="samples/Form.vb" data-section="17" data-from="2" data-to="5" data-ranges="2-5" aria-pressed="false" aria-controls="t-17-1-snippet"><span class="chip-file">Form.vb</span><span class="chip-ref">#Form/Add</span></button><pre class="snippet" id="t-17-1-snippet"><span class="marker">[samples/Form.vb#Form/Add](./samples/Form.vb#Form/Add)</span><code>    Public Function Add(item As String) As String
-        Dim note As String = &quot;a &quot;&quot;}&quot;&quot; decoy&quot;
-        Return note
-    End Function</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-18">
+</div>
+<div class="desc" id="t-18-1-desc" data-desc="t-18-1">
 <h2><span class="num">18</span>Haskell — a binding and its signature</h2>
 <p>A binding is <code>add x y = x + y</code>, and the <code>add ::</code> line above it is its annotation: <code>+add</code> brings the signature along, and <code>Cart</code> is the record declared with <code>data</code>.</p>
-<ul class="targets">
-<li class="target-item" id="t-18-1"><button class="target" type="button" data-file="samples/Main.hs" data-section="18" data-from="4" data-to="5" data-ranges="4-5" aria-pressed="false" aria-controls="t-18-1-snippet"><span class="chip-file">Main.hs</span><span class="chip-ref">#add/+</span></button><pre class="snippet" id="t-18-1-snippet"><span class="marker">[samples/Main.hs#add/+](./samples/Main.hs#add/+)</span><code>add :: Int -&gt; Int -&gt; Int
-add x y = x + y</code></pre></li>
-<li class="target-item" id="t-18-2"><button class="target" type="button" data-file="samples/Main.hs" data-section="18" data-from="7" data-to="7" data-ranges="7-7" aria-pressed="false" aria-controls="t-18-2-snippet"><span class="chip-file">Main.hs</span><span class="chip-ref">#Cart</span></button><pre class="snippet" id="t-18-2-snippet"><span class="marker">[samples/Main.hs#Cart](./samples/Main.hs#Cart)</span><code>data Cart = Cart { items :: [Int] }</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-19">
+</div>
+<div class="desc" id="t-18-2-desc" data-desc="t-18-2">
+<h2><span class="num">18</span>Haskell — a binding and its signature</h2>
+<p>A record declared with <code>data</code> is named by the type it declares, so <code>Cart</code> is the whole declaration:</p>
+</div>
+<div class="desc" id="t-19-1-desc" data-desc="t-19-1">
 <h2><span class="num">19</span>Zig — a nested comment hides a decoy</h2>
 <p><code>/* outer /* inner */ still outer */</code> nests in Zig, so the commented-out <code>fn decoy</code> is blanked whole; the non-nesting default mask would have leaked it.</p>
-<ul class="targets">
-<li class="target-item" id="t-19-1"><button class="target" type="button" data-file="samples/Nesting.zig" data-section="19" data-from="6" data-to="8" data-ranges="6-8" aria-pressed="false" aria-controls="t-19-1-snippet"><span class="chip-file">Nesting.zig</span><span class="chip-ref">#target</span></button><pre class="snippet" id="t-19-1-snippet"><span class="marker">[samples/Nesting.zig#target](./samples/Nesting.zig#target)</span><code>pub fn target() void {
-    std.debug.print(&quot;}\n&quot;, .{});
-}</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-20">
+</div>
+<div class="desc" id="t-20-1-desc" data-desc="t-20-1">
 <h2><span class="num">20</span>YAML — a key path</h2>
 <p>A <code>.yaml</code> reference is a key path, spelled with the same <code>/</code> separator a code reference uses, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
-<ul class="targets">
-<li class="target-item" id="t-20-1"><button class="target" type="button" data-file="samples/app.yaml" data-section="20" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-20-1-snippet"><span class="chip-file">app.yaml</span><span class="chip-ref">#server/port</span></button><pre class="snippet" id="t-20-1-snippet"><span class="marker">[samples/app.yaml#server/port](./samples/app.yaml#server/port)</span><code>server:
-  port: 8080</code></pre></li>
-<li class="target-item" id="t-20-2"><button class="target" type="button" data-file="samples/app.yaml" data-section="20" data-from="3" data-to="7" data-ranges="3-3,6-7" aria-pressed="false" aria-controls="t-20-2-snippet"><span class="chip-file">app.yaml</span><span class="chip-ref">#server/tls/enabled</span></button><pre class="snippet" id="t-20-2-snippet"><span class="marker">[samples/app.yaml#server/tls/enabled](./samples/app.yaml#server/tls/enabled)</span><code>server:
-  tls:
-    enabled: true</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-21">
+</div>
+<div class="desc" id="t-20-2-desc" data-desc="t-20-2">
+<h2><span class="num">20</span>YAML — a key path</h2>
+<p>A nested key is more segments, and the rendered block carries every mapping above it — <code>server</code> and <code>tls</code> — so the YAML stays valid on its own:</p>
+</div>
+<div class="desc" id="t-21-1-desc" data-desc="t-21-1">
 <h2><span class="num">21</span>TOML — a table and its key</h2>
 <p><code>server/port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
-<ul class="targets">
-<li class="target-item" id="t-21-1"><button class="target" type="button" data-file="samples/app.toml" data-section="21" data-from="3" data-to="5" data-ranges="3-3,5-5" aria-pressed="false" aria-controls="t-21-1-snippet"><span class="chip-file">app.toml</span><span class="chip-ref">#server/port</span></button><pre class="snippet" id="t-21-1-snippet"><span class="marker">[samples/app.toml#server/port](./samples/app.toml#server/port)</span><code>[server]
-port = 8080</code></pre></li>
-<li class="target-item" id="t-21-2"><button class="target" type="button" data-file="samples/app.toml" data-section="21" data-from="3" data-to="8" data-ranges="3-3,6-8" aria-pressed="false" aria-controls="t-21-2-snippet"><span class="chip-file">app.toml</span><span class="chip-ref">#server/hosts</span></button><pre class="snippet" id="t-21-2-snippet"><span class="marker">[samples/app.toml#server/hosts](./samples/app.toml#server/hosts)</span><code>[server]
-hosts = [
-  &quot;a.example&quot;,
-  &quot;b.example&quot;,
-]</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-22">
+</div>
+<div class="desc" id="t-21-2-desc" data-desc="t-21-2">
+<h2><span class="num">21</span>TOML — a table and its key</h2>
+<p>A value that spans lines — an array here — comes with its continuation lines, so the selection is still valid TOML:</p>
+</div>
+<div class="desc" id="t-22-1-desc" data-desc="t-22-1">
 <h2><span class="num">22</span>INI — a section and its key</h2>
 <p><code>section/key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
-<ul class="targets">
-<li class="target-item" id="t-22-1"><button class="target" type="button" data-file="samples/app.ini" data-section="22" data-from="4" data-to="6" data-ranges="4-4,6-6" aria-pressed="false" aria-controls="t-22-1-snippet"><span class="chip-file">app.ini</span><span class="chip-ref">#server/port</span></button><pre class="snippet" id="t-22-1-snippet"><span class="marker">[samples/app.ini#server/port](./samples/app.ini#server/port)</span><code>[server]
-port = 8080</code></pre></li>
-<li class="target-item" id="t-22-2"><button class="target" type="button" data-file="samples/app.ini" data-section="22" data-from="8" data-to="9" data-ranges="8-9" aria-pressed="false" aria-controls="t-22-2-snippet"><span class="chip-file">app.ini</span><span class="chip-ref">#logging</span></button><pre class="snippet" id="t-22-2-snippet"><span class="marker">[samples/app.ini#logging](./samples/app.ini#logging)</span><code>[logging]
-level = info</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-23">
+</div>
+<div class="desc" id="t-22-2-desc" data-desc="t-22-2">
+<h2><span class="num">22</span>INI — a section and its key</h2>
+<p>A bare section name selects the whole section, <code>[logging]</code> and its keys:</p>
+</div>
+<div class="desc" id="t-23-1-desc" data-desc="t-23-1">
 <h2><span class="num">23</span>CSS — a rule, an at-rule, and the nesting between</h2>
-<p>A <code>.css</code> reference names a <strong>rule</strong>, in CSS's own vocabulary. A style rule is named by the rightmost simple selector of its selector list (<code>.card</code>), an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the body only&quot; works the same way, so <code>.card-</code> is a rule's declarations without its selector.</p>
+<p>A <code>.css</code> reference names a <strong>rule</strong>, in CSS's own vocabulary. A style rule is named by the rightmost simple selector of its selector list (<code>.card</code>), and an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>). The <code>-</code> a code reference uses for &quot;the body only&quot; works here too, so <code>.card-</code> is a rule's declarations without its selector.</p>
 <p>The design tokens, addressed by the pseudo-class that holds them:</p>
+</div>
+<div class="desc" id="t-23-2-desc" data-desc="t-23-2">
+<h2><span class="num">23</span>CSS — a rule, an at-rule, and the nesting between</h2>
 <p>A class, and a variant of that same class — the compact one is reached by a predicate read from the selector, because two rules may share a name:</p>
 <p>[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])</p>
-<p>The media query, whole, and then the one rule inside it — the nesting is the path:</p>
+<p>The media query, whole — an at-rule is named by its keyword:</p>
+</div>
+<div class="desc" id="t-23-3-desc" data-desc="t-23-3">
+<h2><span class="num">23</span>CSS — a rule, an at-rule, and the nesting between</h2>
+<p>Its nesting is the path, so the rule inside the media query is reached as a child of the at-rule:</p>
+</div>
+<div class="desc" id="t-23-4-desc" data-desc="t-23-4">
+<h2><span class="num">23</span>CSS — a rule, an at-rule, and the nesting between</h2>
 <p>An at-rule with a name of its own — <code>@keyframes:pulse</code> names one animation, <code>@keyframes</code> alone would be an error here because the file has two:</p>
+</div>
+<div class="desc" id="t-23-5-desc" data-desc="t-23-5">
+<h2><span class="num">23</span>CSS — a rule, an at-rule, and the nesting between</h2>
 <p>A region directive still works in CSS, and a class name cannot be a region name, so the two never collide:</p>
-<ul class="targets">
-<li class="target-item" id="t-23-1"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="2" data-to="5" data-ranges="2-5" aria-pressed="false" aria-controls="t-23-1-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#:root</span></button><pre class="snippet" id="t-23-1-snippet"><span class="marker">[samples/site.css#:root](./samples/site.css#:root)</span><code>:root {
-  --brand: #1f6feb;
-  --radius: 6px;
-}</code></pre></li>
-<li class="target-item" id="t-23-2"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="19" data-to="23" data-ranges="19-23" aria-pressed="false" aria-controls="t-23-2-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#@media</span></button><pre class="snippet" id="t-23-2-snippet"><span class="marker">[samples/site.css#@media](./samples/site.css#@media)</span><code>@media (min-width: 700px) {
-  .card {
-    grid-template-columns: 1fr 1fr;
-  }
-}</code></pre></li>
-<li class="target-item" id="t-23-3"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="21" data-to="21" data-ranges="21-21" aria-pressed="false" aria-controls="t-23-3-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#@media/.card/-</span></button><pre class="snippet" id="t-23-3-snippet"><span class="marker">[samples/site.css#@media/.card/-](./samples/site.css#@media/.card/-)</span><code>grid-template-columns: 1fr 1fr;</code></pre></li>
-<li class="target-item" id="t-23-4"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="t-23-4-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#@keyframes:pulse</span></button><pre class="snippet" id="t-23-4-snippet"><span class="marker">[samples/site.css#@keyframes:pulse](./samples/site.css#@keyframes:pulse)</span><code>@keyframes pulse {
-  from {
-    opacity: 0.4;
-  }
-  to {
-    opacity: 1;
-  }
-}</code></pre></li>
-<li class="target-item" id="t-23-5"><button class="target" type="button" data-file="samples/site.css" data-section="23" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="t-23-5-snippet"><span class="chip-file">site.css</span><span class="chip-ref">#pulse</span></button><pre class="snippet" id="t-23-5-snippet"><span class="marker">[samples/site.css#pulse](./samples/site.css#pulse)</span><code>@keyframes pulse {
-  from {
-    opacity: 0.4;
-  }
-  to {
-    opacity: 1;
-  }
-}</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-24">
+</div>
+<div class="desc" id="t-24-1-desc" data-desc="t-24-1">
 <h2><span class="num">24</span>Line numbers, and several pieces at once</h2>
-<p>A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them. <code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
-<p>A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file:</p>
-<p>The demo page's middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between.</p>
-<ul class="targets">
-<li class="target-item" id="t-24-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="24" data-from="8" data-to="14" data-ranges="8-14" aria-pressed="false" aria-controls="t-24-1-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L8-L14</span></button><pre class="snippet" id="t-24-1-snippet"><span class="marker">[samples/Inventory.java#L8-L14](./samples/Inventory.java#L8-L14)</span><code>
-    // #region catalog
-    /** The catalog, kept as an explicit region directive. */
-    static final String[] CATALOG = { &quot;bolt&quot;, &quot;nut&quot;, &quot;washer&quot; };
-    // #endregion
-
-    private final List&lt;Item&gt; items = new ArrayList&lt;&gt;();</code></pre></li>
-<li class="target-item" id="t-24-2"><button class="target" type="button" data-file="samples/Inventory.java" data-section="24" data-from="7" data-to="50" data-ranges="7-7,32-36,50-50" aria-pressed="false" aria-controls="t-24-2-snippet"><span class="chip-file">Inventory.java</span><span class="chip-ref">#L7,toString/++,L50</span></button><pre class="snippet" id="t-24-2-snippet"><span class="marker">[samples/Inventory.java#L7,toString/++,L50](./samples/Inventory.java#L7,toString/++,L50)</span><code>public class Inventory {
-    /** Summarise the inventory. */
-    @Override
-    public String toString() {
-        return items.size() + &quot; item(s)&quot;;
-    }
-}</code></pre></li>
-</ul>
-</li>
-<li class="example" id="ex-25">
+<p>A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them.</p>
+<p><code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
+</div>
+<div class="desc" id="t-24-2-desc" data-desc="t-24-2">
+<h2><span class="num">24</span>Line numbers, and several pieces at once</h2>
+<p>A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file. The middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between:</p>
+</div>
+<div class="desc" id="t-25-1-desc" data-desc="t-25-1">
 <h2><span class="num">25</span>JSON — keys</h2>
 <p>JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by <code>/</code> — the same separator a code reference uses.</p>
-<ul class="targets">
-<li class="target-item" id="t-25-1"><button class="target" type="button" data-file="samples/api.json" data-section="25" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="t-25-1-snippet"><span class="chip-file">api.json</span><span class="chip-ref">#name,server/port</span></button><pre class="snippet" id="t-25-1-snippet"><span class="marker">[samples/api.json#name,server/port](./samples/api.json#name,server/port)</span><code>{
-  &quot;name&quot;: &quot;cart-api&quot;,
-  &quot;server&quot;: {
-    &quot;port&quot;: 8080
-  }
-}</code></pre></li>
-</ul>
-</li>
-</ol>
+</div>
+</div>
+</div>
 </section>
 <section class="pane pane-mid" aria-label="Source file">
 <div class="col-head">Source file<span class="col-note">lines the target selects</span></div>
@@ -585,70 +582,73 @@ level = info</code></pre></li>
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="8" data-md-to="8">A named region</h2>
-<p data-md-from="10" data-md-to="12">Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
-<p class="md-marker" data-marker="t-1-1"><a href="./samples/Inventory.java#catalog">samples/Inventory.java#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-1-1" data-md-from="16" data-md-to="19"><code class="language-java">    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
+<h2 data-md-from="9" data-md-to="9">A named region</h2>
+<p data-md-from="11" data-md-to="13">Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
+<p class="md-marker" data-marker="t-1-1"><a href="docs/samples/Inventory.java#catalog">samples/Inventory.java#catalog</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-1-1" data-md-from="17" data-md-to="20"><code class="language-java">    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
     <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="21" data-md-to="21">A declaration, and how much of it comes along</h2>
-<p data-md-from="23" data-md-to="26">When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A <code>-</code>, <code>+</code> or <code>++</code> <strong>segment</strong> after the path selects how far up the text starts:</p>
-<ul data-md-from="28" data-md-to="31">
+<h2 data-md-from="22" data-md-to="22">A declaration, and how much of it comes along</h2>
+<p data-md-from="24" data-md-to="27">When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A <code>-</code>, <code>+</code> or <code>++</code> <strong>segment</strong> after the path selects how far up the text starts:</p>
+<ul data-md-from="29" data-md-to="32">
 <li><code>#toString</code> — the declaration: signature through closing brace.</li>
 <li><code>#toString/-</code> — the body only, without the signature.</li>
 <li><code>#toString/+</code> — the declaration and the annotations above it.</li>
 <li><code>#toString/++</code> — those and the doc comment above them.</li>
 </ul>
-<p data-md-from="33" data-md-to="35">The modifier is the last segment of the path and nothing else, so <code>#toString-</code> is the name <code>toString-</code> and resolves to nothing, and the old spelling says so: <code>&quot;++&quot; is a path segment now; write &quot;#toString/++&quot;</code>.</p>
-<p data-md-from="37" data-md-to="37">The same method, four ways:</p>
-<p class="md-marker" data-marker="t-2-1"><a href="./samples/Inventory.java#toString">samples/Inventory.java#toString</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-1" data-md-from="41" data-md-to="45"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
+<p data-md-from="34" data-md-to="36">The modifier is the last segment of the path and nothing else, so <code>#toString-</code> is the name <code>toString-</code> and resolves to nothing, and the old spelling says so: <code>&quot;++&quot; is a path segment now; write &quot;#toString/++&quot;</code>.</p>
+<p data-md-from="38" data-md-to="39">The same method, four ways. <code>#toString</code> is the declaration alone — the signature through its closing brace.</p>
+<p class="md-marker" data-marker="t-2-1"><a href="docs/samples/Inventory.java#toString">samples/Inventory.java#toString</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-1" data-md-from="43" data-md-to="47"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
-<p class="md-marker" data-marker="t-2-2"><a href="./samples/Inventory.java#toString/-">samples/Inventory.java#toString/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-2" data-md-from="49" data-md-to="51"><code class="language-java">        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;</code></pre>
-<p class="md-marker" data-marker="t-2-3"><a href="./samples/Inventory.java#toString/+">samples/Inventory.java#toString/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-3" data-md-from="55" data-md-to="60"><code class="language-java">    <span class="tok-a">@Override</span>
+<p data-md-from="49" data-md-to="49"><code>#toString/-</code> is the body without the signature.</p>
+<p class="md-marker" data-marker="t-2-2"><a href="docs/samples/Inventory.java#toString/-">samples/Inventory.java#toString/-</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-2" data-md-from="53" data-md-to="55"><code class="language-java">        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;</code></pre>
+<p data-md-from="57" data-md-to="57"><code>#toString/+</code> keeps the annotations the declaration carries.</p>
+<p class="md-marker" data-marker="t-2-3"><a href="docs/samples/Inventory.java#toString/+">samples/Inventory.java#toString/+</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-3" data-md-from="61" data-md-to="66"><code class="language-java">    <span class="tok-a">@Override</span>
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
-<p class="md-marker" data-marker="t-2-4"><a href="./samples/Inventory.java#toString/++">samples/Inventory.java#toString/++</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-4" data-md-from="64" data-md-to="70"><code class="language-java">    <span class="tok-c">/** Summarise the inventory. */</span>
+<p data-md-from="68" data-md-to="68"><code>#toString/++</code> goes on up to the doc comment above them.</p>
+<p class="md-marker" data-marker="t-2-4"><a href="docs/samples/Inventory.java#toString/++">samples/Inventory.java#toString/++</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-2-4" data-md-from="72" data-md-to="78"><code class="language-java">    <span class="tok-c">/** Summarise the inventory. */</span>
     <span class="tok-a">@Override</span>
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="72" data-md-to="72">A nested declaration</h2>
-<p data-md-from="74" data-md-to="77">A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
-<p class="md-marker" data-marker="t-3-1"><a href="./samples/Inventory.java#Inventory/Item/render">samples/Inventory.java#Inventory/Item/render</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-3-1" data-md-from="81" data-md-to="85"><code class="language-java">        <span class="tok-t">String</span> render() {
+<h2 data-md-from="80" data-md-to="80">A nested declaration</h2>
+<p data-md-from="82" data-md-to="85">A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
+<p class="md-marker" data-marker="t-3-1"><a href="docs/samples/Inventory.java#Inventory/Item/render">samples/Inventory.java#Inventory/Item/render</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-3-1" data-md-from="89" data-md-to="93"><code class="language-java">        <span class="tok-t">String</span> render() {
             <span class="tok-k">return</span> name + <span class="tok-s">&quot; x&quot;</span> + quantity;
         }</code></pre>
 </section>
 <section class="md-section" data-md-section="4">
-<h2 data-md-from="87" data-md-to="87">A condition literal</h2>
-<p data-md-from="89" data-md-to="91">Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
-<p class="md-marker" data-marker="t-4-1"><a href="./samples/Inventory.java#dispatch/count">samples/Inventory.java#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-4-1" data-md-from="95" data-md-to="99"><code class="language-java">        <span class="tok-k">if</span> (<span class="tok-s">&quot;count&quot;</span>.equals(methodName)) {
+<h2 data-md-from="95" data-md-to="95">A condition literal</h2>
+<p data-md-from="97" data-md-to="99">Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
+<p class="md-marker" data-marker="t-4-1"><a href="docs/samples/Inventory.java#dispatch/count">samples/Inventory.java#dispatch/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-4-1" data-md-from="103" data-md-to="107"><code class="language-java">        <span class="tok-k">if</span> (<span class="tok-s">&quot;count&quot;</span>.equals(methodName)) {
             <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
         }</code></pre>
 </section>
 <section class="md-section" data-md-section="5">
-<h2 data-md-from="101" data-md-to="101">A comment anchor</h2>
-<p data-md-from="103" data-md-to="105">A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
-<p class="md-marker" data-marker="t-5-1"><a href="./samples/Inventory.java#legacy/count">samples/Inventory.java#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-5-1" data-md-from="109" data-md-to="113"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-k">void</span> legacy() { <span class="tok-c">//count</span>
+<h2 data-md-from="109" data-md-to="109">A comment anchor</h2>
+<p data-md-from="111" data-md-to="113">A block whose opening line carries a trailing comment is named by that comment. <code>legacy()</code> opens <code>public void legacy() { //count</code>, so <code>legacy/count</code> names the whole method.</p>
+<p class="md-marker" data-marker="t-5-1"><a href="docs/samples/Inventory.java#legacy/count">samples/Inventory.java#legacy/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-5-1" data-md-from="117" data-md-to="121"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-k">void</span> legacy() { <span class="tok-c">//count</span>
         <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="6">
-<h2 data-md-from="115" data-md-to="115">The whole file</h2>
-<p data-md-from="117" data-md-to="118">A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
-<p class="md-marker" data-marker="t-6-1"><a href="./samples/Inventory.java">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-6-1" data-md-from="122" data-md-to="173"><code class="language-java"><span class="tok-k">package</span> demo;
+<h2 data-md-from="123" data-md-to="123">The whole file</h2>
+<p data-md-from="125" data-md-to="126">A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
+<p class="md-marker" data-marker="t-6-1"><a href="docs/samples/Inventory.java">samples/Inventory.java</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-6-1" data-md-from="130" data-md-to="181"><code class="language-java"><span class="tok-k">package</span> demo;
 
 <span class="tok-k">import</span> java.util.<span class="tok-t">ArrayList</span>;
 <span class="tok-k">import</span> java.util.<span class="tok-t">List</span>;
@@ -700,66 +700,68 @@ level = info</code></pre></li>
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="7">
-<h2 data-md-from="175" data-md-to="175">JavaScript and TypeScript — a template hides its braces</h2>
-<p data-md-from="177" data-md-to="181">A backtick template spans lines and hides braces, so the <code>}</code> inside one is text. The whole template is blanked before anything is counted, which is why <code>Cart/render</code> is found *through* it rather than ending inside it, and why the <code>{</code> of the nested `<code> </code>{${item}}<code> </code><code> never opens a body. TypeScript uses the same entry, so a </code>.ts<code> file masks exactly as a </code>.js` one does.</p>
-<p class="md-marker" data-marker="t-7-1"><a href="./samples/cart.js#Cart/render">samples/cart.js#Cart/render</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-7-1" data-md-from="185" data-md-to="189"><code class="language-js">    render() {
+<h2 data-md-from="183" data-md-to="183">JavaScript and TypeScript — a template hides its braces</h2>
+<p data-md-from="185" data-md-to="189">A backtick template spans lines and hides braces, so the <code>}</code> inside one is text. The whole template is blanked before anything is counted, which is why <code>Cart/render</code> is found *through* it rather than ending inside it, and why the <code>{</code> of the nested `<code> </code>{${item}}<code> </code><code> never opens a body. TypeScript uses the same entry, so a </code>.ts<code> file masks exactly as a </code>.js` one does.</p>
+<p class="md-marker" data-marker="t-7-1"><a href="docs/samples/cart.js#Cart/render">samples/cart.js#Cart/render</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-7-1" data-md-from="193" data-md-to="197"><code class="language-js">    render() {
         <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;
     }</code></pre>
-<p class="md-marker" data-marker="t-7-2"><a href="./samples/cart.js#Cart/add">samples/cart.js#Cart/add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-7-2" data-md-from="193" data-md-to="197"><code class="language-js">    add(item) {
+<p data-md-from="199" data-md-to="200"><code>Cart/add</code> is an ordinary method with braces of its own — the same path syntax, and nothing about the template above it changes the answer.</p>
+<p class="md-marker" data-marker="t-7-2"><a href="docs/samples/cart.js#Cart/add">samples/cart.js#Cart/add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-7-2" data-md-from="204" data-md-to="208"><code class="language-js">    add(item) {
         <span class="tok-k">this</span>.items.push(item);
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="8">
-<h2 data-md-from="199" data-md-to="199">Go — a raw string is not code</h2>
-<p data-md-from="201" data-md-to="203"><code>Add</code> is found through the braces, while the backtick raw string below it — which contains a whole <code>Decoy</code> function — is blanked before anything is counted, so it can never be mistaken for a member.</p>
-<p class="md-marker" data-marker="t-8-1"><a href="./samples/Cart.go#Add">samples/Cart.go#Add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-8-1" data-md-from="207" data-md-to="211"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Add</span>(items []string, item string) []string {
+<h2 data-md-from="210" data-md-to="210">Go — a raw string is not code</h2>
+<p data-md-from="212" data-md-to="214"><code>Add</code> is found through the braces, while the backtick raw string below it — which contains a whole <code>Decoy</code> function — is blanked before anything is counted, so it can never be mistaken for a member.</p>
+<p class="md-marker" data-marker="t-8-1"><a href="docs/samples/Cart.go#Add">samples/Cart.go#Add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-8-1" data-md-from="218" data-md-to="222"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Add</span>(items []string, item string) []string {
 	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="9">
-<h2 data-md-from="213" data-md-to="213">Rust — the members live in the impl</h2>
-<p data-md-from="215" data-md-to="218">Rust keeps a type's methods in <code>impl</code> blocks, which are siblings of the <code>struct</code> with the same name. The path retries them, so <code>Cart/add</code> reaches past the struct to the method and <code>Cart/remove</code> reaches past the first impl to the second. The nested comment at the bottom of the file hides a <code>decoy</code> the matcher never sees.</p>
-<p class="md-marker" data-marker="t-9-1"><a href="./samples/Cart.rs#Cart/add">samples/Cart.rs#Cart/add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-9-1" data-md-from="222" data-md-to="226"><code class="language-rust">    <span class="tok-k">fn</span> add(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>, x: <span class="tok-t">String</span>) {
+<h2 data-md-from="224" data-md-to="224">Rust — the members live in the impl</h2>
+<p data-md-from="226" data-md-to="229">Rust keeps a type's methods in <code>impl</code> blocks, which are siblings of the <code>struct</code> with the same name. The path retries them, so <code>Cart/add</code> reaches past the struct to the method and <code>Cart/remove</code> reaches past the first impl to the second. The nested comment at the bottom of the file hides a <code>decoy</code> the matcher never sees.</p>
+<p class="md-marker" data-marker="t-9-1"><a href="docs/samples/Cart.rs#Cart/add">samples/Cart.rs#Cart/add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-9-1" data-md-from="233" data-md-to="237"><code class="language-rust">    <span class="tok-k">fn</span> add(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>, x: <span class="tok-t">String</span>) {
         <span class="tok-k">self</span>.items.push(x);
     }</code></pre>
-<p class="md-marker" data-marker="t-9-2"><a href="./samples/Cart.rs#Cart/remove">samples/Cart.rs#Cart/remove</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-9-2" data-md-from="230" data-md-to="234"><code class="language-rust">    <span class="tok-k">fn</span> remove(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; <span class="tok-t">Option</span>&lt;<span class="tok-t">String</span>&gt; {
+<p data-md-from="239" data-md-to="240"><code>Cart/remove</code> is in the *second* impl block, and the path still reaches it: the segments before the last are scopes, and a scope may be spelled more than once.</p>
+<p class="md-marker" data-marker="t-9-2"><a href="docs/samples/Cart.rs#Cart/remove">samples/Cart.rs#Cart/remove</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-9-2" data-md-from="244" data-md-to="248"><code class="language-rust">    <span class="tok-k">fn</span> remove(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; <span class="tok-t">Option</span>&lt;<span class="tok-t">String</span>&gt; {
         <span class="tok-k">self</span>.items.pop()
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="10">
-<h2 data-md-from="236" data-md-to="236">Python — triple quotes and indentation</h2>
-<p data-md-from="238" data-md-to="239">The docstring hides a whole <code>def decoy</code> from the matcher, and the body of <code>add</code> is its indented block, so the selection ends where the indentation ends.</p>
-<p class="md-marker" data-marker="t-10-1"><a href="./samples/Cart.py#Cart/add">samples/Cart.py#Cart/add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-10-1" data-md-from="243" data-md-to="246"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
+<h2 data-md-from="250" data-md-to="250">Python — triple quotes and indentation</h2>
+<p data-md-from="252" data-md-to="253">The docstring hides a whole <code>def decoy</code> from the matcher, and the body of <code>add</code> is its indented block, so the selection ends where the indentation ends.</p>
+<p class="md-marker" data-marker="t-10-1"><a href="docs/samples/Cart.py#Cart/add">samples/Cart.py#Cart/add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-10-1" data-md-from="257" data-md-to="260"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
         <span class="tok-k">self</span>.items.append(item)</code></pre>
 </section>
 <section class="md-section" data-md-section="11">
-<h2 data-md-from="248" data-md-to="248">C# — a verbatim string keeps its quotes</h2>
-<p data-md-from="250" data-md-to="251">A verbatim string escapes its quote by doubling it (<code>&quot;&quot;</code>), so the brace inside <code>@&quot;cart &quot;&quot;}&quot;&quot; decoy&quot;</code> is text, not structure.</p>
-<p class="md-marker" data-marker="t-11-1"><a href="./samples/Cart.cs#Cart/Add">samples/Cart.cs#Cart/Add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-11-1" data-md-from="255" data-md-to="260"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
+<h2 data-md-from="262" data-md-to="262">C# — a verbatim string keeps its quotes</h2>
+<p data-md-from="264" data-md-to="265">A verbatim string escapes its quote by doubling it (<code>&quot;&quot;</code>), so the brace inside <code>@&quot;cart &quot;&quot;}&quot;&quot; decoy&quot;</code> is text, not structure.</p>
+<p class="md-marker" data-marker="t-11-1"><a href="docs/samples/Cart.cs#Cart/Add">samples/Cart.cs#Cart/Add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-11-1" data-md-from="269" data-md-to="274"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
     {
         items.<span class="tok-t">Add</span>(item);
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="12">
-<h2 data-md-from="262" data-md-to="262">Kotlin — nested comments, raw strings</h2>
-<p data-md-from="264" data-md-to="265"><code>/* /* */ */</code> nests in Kotlin, so the comment above <code>add</code> can swallow anything — including a <code>decoy</code> — and a <code>&quot;&quot;&quot;</code> raw string is text with no escapes at all.</p>
-<p class="md-marker" data-marker="t-12-1"><a href="./samples/Cart.kt#Cart/add">samples/Cart.kt#Cart/add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-12-1" data-md-from="269" data-md-to="273"><code class="language-kotlin">    <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {
+<h2 data-md-from="276" data-md-to="276">Kotlin — nested comments, raw strings</h2>
+<p data-md-from="278" data-md-to="279"><code>/* /* */ */</code> nests in Kotlin, so the comment above <code>add</code> can swallow anything — including a <code>decoy</code> — and a <code>&quot;&quot;&quot;</code> raw string is text with no escapes at all.</p>
+<p class="md-marker" data-marker="t-12-1"><a href="docs/samples/Cart.kt#Cart/add">samples/Cart.kt#Cart/add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-12-1" data-md-from="283" data-md-to="287"><code class="language-kotlin">    <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {
         items.add(item)
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="13">
-<h2 data-md-from="275" data-md-to="275">PHP — a heredoc is not code</h2>
-<p data-md-from="277" data-md-to="278">The <code>&lt;&lt;&lt;SQL</code> body below is data, the <code>}</code> in it is not PHP syntax, and <code>#[Attribute]</code> — not used here — is an attribute rather than a <code>#</code> comment.</p>
-<p class="md-marker" data-marker="t-13-1"><a href="./samples/Cart.php#Cart/add">samples/Cart.php#Cart/add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-13-1" data-md-from="282" data-md-to="292"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">function</span> add(string $item): string
+<h2 data-md-from="289" data-md-to="289">PHP — a heredoc is not code</h2>
+<p data-md-from="291" data-md-to="292">The <code>&lt;&lt;&lt;SQL</code> body below is data, the <code>}</code> in it is not PHP syntax, and <code>#[Attribute]</code> — not used here — is an attribute rather than a <code>#</code> comment.</p>
+<p class="md-marker" data-marker="t-13-1"><a href="docs/samples/Cart.php#Cart/add">samples/Cart.php#Cart/add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-13-1" data-md-from="296" data-md-to="306"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">function</span> add(string $item): string
     {
         <span class="tok-c">// The heredoc body is data: the brace in it is not PHP syntax.</span>
         $sql = &lt;&lt;&lt;<span class="tok-t">SQL</span>
@@ -770,18 +772,18 @@ level = info</code></pre></li>
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="14">
-<h2 data-md-from="294" data-md-to="294">Ruby — def, end, and the shift operator</h2>
-<p data-md-from="296" data-md-to="298"><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append, not a heredoc: only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one.</p>
-<p class="md-marker" data-marker="t-14-1"><a href="./samples/Cart.rb#Cart/add">samples/Cart.rb#Cart/add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-14-1" data-md-from="302" data-md-to="306"><code class="language-ruby">  <span class="tok-k">def</span> add(item)
+<h2 data-md-from="308" data-md-to="308">Ruby — def, end, and the shift operator</h2>
+<p data-md-from="310" data-md-to="312"><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append, not a heredoc: only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one.</p>
+<p class="md-marker" data-marker="t-14-1"><a href="docs/samples/Cart.rb#Cart/add">samples/Cart.rb#Cart/add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-14-1" data-md-from="316" data-md-to="320"><code class="language-ruby">  <span class="tok-k">def</span> add(item)
     <span class="tok-a">@items</span> &lt;&lt; item
   <span class="tok-k">end</span></code></pre>
 </section>
 <section class="md-section" data-md-section="15">
-<h2 data-md-from="308" data-md-to="308">SQL — a region, and doubled quotes</h2>
-<p data-md-from="310" data-md-to="312">SQL has no members to search, so this example uses a region directive the way any comment-bearing language can — and the string <code>'it''s a } decoy'</code> stays one string, because SQL escapes a quote by doubling it.</p>
-<p class="md-marker" data-marker="t-15-1"><a href="./samples/report.sql#monthly">samples/report.sql#monthly</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-15-1" data-md-from="316" data-md-to="323"><code class="language-sql"><span class="tok-k">select</span>
+<h2 data-md-from="322" data-md-to="322">SQL — a region, and doubled quotes</h2>
+<p data-md-from="324" data-md-to="326">SQL has no members to search, so this example uses a region directive the way any comment-bearing language can — and the string <code>'it''s a } decoy'</code> stays one string, because SQL escapes a quote by doubling it.</p>
+<p class="md-marker" data-marker="t-15-1"><a href="docs/samples/report.sql#monthly">samples/report.sql#monthly</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-15-1" data-md-from="330" data-md-to="337"><code class="language-sql"><span class="tok-k">select</span>
     date_trunc(<span class="tok-s">'month'</span>, placed_at) <span class="tok-k">as</span> month,
     count(*) <span class="tok-k">as</span> orders
 <span class="tok-k">from</span> orders
@@ -789,10 +791,10 @@ level = info</code></pre></li>
 <span class="tok-k">group</span> <span class="tok-k">by</span> <span class="tok-n">1</span>;</code></pre>
 </section>
 <section class="md-section" data-md-section="16">
-<h2 data-md-from="325" data-md-to="325">Shell — a heredoc is not code</h2>
-<p data-md-from="327" data-md-to="328">The heredoc body is data: the <code>}</code> inside it is not shell syntax, and the selection stops at the function's closing brace.</p>
-<p class="md-marker" data-marker="t-16-1"><a href="./samples/run.sh#deploy">samples/run.sh#deploy</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-16-1" data-md-from="332" data-md-to="339"><code class="language-bash">deploy() {
+<h2 data-md-from="339" data-md-to="339">Shell — a heredoc is not code</h2>
+<p data-md-from="341" data-md-to="342">The heredoc body is data: the <code>}</code> inside it is not shell syntax, and the selection stops at the function's closing brace.</p>
+<p class="md-marker" data-marker="t-16-1"><a href="docs/samples/run.sh#deploy">samples/run.sh#deploy</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-16-1" data-md-from="346" data-md-to="353"><code class="language-bash">deploy() {
 	cat &lt;&lt;<span class="tok-t">EOF</span>
   } decoy
 <span class="tok-t">EOF</span>
@@ -800,92 +802,97 @@ level = info</code></pre></li>
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="17">
-<h2 data-md-from="341" data-md-to="341">VB — a function and its End</h2>
-<p data-md-from="343" data-md-to="345">VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure.</p>
-<p class="md-marker" data-marker="t-17-1"><a href="./samples/Form.vb#Form/Add">samples/Form.vb#Form/Add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-17-1" data-md-from="349" data-md-to="354"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
+<h2 data-md-from="355" data-md-to="355">VB — a function and its End</h2>
+<p data-md-from="357" data-md-to="359">VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure.</p>
+<p class="md-marker" data-marker="t-17-1"><a href="docs/samples/Form.vb#Form/Add">samples/Form.vb#Form/Add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-17-1" data-md-from="363" data-md-to="368"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
         <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
         <span class="tok-k">Return</span> note
     <span class="tok-k">End</span> <span class="tok-k">Function</span></code></pre>
 </section>
 <section class="md-section" data-md-section="18">
-<h2 data-md-from="356" data-md-to="356">Haskell — a binding and its signature</h2>
-<p data-md-from="358" data-md-to="359">A binding is <code>add x y = x + y</code>, and the <code>add ::</code> line above it is its annotation: <code>+add</code> brings the signature along, and <code>Cart</code> is the record declared with <code>data</code>.</p>
-<p class="md-marker" data-marker="t-18-1"><a href="./samples/Main.hs#add/+">samples/Main.hs#add/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-18-1" data-md-from="363" data-md-to="366"><code class="language-haskell">add :: <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span>
+<h2 data-md-from="370" data-md-to="370">Haskell — a binding and its signature</h2>
+<p data-md-from="372" data-md-to="373">A binding is <code>add x y = x + y</code>, and the <code>add ::</code> line above it is its annotation: <code>+add</code> brings the signature along, and <code>Cart</code> is the record declared with <code>data</code>.</p>
+<p class="md-marker" data-marker="t-18-1"><a href="docs/samples/Main.hs#add/+">samples/Main.hs#add/+</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-18-1" data-md-from="377" data-md-to="380"><code class="language-haskell">add :: <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span>
 add x y = x + y</code></pre>
-<p class="md-marker" data-marker="t-18-2"><a href="./samples/Main.hs#Cart">samples/Main.hs#Cart</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-18-2" data-md-from="370" data-md-to="372"><code class="language-haskell"><span class="tok-k">data</span> <span class="tok-t">Cart</span> = <span class="tok-t">Cart</span> { items :: [<span class="tok-t">Int</span>] }</code></pre>
+<p data-md-from="382" data-md-to="383">A record declared with <code>data</code> is named by the type it declares, so <code>Cart</code> is the whole declaration:</p>
+<p class="md-marker" data-marker="t-18-2"><a href="docs/samples/Main.hs#Cart">samples/Main.hs#Cart</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-18-2" data-md-from="387" data-md-to="389"><code class="language-haskell"><span class="tok-k">data</span> <span class="tok-t">Cart</span> = <span class="tok-t">Cart</span> { items :: [<span class="tok-t">Int</span>] }</code></pre>
 </section>
 <section class="md-section" data-md-section="19">
-<h2 data-md-from="374" data-md-to="374">Zig — a nested comment hides a decoy</h2>
-<p data-md-from="376" data-md-to="377"><code>/* outer /* inner */ still outer */</code> nests in Zig, so the commented-out <code>fn decoy</code> is blanked whole; the non-nesting default mask would have leaked it.</p>
-<p class="md-marker" data-marker="t-19-1"><a href="./samples/Nesting.zig#target">samples/Nesting.zig#target</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-19-1" data-md-from="381" data-md-to="385"><code class="language-zig"><span class="tok-k">pub</span> <span class="tok-k">fn</span> target() void {
+<h2 data-md-from="391" data-md-to="391">Zig — a nested comment hides a decoy</h2>
+<p data-md-from="393" data-md-to="394"><code>/* outer /* inner */ still outer */</code> nests in Zig, so the commented-out <code>fn decoy</code> is blanked whole; the non-nesting default mask would have leaked it.</p>
+<p class="md-marker" data-marker="t-19-1"><a href="docs/samples/Nesting.zig#target">samples/Nesting.zig#target</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-19-1" data-md-from="398" data-md-to="402"><code class="language-zig"><span class="tok-k">pub</span> <span class="tok-k">fn</span> target() void {
     std.debug.print(<span class="tok-s">&quot;}\n&quot;</span>, .{});
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="20">
-<h2 data-md-from="387" data-md-to="387">YAML — a key path</h2>
-<p data-md-from="389" data-md-to="391">A <code>.yaml</code> reference is a key path, spelled with the same <code>/</code> separator a code reference uses, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
-<p class="md-marker" data-marker="t-20-1"><a href="./samples/app.yaml#server/port">samples/app.yaml#server/port</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-20-1" data-md-from="395" data-md-to="398"><code class="language-yaml">server:
+<h2 data-md-from="404" data-md-to="404">YAML — a key path</h2>
+<p data-md-from="406" data-md-to="408">A <code>.yaml</code> reference is a key path, spelled with the same <code>/</code> separator a code reference uses, rendered with the mappings that hold it so the block is a YAML document on its own; a <code>#</code> inside a quoted value is not a comment.</p>
+<p class="md-marker" data-marker="t-20-1"><a href="docs/samples/app.yaml#server/port">samples/app.yaml#server/port</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-20-1" data-md-from="412" data-md-to="415"><code class="language-yaml">server:
   port: <span class="tok-n">8080</span></code></pre>
-<p class="md-marker" data-marker="t-20-2"><a href="./samples/app.yaml#server/tls/enabled">samples/app.yaml#server/tls/enabled</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-20-2" data-md-from="402" data-md-to="406"><code class="language-yaml">server:
+<p data-md-from="417" data-md-to="418">A nested key is more segments, and the rendered block carries every mapping above it — <code>server</code> and <code>tls</code> — so the YAML stays valid on its own:</p>
+<p class="md-marker" data-marker="t-20-2"><a href="docs/samples/app.yaml#server/tls/enabled">samples/app.yaml#server/tls/enabled</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-20-2" data-md-from="422" data-md-to="426"><code class="language-yaml">server:
   tls:
     enabled: true</code></pre>
 </section>
 <section class="md-section" data-md-section="21">
-<h2 data-md-from="408" data-md-to="408">TOML — a table and its key</h2>
-<p data-md-from="410" data-md-to="411"><code>server/port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
-<p class="md-marker" data-marker="t-21-1"><a href="./samples/app.toml#server/port">samples/app.toml#server/port</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-21-1" data-md-from="415" data-md-to="418"><code class="language-toml">[server]
+<h2 data-md-from="428" data-md-to="428">TOML — a table and its key</h2>
+<p data-md-from="430" data-md-to="431"><code>server/port</code> renders <code>[server]</code> above the key, and a value that spans lines — an array here — comes with its continuation lines.</p>
+<p class="md-marker" data-marker="t-21-1"><a href="docs/samples/app.toml#server/port">samples/app.toml#server/port</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-21-1" data-md-from="435" data-md-to="438"><code class="language-toml">[server]
 port = <span class="tok-n">8080</span></code></pre>
-<p class="md-marker" data-marker="t-21-2"><a href="./samples/app.toml#server/hosts">samples/app.toml#server/hosts</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-21-2" data-md-from="422" data-md-to="428"><code class="language-toml">[server]
+<p data-md-from="440" data-md-to="441">A value that spans lines — an array here — comes with its continuation lines, so the selection is still valid TOML:</p>
+<p class="md-marker" data-marker="t-21-2"><a href="docs/samples/app.toml#server/hosts">samples/app.toml#server/hosts</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-21-2" data-md-from="445" data-md-to="451"><code class="language-toml">[server]
 hosts = [
   <span class="tok-s">&quot;a.example&quot;</span>,
   <span class="tok-s">&quot;b.example&quot;</span>,
 ]</code></pre>
 </section>
 <section class="md-section" data-md-section="22">
-<h2 data-md-from="430" data-md-to="430">INI — a section and its key</h2>
-<p data-md-from="432" data-md-to="433"><code>section/key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
-<p class="md-marker" data-marker="t-22-1"><a href="./samples/app.ini#server/port">samples/app.ini#server/port</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-22-1" data-md-from="437" data-md-to="440"><code class="language-ini">[server]
+<h2 data-md-from="453" data-md-to="453">INI — a section and its key</h2>
+<p data-md-from="455" data-md-to="456"><code>section/key</code> renders the <code>[section]</code> header above the key, a bare section name selects the whole section, and both <code>key = value</code> and <code>key: value</code> are read.</p>
+<p class="md-marker" data-marker="t-22-1"><a href="docs/samples/app.ini#server/port">samples/app.ini#server/port</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-22-1" data-md-from="460" data-md-to="463"><code class="language-ini">[server]
 port = <span class="tok-n">8080</span></code></pre>
-<p class="md-marker" data-marker="t-22-2"><a href="./samples/app.ini#logging">samples/app.ini#logging</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-22-2" data-md-from="444" data-md-to="447"><code class="language-ini">[logging]
+<p data-md-from="465" data-md-to="465">A bare section name selects the whole section, <code>[logging]</code> and its keys:</p>
+<p class="md-marker" data-marker="t-22-2"><a href="docs/samples/app.ini#logging">samples/app.ini#logging</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-22-2" data-md-from="469" data-md-to="472"><code class="language-ini">[logging]
 level = info</code></pre>
 </section>
 <section class="md-section" data-md-section="23">
-<h2 data-md-from="449" data-md-to="449">CSS — a rule, an at-rule, and the nesting between</h2>
-<p data-md-from="451" data-md-to="456">A <code>.css</code> reference names a <strong>rule</strong>, in CSS's own vocabulary. A style rule is named by the rightmost simple selector of its selector list (<code>.card</code>), an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the body only&quot; works the same way, so <code>.card-</code> is a rule's declarations without its selector.</p>
-<p data-md-from="458" data-md-to="458">The design tokens, addressed by the pseudo-class that holds them:</p>
-<p class="md-marker" data-marker="t-23-1"><a href="./samples/site.css#:root">samples/site.css#:root</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-23-1" data-md-from="462" data-md-to="467"><code class="language-css">:root {
+<h2 data-md-from="474" data-md-to="474">CSS — a rule, an at-rule, and the nesting between</h2>
+<p data-md-from="476" data-md-to="480">A <code>.css</code> reference names a <strong>rule</strong>, in CSS's own vocabulary. A style rule is named by the rightmost simple selector of its selector list (<code>.card</code>), and an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>). The <code>-</code> a code reference uses for &quot;the body only&quot; works here too, so <code>.card-</code> is a rule's declarations without its selector.</p>
+<p data-md-from="482" data-md-to="482">The design tokens, addressed by the pseudo-class that holds them:</p>
+<p class="md-marker" data-marker="t-23-1"><a href="docs/samples/site.css#:root">samples/site.css#:root</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-1" data-md-from="486" data-md-to="491"><code class="language-css">:root {
   --brand: #<span class="tok-n">1f6feb</span>;
   --<span class="tok-k">radius</span>: <span class="tok-n">6px</span>;
 }</code></pre>
-<p data-md-from="469" data-md-to="470">A class, and a variant of that same class — the compact one is reached by a predicate read from the selector, because two rules may share a name:</p>
-<p data-md-from="472" data-md-to="472">[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])</p>
-<pre class="md-pre" data-md-from="474" data-md-to="479"><code class="language-css">.card[data-variant=<span class="tok-s">&quot;compact&quot;</span>] {
+<p data-md-from="493" data-md-to="494">A class, and a variant of that same class — the compact one is reached by a predicate read from the selector, because two rules may share a name:</p>
+<p data-md-from="496" data-md-to="496">[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])</p>
+<pre class="md-pre" data-md-from="498" data-md-to="503"><code class="language-css">.card[data-variant=<span class="tok-s">&quot;compact&quot;</span>] {
   <span class="tok-k">gap</span>: <span class="tok-n">2px</span>;
   <span class="tok-k">padding</span>: <span class="tok-n">4px</span>;
 }</code></pre>
-<p data-md-from="481" data-md-to="482">The media query, whole, and then the one rule inside it — the nesting is the path:</p>
-<p class="md-marker" data-marker="t-23-2"><a href="./samples/site.css#@media">samples/site.css#@media</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-23-2" data-md-from="486" data-md-to="492"><code class="language-css"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {
+<p data-md-from="505" data-md-to="505">The media query, whole — an at-rule is named by its keyword:</p>
+<p class="md-marker" data-marker="t-23-2"><a href="docs/samples/site.css#@media">samples/site.css#@media</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-2" data-md-from="509" data-md-to="515"><code class="language-css"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {
   .card {
     <span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;
   }
 }</code></pre>
-<p class="md-marker" data-marker="t-23-3"><a href="./samples/site.css#@media/.card/-">samples/site.css#@media/.card/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-23-3" data-md-from="496" data-md-to="498"><code class="language-css"><span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</code></pre>
-<p data-md-from="500" data-md-to="501">An at-rule with a name of its own — <code>@keyframes:pulse</code> names one animation, <code>@keyframes</code> alone would be an error here because the file has two:</p>
-<p class="md-marker" data-marker="t-23-4"><a href="./samples/site.css#@keyframes:pulse">samples/site.css#@keyframes:pulse</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-23-4" data-md-from="505" data-md-to="514"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
+<p data-md-from="517" data-md-to="518">Its nesting is the path, so the rule inside the media query is reached as a child of the at-rule:</p>
+<p class="md-marker" data-marker="t-23-3"><a href="docs/samples/site.css#@media/.card/-">samples/site.css#@media/.card/-</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-3" data-md-from="522" data-md-to="524"><code class="language-css"><span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</code></pre>
+<p data-md-from="526" data-md-to="527">An at-rule with a name of its own — <code>@keyframes:pulse</code> names one animation, <code>@keyframes</code> alone would be an error here because the file has two:</p>
+<p class="md-marker" data-marker="t-23-4"><a href="docs/samples/site.css#@keyframes:pulse">samples/site.css#@keyframes:pulse</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-4" data-md-from="531" data-md-to="540"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
   from {
     <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;
   }
@@ -893,9 +900,9 @@ level = info</code></pre>
     <span class="tok-k">opacity</span>: <span class="tok-n">1</span>;
   }
 }</code></pre>
-<p data-md-from="516" data-md-to="517">A region directive still works in CSS, and a class name cannot be a region name, so the two never collide:</p>
-<p class="md-marker" data-marker="t-23-5"><a href="./samples/site.css#pulse">samples/site.css#pulse</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-23-5" data-md-from="521" data-md-to="530"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
+<p data-md-from="542" data-md-to="543">A region directive still works in CSS, and a class name cannot be a region name, so the two never collide:</p>
+<p class="md-marker" data-marker="t-23-5"><a href="docs/samples/site.css#pulse">samples/site.css#pulse</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-23-5" data-md-from="547" data-md-to="556"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
   from {
     <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;
   }
@@ -905,32 +912,32 @@ level = info</code></pre>
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="24">
-<h2 data-md-from="532" data-md-to="532">Line numbers, and several pieces at once</h2>
-<p data-md-from="534" data-md-to="540">A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them. <code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
-<p class="md-marker" data-marker="t-24-1"><a href="./samples/Inventory.java#L8-L14">samples/Inventory.java#L8-L14</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-24-1" data-md-from="544" data-md-to="552"><code class="language-java">
+<h2 data-md-from="558" data-md-to="558">Line numbers, and several pieces at once</h2>
+<p data-md-from="560" data-md-to="564">A reference may name lines directly instead of a block, which is the tool for a file whose structure the matchers cannot see — a config fragment, a log, a table in a comment. <code>#L&lt;line&gt;</code> is one line, <code>#L&lt;line&gt;:&lt;column&gt;</code> starts at a column, and <code>#L40-L44</code> / <code>#L40:12-L44:3</code> are ranges; lines and columns are counted from 1 and the two ends are inclusive, exactly as an editor shows them.</p>
+<p data-md-from="566" data-md-to="567"><code>Inventory.java</code> lines 8-14 are the blank line under the class header and the field below the <code>catalog</code> region:</p>
+<p class="md-marker" data-marker="t-24-1"><a href="docs/samples/Inventory.java#L8-L14">samples/Inventory.java#L8-L14</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-24-1" data-md-from="571" data-md-to="579"><code class="language-java">
     <span class="tok-c">// #region catalog</span>
     <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
     <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };
     <span class="tok-c">// #endregion</span>
 
     <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">List</span>&lt;<span class="tok-t">Item</span>&gt; items = <span class="tok-k">new</span> <span class="tok-t">ArrayList</span>&lt;&gt;();</code></pre>
-<p data-md-from="554" data-md-to="557">A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file:</p>
-<p class="md-marker" data-marker="t-24-2"><a href="./samples/Inventory.java#L7,toString/++,L50">samples/Inventory.java#L7,toString/++,L50</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-24-2" data-md-from="561" data-md-to="569"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
+<p data-md-from="581" data-md-to="586">A comma puts several selectors in one reference, and the pieces are injected in the order they were written — a semantic name and a line range mix freely. The class opening, then the documented <code>toString</code> and its body, then the last line of the file. The middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between:</p>
+<p class="md-marker" data-marker="t-24-2"><a href="docs/samples/Inventory.java#L7,toString/++,L50">samples/Inventory.java#L7,toString/++,L50</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-24-2" data-md-from="590" data-md-to="598"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
     <span class="tok-c">/** Summarise the inventory. */</span>
     <span class="tok-a">@Override</span>
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }
 }</code></pre>
-<p data-md-from="571" data-md-to="573">The demo page's middle column highlights each piece on its own, so the lines between them stay unlit — a click lands on the two places the reference names, not on everything between.</p>
 </section>
 <section class="md-section" data-md-section="25">
-<h2 data-md-from="575" data-md-to="575">JSON — keys</h2>
-<p data-md-from="577" data-md-to="579">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by <code>/</code> — the same separator a code reference uses.</p>
-<p class="md-marker" data-marker="t-25-1"><a href="./samples/api.json#name,server/port">samples/api.json#name,server/port</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-25-1" data-md-from="583" data-md-to="590"><code class="language-json">{
+<h2 data-md-from="600" data-md-to="600">JSON — keys</h2>
+<p data-md-from="602" data-md-to="604">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys and array elements addressable by <code>/</code> — the same separator a code reference uses.</p>
+<p class="md-marker" data-marker="t-25-1"><a href="docs/samples/api.json#name,server/port">samples/api.json#name,server/port</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="t-25-1" data-md-from="608" data-md-to="615"><code class="language-json">{
   <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,
   <span class="tok-s">&quot;server&quot;</span>: {
     <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>
@@ -945,12 +952,12 @@ level = info</code></pre>
 <script>
 (function () {
   var targets = Array.prototype.slice.call(document.querySelectorAll('.target'));
-  var items = Array.prototype.slice.call(document.querySelectorAll('.target-item'));
   var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.file-tab'));
   var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
   var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
   var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
+  var descriptions = Array.prototype.slice.call(document.querySelectorAll('.desc'));
 
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
@@ -964,8 +971,21 @@ level = info</code></pre>
 
   function select(target, keepScroll, keepHash) {
     var item = target.closest('.target-item');
-    items.forEach(function (other) { other.classList.toggle('selected', other === item); });
     targets.forEach(function (other) { other.setAttribute('aria-pressed', String(other === target)); });
+    // The link that was clicked stays visible: a description can be long, and
+    // with the panel scrolled the target is what says which example it belongs to.
+    if (!keepScroll) target.scrollIntoView({ block: 'nearest' });
+
+    // The second left-hand section is the description of the selected example,
+    // and only it: the example link itself never grows a footnote.
+    descriptions.forEach(function (desc) {
+      desc.classList.toggle('active', desc.dataset.desc === item.id);
+    });
+    var panel = document.querySelector('.desc-panel');
+    if (panel) {
+      panel.classList.toggle('filled', panel.querySelector('.desc.active') !== null);
+      panel.scrollTop = 0;
+    }
 
     lines.forEach(function (line) { line.classList.remove('hl'); });
     showFile(target.dataset.file);

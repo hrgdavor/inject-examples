@@ -649,11 +649,14 @@ npx @hrg/inject-examples --check || {
 
 [`docs/index.html`](./docs/index.html) is a three-column page — the targets, the
 sample files, and the document rendered the way GitHub renders it, code fences
-syntax-highlighted and all. The document's lead — its title and intro before the
-first `##` — is the page banner in both places, so the rendered column starts at
-the first section. Every target syntax is clickable: clicking one switches the
-middle column to that target's file, highlights the lines the reference selects,
-and marks the matching marker and injected block in the rendered Markdown. It is
+syntax-highlighted and all. The targets column is itself two stacked sections: the
+numbered `##` sections with their example links and nothing else, and below them
+the description of the selected example. The document's lead — its title and intro
+before the first `##` — is the page banner in both places, so the rendered column
+starts at the first section. Every example link is clickable: clicking one opens
+its description below, switches the middle column to that target's file,
+highlights the lines the reference selects, and marks the matching marker and
+injected block in the rendered Markdown — the link itself grows no snippet. It is
 generated, never hand-written:
 
 - [`docs/demo.md`](./docs/demo.md) is the source: an ordinary Markdown document,

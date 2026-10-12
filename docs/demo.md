@@ -1,8 +1,9 @@
 # Keep the code samples in your Markdown honest and target code sections semantically instead of line numbers that can drift much more easily.
 
-DEMO of what a marker target can say. Click a target: it highlights the lines it selects in
-[samples/Inventory.java](./samples/Inventory.java), and the same injection in
-the rendered Markdown ([source](https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md)) beside it. 
+DEMO of what a marker target can say. Click an example link: the description below it opens, the
+lines it selects are highlighted in [samples/Inventory.java](./samples/Inventory.java), and the same
+injection is marked in the rendered Markdown
+([source](https://github.com/hrgdavor/inject-examples/blob/main/docs/demo.md)) beside it. 
 / [GIT source](https://github.com/hrgdavor/inject-examples) / [section-matching SPEC](https://github.com/hrgdavor/inject-examples/blob/main/doc/section-matching.md)
 
 ## A named region
@@ -34,7 +35,8 @@ The modifier is the last segment of the path and nothing else, so `#toString-` i
 the name `toString-` and resolves to nothing, and the old spelling says so:
 `"++" is a path segment now; write "#toString/++"`.
 
-The same method, four ways:
+The same method, four ways. `#toString` is the declaration alone — the signature
+through its closing brace.
 
 [samples/Inventory.java#toString](./samples/Inventory.java#toString)
 
@@ -44,11 +46,15 @@ The same method, four ways:
     }
 ```
 
+`#toString/-` is the body without the signature.
+
 [samples/Inventory.java#toString/-](./samples/Inventory.java#toString/-)
 
 ```java
         return items.size() + " item(s)";
 ```
+
+`#toString/+` keeps the annotations the declaration carries.
 
 [samples/Inventory.java#toString/+](./samples/Inventory.java#toString/+)
 
@@ -58,6 +64,8 @@ The same method, four ways:
         return items.size() + " item(s)";
     }
 ```
+
+`#toString/++` goes on up to the doc comment above them.
 
 [samples/Inventory.java#toString/++](./samples/Inventory.java#toString/++)
 
@@ -188,6 +196,9 @@ entry, so a `.ts` file masks exactly as a `.js` one does.
     }
 ```
 
+`Cart/add` is an ordinary method with braces of its own — the same path syntax,
+and nothing about the template above it changes the answer.
+
 [samples/cart.js#Cart/add](./samples/cart.js#Cart/add)
 
 ```js
@@ -224,6 +235,9 @@ nested comment at the bottom of the file hides a `decoy` the matcher never sees.
         self.items.push(x);
     }
 ```
+
+`Cart/remove` is in the *second* impl block, and the path still reaches it: the
+segments before the last are scopes, and a scope may be spelled more than once.
 
 [samples/Cart.rs#Cart/remove](./samples/Cart.rs#Cart/remove)
 
@@ -365,6 +379,9 @@ add :: Int -> Int -> Int
 add x y = x + y
 ```
 
+A record declared with `data` is named by the type it declares, so `Cart` is the
+whole declaration:
+
 [samples/Main.hs#Cart](./samples/Main.hs#Cart)
 
 ```haskell
@@ -397,6 +414,9 @@ server:
   port: 8080
 ```
 
+A nested key is more segments, and the rendered block carries every mapping above
+it — `server` and `tls` — so the YAML stays valid on its own:
+
 [samples/app.yaml#server/tls/enabled](./samples/app.yaml#server/tls/enabled)
 
 ```yaml
@@ -416,6 +436,9 @@ array here — comes with its continuation lines.
 [server]
 port = 8080
 ```
+
+A value that spans lines — an array here — comes with its continuation lines, so
+the selection is still valid TOML:
 
 [samples/app.toml#server/hosts](./samples/app.toml#server/hosts)
 
@@ -439,6 +462,8 @@ selects the whole section, and both `key = value` and `key: value` are read.
 port = 8080
 ```
 
+A bare section name selects the whole section, `[logging]` and its keys:
+
 [samples/app.ini#logging](./samples/app.ini#logging)
 
 ```ini
@@ -449,11 +474,10 @@ level = info
 ## CSS — a rule, an at-rule, and the nesting between
 
 A `.css` reference names a **rule**, in CSS's own vocabulary. A style rule is
-named by the rightmost simple selector of its selector list (`.card`), an
-at-rule by its keyword (`@media`, `@keyframes`), and `/` descends the nesting
-CSS already has — a rule inside a media query is a child of it. The `-` a code
-reference uses for "the body only" works the same way, so `.card-` is a rule's
-declarations without its selector.
+named by the rightmost simple selector of its selector list (`.card`), and an
+at-rule by its keyword (`@media`, `@keyframes`). The `-` a code reference uses
+for "the body only" works here too, so `.card-` is a rule's declarations
+without its selector.
 
 The design tokens, addressed by the pseudo-class that holds them:
 
@@ -478,8 +502,7 @@ predicate read from the selector, because two rules may share a name:
 }
 ```
 
-The media query, whole, and then the one rule inside it — the nesting is the
-path:
+The media query, whole — an at-rule is named by its keyword:
 
 [samples/site.css#@media](./samples/site.css#@media)
 
@@ -490,6 +513,9 @@ path:
   }
 }
 ```
+
+Its nesting is the path, so the rule inside the media query is reached as a child
+of the at-rule:
 
 [samples/site.css#@media/.card/-](./samples/site.css#@media/.card/-)
 
@@ -535,9 +561,10 @@ A reference may name lines directly instead of a block, which is the tool for a
 file whose structure the matchers cannot see — a config fragment, a log, a table
 in a comment. `#L<line>` is one line, `#L<line>:<column>` starts at a column, and
 `#L40-L44` / `#L40:12-L44:3` are ranges; lines and columns are counted from 1 and
-the two ends are inclusive, exactly as an editor shows them. `Inventory.java`
-lines 8-14 are the blank line under the class header and the field below the
-`catalog` region:
+the two ends are inclusive, exactly as an editor shows them.
+
+`Inventory.java` lines 8-14 are the blank line under the class header and the
+field below the `catalog` region:
 
 [samples/Inventory.java#L8-L14](./samples/Inventory.java#L8-L14)
 
@@ -554,7 +581,9 @@ lines 8-14 are the blank line under the class header and the field below the
 A comma puts several selectors in one reference, and the pieces are injected in
 the order they were written — a semantic name and a line range mix freely. The
 class opening, then the documented `toString` and its body, then the last line of
-the file:
+the file. The middle column highlights each piece on its own, so the lines
+between them stay unlit — a click lands on the two places the reference names,
+not on everything between:
 
 [samples/Inventory.java#L7,toString/++,L50](./samples/Inventory.java#L7,toString/++,L50)
 
@@ -567,10 +596,6 @@ public class Inventory {
     }
 }
 ```
-
-The demo page's middle column highlights each piece on its own, so the lines
-between them stay unlit — a click lands on the two places the reference names,
-not on everything between.
 
 ## JSON — keys
 

@@ -4,8 +4,9 @@
  * The page at `docs/index.html` is not edited by hand. It is built from
  * `docs/demo.md`, a Markdown document that is also read by people:
  *
- *   - the first column lists the document's `##` sections as numbered
- *     paragraphs, each with its prose explanation and its clickable targets;
+ *   - the first column is two stacked sections: the numbered `##` sections with
+ *     the clickable target of every example and nothing else, and below them the
+ *     description the selected example is explained by;
  *   - the second column is the target file itself, from `docs/samples/`, one
  *     line per source line, with the selected range highlighted;
  *   - the third column renders the document the way GitHub renders it, code
@@ -72,6 +73,12 @@ function posixDirname(path) {
     return cut === -1 ? '.' : path.slice(0, cut);
 }
 
+/** Join a `/`-separated path onto a directory, leaving an absolute one alone. */
+function joinPath(dir, path) {
+    if (dir === '.' || path.startsWith('/')) return path;
+    return path.startsWith('./') ? `${dir}/${path.slice(2)}` : `${dir}/${path}`;
+}
+
 /** Drop blank lines from both ends of a run of document lines. */
 function trimBlank(lines) {
     let from = 0;
@@ -84,12 +91,20 @@ function trimBlank(lines) {
 /**
  * Split the document into a title, an intro and numbered sections.
  *
- * Markers inside fenced blocks are not markers (`fenceRanges` and
- * `parseMarker` decide that, exactly as the tool does), so a section's code
- * examples never register as targets.
+ * A section is its prose and its examples, and each example is one marker with
+ * the prose that explains it. That prose is the run of blocks *immediately above*
+ * the marker: a document says what an example is before it shows the link, so
+ * `[samples/Inventory.java#catalog](./samples/Inventory.java#catalog)` explains
+ * itself with the paragraph above it, and the code fence below it is its content.
+ * The prose above a section's first marker is the section's own explanation, and
+ * it explains that example too.
+ *
+ * Markers inside fenced blocks are not markers (`fenceRanges` and `parseMarker`
+ * decide that, exactly as the tool does), so a section's code examples never
+ * register as targets.
  *
  * @param {string} text
- * @returns {{ title: string, intro: object[], sections: Array<{ title: string, blocks: object[] }> }}
+ * @returns {{ title: string, intro: object[], sections: Array<{ title: string, lead: object[], examples: object[] }> }}
  */
 export function parseDemoDoc(text) {
     const lines = text.replace(/\r\n/g, '\n').split('\n');
@@ -117,7 +132,7 @@ export function parseDemoDoc(text) {
             if (heading[1].length === 1) {
                 doc.title = heading[2].trim();
             } else if (heading[1].length === 2) {
-                section = { title: heading[2].trim(), blocks: [] };
+                section = { title: heading[2].trim(), blocks: [], examples: [] };
                 doc.sections.push(section);
             } else {
                 blocks().push({ type: 'heading', level: heading[1].length, text: heading[2].trim() });
@@ -136,7 +151,57 @@ export function parseDemoDoc(text) {
     }
     flush();
 
+    for (const part of doc.sections) {
+        // The prose above a marker is what explains it: a document names the
+        // thing before it shows the link. That is why `lead` is reset *after*
+        // each marker and the trailing run belongs to no example at all — a
+        // paragraph that names nothing above it names nothing at all.
+        let lead = [];
+        for (const block of part.blocks) {
+            if (block.type !== 'marker') {
+                lead.push(block);
+                continue;
+            }
+            // Everything written above the first marker is the section's own
+            // explanation, and that marker's too.
+            const blocks = lead;
+            lead = [];
+            part.examples.push({ marker: block.marker, line: block.line, blocks });
+        }
+        part.lead = lead;
+    }
+
     return doc;
+}
+
+/**
+ * Is a section's own prose only its heading restated?
+ *
+ * A one-example section usually says everything it has to say in the paragraph
+ * above the link, so its first paragraph repeating the title is the section's
+ * name, not an explanation — the (possibly empty) rest is what the example says
+ * about itself.
+ */
+function withoutRestatedTitle(title, blocks) {
+    const first = blocks[0];
+    if (!first || first.type !== 'prose') return blocks;
+    const [one, ...rest] = first.text.split(/\n{2,}/);
+    return one.trim() === title ? [{ ...first, text: rest.join('\n\n') }, ...blocks.slice(1)] : blocks;
+}
+
+/**
+ * The blocks the description pane shows for one example.
+ *
+ * The pane is the selected example's own prose; a one-example section may open
+ * with a paragraph that is only its title written out again, which the pane (a
+ * heading of its own) does not need twice.
+ *
+ * @param {{ title: string, examples: object[] }} section
+ * @param {object} example
+ * @returns {object[]}
+ */
+export function exampleBlocks(section, example) {
+    return section.examples.length === 1 ? withoutRestatedTitle(section.title, example.blocks) : example.blocks;
 }
 
 // ---------------------------------------------------------------------------
@@ -376,6 +441,10 @@ export function buildModel(options = {}) {
     const doc = parseDemoDoc(docText);
     const docDir = posixDirname(docPath);
     const readTarget = (path) => read(docDir === '.' ? path : `${docDir}/${path}`);
+    // Prose link: written beside the document, so it is relative to it — the
+    // page is at the document's own path, and a link that leaves it (an absolute
+    // URL) is left exactly as it was written.
+    const resolveLink = (href) => (/^[a-z][a-z0-9+.-]*:/i.test(href) ? href : joinPath(docDir, href));
 
     // A marker outside a `##` section would have no numbered paragraph to live
     // in; it is almost always a heading that was forgotten, so say so.
@@ -390,20 +459,20 @@ export function buildModel(options = {}) {
 
     doc.sections.forEach((section, sectionIndex) => {
         const examples = [];
-        for (const block of section.blocks) {
-            if (block.type !== 'marker') continue;
-            const file = loadFile(files, block.marker.path, readTarget);
+        for (const [index, part] of section.examples.entries()) {
+            const file = loadFile(files, part.marker.path, readTarget);
             file.display = docDir === '.' ? file.path : `${docDir}/${file.path}`;
-            const target = resolveTarget(block.marker, file, sectionIndex, examples.length, warn);
-            target.line = block.line;
+            const target = resolveTarget(part.marker, file, sectionIndex, index, warn);
+            target.line = part.line;
+            // The panes carry different renderings of the same prose: the title
+            // is the heading above it in the left column, and the description is
+            // what that column shows while this target is the selected one.
+            target.title = section.title;
+            target.description = renderBlocks(exampleBlocks(section, part), resolveLink);
             examples.push(target);
         }
         exampleCount += examples.length;
-        sections.push({
-            title: section.title,
-            html: renderBlocks(section.blocks),
-            examples,
-        });
+        sections.push({ title: section.title, examples });
     });
 
     // The third column renders the document itself; the marker lines carry the
@@ -416,11 +485,11 @@ export function buildModel(options = {}) {
     return {
         title: doc.title,
         docPath,
-        introHtml: renderBlocks(doc.intro),
+        introHtml: renderBlocks(doc.intro, resolveLink),
         sections,
         files: [...files.values()],
         exampleCount,
-        markdownHtml: renderMarkdown(docText, { markerIds }),
+        markdownHtml: renderMarkdown(docText, { markerIds, resolveLink }),
     };
 }
 
@@ -437,16 +506,20 @@ export function escapeHtml(text) {
         .replace(/"/g, '&quot;');
 }
 
-/** Inline code, bold and links — everything else is escaped text. */
-export function renderInline(text) {
+/**
+ * Inline code, bold and links — everything else is escaped text. A link's href
+ * is handed to `resolve` (the identity by default) so a document's relative
+ * paths can be re-pointed at where the page lives.
+ */
+export function renderInline(text, resolve = (href) => href) {
     return escapeHtml(text)
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
+        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label, href) => `<a href="${resolve(href)}">${label}</a>`);
 }
 
 /** Paragraphs, bullet lists and sub-headings — the subset the demo document uses. */
-export function renderProse(text) {
+export function renderProse(text, resolve) {
     return text
         .split(/\n{2,}/)
         .map((paragraph) => {
@@ -454,21 +527,21 @@ export function renderProse(text) {
             if (body === '') return '';
             const rows = body.split('\n');
             if (rows.every((row) => /^\s*[-*]\s+/.test(row))) {
-                const items = rows.map((row) => `  <li>${renderInline(row.replace(/^\s*[-*]\s+/, ''))}</li>`);
+                const items = rows.map((row) => `  <li>${renderInline(row.replace(/^\s*[-*]\s+/, ''), resolve)}</li>`);
                 return `<ul>\n${items.join('\n')}\n</ul>`;
             }
-            return `<p>${renderInline(rows.map((row) => row.trim()).join(' '))}</p>`;
+            return `<p>${renderInline(rows.map((row) => row.trim()).join(' '), resolve)}</p>`;
         })
         .filter((html) => html !== '')
         .join('\n');
 }
 
 /** The HTML of a section's non-marker blocks, in document order. */
-export function renderBlocks(blocks) {
+export function renderBlocks(blocks, resolve) {
     return blocks
         .map((block) => {
-            if (block.type === 'prose') return renderProse(block.text);
-            if (block.type === 'heading') return `<h${block.level}>${renderInline(block.text)}</h${block.level}>`;
+            if (block.type === 'prose') return renderProse(block.text, resolve);
+            if (block.type === 'heading') return `<h${block.level}>${renderInline(block.text, resolve)}</h${block.level}>`;
             return '';
         })
         .filter((html) => html !== '')
@@ -515,10 +588,10 @@ function renderFence(lines, open, fence, markerIds) {
 }
 
 /** One marker line, rendered the way Markdown would render it — as a link. */
-function renderMarker(line, id) {
+function renderMarker(line, id, resolve) {
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(line.trim());
-    const label = link ? renderInline(link[1]) : escapeHtml(line.trim());
-    const href = link ? escapeHtml(link[2]) : '#';
+    const label = link ? renderInline(link[1], resolve) : escapeHtml(line.trim());
+    const href = link ? escapeHtml(resolve(link[2])) : '#';
     return `<p class="md-marker" data-marker="${id}"><a href="${href}">${label}</a>`
         + `<span class="md-badge">inject</span></p>`;
 }
@@ -534,10 +607,13 @@ function renderMarker(line, id) {
  * with no `##` at all is rendered whole, as its own single section.
  *
  * @param {string} text
- * @param {{ markerIds?: Map<number, string> }} [options] marker line -> target id
+ * @param {{ markerIds?: Map<number, string>, resolveLink?: (href: string) => string }} [options]
+ *        marker line -> target id, and where a prose link points on the page
  */
 export function renderMarkdown(text, options = {}) {
     const markerIds = options.markerIds ?? new Map();
+    const resolve = options.resolveLink ?? ((href) => href);
+
     const lines = text.replace(/\r\n/g, '\n').split('\n');
     const fences = fenceInfo(lines);
     const ranges = fenceRanges(lines);
@@ -579,13 +655,13 @@ export function renderMarkdown(text, options = {}) {
             const level = heading[1].length;
             if (level === 2) openSection(++section);
             html.push(`<h${level} data-md-from="${i + 1}" data-md-to="${i + 1}">`
-                + `${renderInline(heading[2].trim())}</h${level}>`);
+                + `${renderInline(heading[2].trim(), resolve)}</h${level}>`);
             i++;
             continue;
         }
 
         if (markerAt(i)) {
-            html.push(renderMarker(line, markerIds.get(i + 1)));
+            html.push(renderMarker(line, markerIds.get(i + 1), resolve));
             i++;
             continue;
         }
@@ -594,7 +670,7 @@ export function renderMarkdown(text, options = {}) {
             const from = i;
             const items = [];
             while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-                items.push(`<li>${renderInline(lines[i].replace(/^\s*[-*]\s+/, ''))}</li>`);
+                items.push(`<li>${renderInline(lines[i].replace(/^\s*[-*]\s+/, ''), resolve)}</li>`);
                 i++;
             }
             html.push(`<ul data-md-from="${from + 1}" data-md-to="${i}">\n${items.join('\n')}\n</ul>`);
@@ -609,7 +685,7 @@ export function renderMarkdown(text, options = {}) {
             rows.push(lines[i].trim());
             i++;
         }
-        html.push(`<p data-md-from="${from + 1}" data-md-to="${i}">${renderInline(rows.join(' '))}</p>`);
+        html.push(`<p data-md-from="${from + 1}" data-md-to="${i}">${renderInline(rows.join(' '), resolve)}</p>`);
     }
 
     if (opened) html.push('</section>');
@@ -933,7 +1009,7 @@ body {
   grid-template-columns: minmax(270px, 23%) minmax(0, 38.5%) minmax(0, 38.5%);
 }
 .pane { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
-.pane-left { grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--line); }
+.pane-left { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); border-right: 1px solid var(--line); }
 .pane-mid { grid-template-rows: auto auto minmax(0, 1fr); border-right: 1px solid var(--line); background: var(--panel); }
 .pane-right { grid-template-rows: auto minmax(0, 1fr); background: #ffffff; }
 .col-head {
@@ -944,19 +1020,21 @@ body {
 }
 .col-note { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: .74rem; opacity: .85; }
 
-.examples { list-style: none; margin: 0; padding: .3rem 1rem 5rem; overflow: auto; min-height: 0; }
-.example { padding: .9rem 0 1.1rem; border-bottom: 1px solid var(--line); }
+/* The left pane is two stacked sections: the targets, then the description the
+   selected one is explained by. */
+.pane-left > .pane-section { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.pane-left > .pane-section + .pane-section { border-top: 1px solid var(--line); }
+
+.examples { list-style: none; margin: 0; padding: .3rem 1rem 2rem; overflow: auto; min-height: 0; }
+.example { padding: .8rem 0 .9rem; border-bottom: 1px solid var(--line); }
 .example:last-child { border-bottom: 0; }
-.example h2 { display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .4rem; font-size: 1rem; }
-.example h2 .num {
+.example h3 { display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .4rem; font-size: 1rem; }
+.example h3 .num {
   flex: none; min-width: 1.55rem; height: 1.55rem; border-radius: 50%; background: var(--chip);
   color: var(--muted); font: 600 .78rem/1.55rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-align: center;
 }
-.example p { margin: .35rem 0; }
-.example ul { margin: .35rem 0; padding-left: 1.2rem; }
-.example code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
-.targets { list-style: none; margin: .6rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
+.targets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
 .target {
   display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; max-width: 100%;
   border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px;
@@ -967,15 +1045,30 @@ body {
 .target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chip-file { color: var(--muted); white-space: nowrap; }
 .chip-ref { font-weight: 600; white-space: nowrap; }
-.target-item.selected .target { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.target-item.selected .chip-file { color: inherit; opacity: .75; }
-.snippet {
-  display: none; margin: .5rem 0 0; padding: .55rem .7rem; border: 1px solid var(--line);
-  border-radius: 8px; background: var(--panel); max-height: 18rem; overflow: auto; font-size: 12.5px;
+.target[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+.target[aria-pressed="true"] .chip-file { color: inherit; opacity: .75; }
+
+/* The description pane: the prose of the selected example, and nothing else —
+   no snippet, since the target's text is what the middle column shows. */
+.desc-panel { min-height: 0; overflow: auto; padding: .85rem 1rem 4rem; }
+.desc-panel h2 {
+  display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .5rem;
+  font-size: .95rem; text-transform: none; letter-spacing: 0; color: var(--fg);
 }
-.target-item.selected .snippet { display: block; }
-.snippet .marker { display: block; color: var(--muted); margin-bottom: .4rem; white-space: pre-wrap; word-break: break-all; }
-.snippet code { font: inherit; white-space: pre; }
+.desc-panel h2 .num {
+  flex: none; min-width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--chip);
+  color: var(--muted); font: 600 .74rem/1.4rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: center;
+}
+.desc-panel .desc { display: none; font-size: .92rem; }
+.desc-panel .desc.active { display: block; }
+.desc-panel .desc p { margin: .35rem 0 .7rem; }
+.desc-panel .desc ul { margin: .35rem 0 .7rem; padding-left: 1.2rem; }
+.desc-panel .desc h3 { margin: .9rem 0 .35rem; font-size: .95rem; }
+.desc-panel .desc h4, .desc-panel .desc h5, .desc-panel .desc h6 { margin: .8rem 0 .3rem; font-size: .9rem; }
+.desc-panel .desc code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
+.desc-empty { margin: .3rem 0 0; color: var(--muted); font-size: .84rem; }
+.desc-panel.filled .desc-empty { display: none; }
 
 .file-tabs { display: flex; gap: .3rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .file-tab {
@@ -1051,12 +1144,12 @@ body {
 const SCRIPT = `
 (function () {
   var targets = Array.prototype.slice.call(document.querySelectorAll('.target'));
-  var items = Array.prototype.slice.call(document.querySelectorAll('.target-item'));
   var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.file-tab'));
   var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
   var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
   var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
+  var descriptions = Array.prototype.slice.call(document.querySelectorAll('.desc'));
 
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
@@ -1070,8 +1163,21 @@ const SCRIPT = `
 
   function select(target, keepScroll, keepHash) {
     var item = target.closest('.target-item');
-    items.forEach(function (other) { other.classList.toggle('selected', other === item); });
     targets.forEach(function (other) { other.setAttribute('aria-pressed', String(other === target)); });
+    // The link that was clicked stays visible: a description can be long, and
+    // with the panel scrolled the target is what says which example it belongs to.
+    if (!keepScroll) target.scrollIntoView({ block: 'nearest' });
+
+    // The second left-hand section is the description of the selected example,
+    // and only it: the example link itself never grows a footnote.
+    descriptions.forEach(function (desc) {
+      desc.classList.toggle('active', desc.dataset.desc === item.id);
+    });
+    var panel = document.querySelector('.desc-panel');
+    if (panel) {
+      panel.classList.toggle('filled', panel.querySelector('.desc.active') !== null);
+      panel.scrollTop = 0;
+    }
 
     lines.forEach(function (line) { line.classList.remove('hl'); });
     showFile(target.dataset.file);
@@ -1126,7 +1232,11 @@ const SCRIPT = `
 })();
 `.trim();
 
-/** The left pane: numbered sections, prose, and the clickable targets. */
+/**
+ * The first left-hand section: numbered titles and their example links, and
+ * nothing else — no prose, and no snippet below a link. What an example *means*
+ * is the second section's business, and clicking a link swaps it there.
+ */
 function renderSection(section, index) {
     const targets = section.examples
         .map((example) => [
@@ -1135,25 +1245,39 @@ function renderSection(section, index) {
             ` data-section="${example.section}"`,
             ` data-from="${example.from ?? 0}" data-to="${example.to ?? 0}"`,
             ` data-ranges="${(example.ranges ?? []).map(([from, to]) => `${from}-${to}`).join(',')}"`,
-            ` aria-pressed="false" aria-controls="${example.id}-snippet">`,
+            ` aria-pressed="false" aria-controls="${example.id}-desc"`,
+            ` title="${escapeHtml(example.raw)}">`,
             `<span class="chip-file">${escapeHtml(example.fileLabel)}</span>`,
             `<span class="chip-ref">${escapeHtml(example.label)}</span>`,
             `</button>`,
-            `<pre class="snippet" id="${example.id}-snippet"><span class="marker">${escapeHtml(example.raw)}</span>`,
-            `<code>${escapeHtml(example.text)}</code></pre>`,
             `</li>`,
         ].join(''))
         .join('\n');
 
     return [
         `<li class="example" id="ex-${index + 1}">`,
-        `<h2><span class="num">${index + 1}</span>${escapeHtml(section.title)}</h2>`,
-        section.html,
+        `<h3><span class="num">${index + 1}</span>${escapeHtml(section.title)}</h3>`,
         `<ul class="targets">`,
         targets,
         `</ul>`,
         `</li>`,
     ].join('\n');
+}
+
+/**
+ * The second left-hand section: one block per example, the selected one the
+ * only one shown. Every example's title is rendered above it — the description
+ * pane has its own header, so it can say which example it is describing.
+ */
+function renderDescriptions(sections) {
+    return sections
+        .flatMap((section, index) => section.examples.map((example) => [
+            `<div class="desc" id="${example.id}-desc" data-desc="${example.id}">`,
+            `<h2><span class="num">${index + 1}</span>${escapeHtml(example.title)}</h2>`,
+            example.description,
+            `</div>`,
+        ].join('\n')))
+        .join('\n');
 }
 
 /** The right pane: one tab and one code pane per target file. */
@@ -1177,6 +1301,7 @@ function renderFiles(files) {
 export function renderPage(model) {
     const { tabs, panes } = renderFiles(model.files);
     const sections = model.sections.map(renderSection).join('\n');
+    const descriptions = renderDescriptions(model.sections);
 
     return `<!doctype html>
 <html lang="en">
@@ -1201,10 +1326,19 @@ ${model.introHtml}
 </header>
 <main class="split">
 <section class="pane pane-left" aria-label="Targets">
-<div class="col-head">Targets<span class="col-note">click one to highlight it</span></div>
+<div class="pane-section">
+<div class="col-head">Targets<span class="col-note">titles and example links</span></div>
 <ol class="examples">
 ${sections}
 </ol>
+</div>
+<div class="pane-section">
+<div class="col-head">Description<span class="col-note">of the selected example</span></div>
+<div class="desc-panel">
+<p class="desc-empty">Click an example link above to read what it demonstrates.</p>
+${descriptions}
+</div>
+</div>
 </section>
 <section class="pane pane-mid" aria-label="Source file">
 <div class="col-head">Source file<span class="col-note">lines the target selects</span></div>

@@ -25,11 +25,15 @@
 ## Demo page (`docs/index.html`)
 
 - `docs/index.html` is **generated** — never edit it by hand.
-- Three columns: the targets (prose + clickable markers), the source file with
-  the selected line range highlighted, and the document rendered GitHub-style
-  (code fences highlighted) with the marker and its injected block highlighted
-  in place. The lead — title and intro before the first `##` — is shown once, as
-  the page banner, and is skipped in both the targets and the rendered column.
+- Three columns: the targets, the source file with the selected line range
+  highlighted, and the document rendered GitHub-style (code fences highlighted)
+  with the marker and its injected block highlighted in place. The first column is
+  two stacked sections: the numbered titles with their example links only, and
+  below them the description of the selected example — the prose written above its
+  marker in `docs/demo.md` — which a click swaps in; the example link grows no
+  snippet of its own. The lead — title and intro before the first `##` — is shown
+  once, as the page banner, and is skipped in both the targets and the rendered
+  column.
 - Source: `docs/demo.md`. It is an ordinary Markdown document whose `##`
   sections become the numbered paragraphs of the page and whose markers become
   its clickable targets. The markers inject `docs/samples/*` — one small sample
