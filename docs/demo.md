@@ -11,7 +11,7 @@ Wrap part of a file in `#region <name>` / `#endregion` comments and name that
 region in the fragment. The directive lines themselves are never injected, and
 this works with any of the comment prefixes a language uses.
 
-[samples/Inventory.java](./samples/Inventory.java#catalog)
+[samples/Inventory.java#catalog](./samples/Inventory.java#catalog)
 
 ```java
     /** The catalog, kept as an explicit region directive. */
@@ -36,7 +36,7 @@ the name `toString-` and resolves to nothing, and the old spelling says so:
 
 The same method, four ways:
 
-[samples/Inventory.java](./samples/Inventory.java#toString)
+[samples/Inventory.java#toString](./samples/Inventory.java#toString)
 
 ```java
     public String toString() {
@@ -44,13 +44,13 @@ The same method, four ways:
     }
 ```
 
-[samples/Inventory.java](./samples/Inventory.java#toString/-)
+[samples/Inventory.java#toString/-](./samples/Inventory.java#toString/-)
 
 ```java
         return items.size() + " item(s)";
 ```
 
-[samples/Inventory.java](./samples/Inventory.java#toString/+)
+[samples/Inventory.java#toString/+](./samples/Inventory.java#toString/+)
 
 ```java
     @Override
@@ -59,7 +59,7 @@ The same method, four ways:
     }
 ```
 
-[samples/Inventory.java](./samples/Inventory.java#toString/++)
+[samples/Inventory.java#toString/++](./samples/Inventory.java#toString/++)
 
 ```java
     /** Summarise the inventory. */
@@ -76,7 +76,7 @@ one before it. `Inventory/Item/render` is the `render` method of the `Item`
 class of `Inventory`; only the last segment selects the injected text, the
 segments before it are scopes to descend into.
 
-[samples/Inventory.java](./samples/Inventory.java#Inventory/Item/render)
+[samples/Inventory.java#Inventory/Item/render](./samples/Inventory.java#Inventory/Item/render)
 
 ```java
         String render() {
@@ -90,7 +90,7 @@ Inside a scope a segment may also match what a block *contains*: a statement
 whose header carries the name as a double-quoted string. `dispatch/count`
 selects the `if ("count".equals(methodName))` block, braces and all.
 
-[samples/Inventory.java](./samples/Inventory.java#dispatch/count)
+[samples/Inventory.java#dispatch/count](./samples/Inventory.java#dispatch/count)
 
 ```java
         if ("count".equals(methodName)) {
@@ -104,7 +104,7 @@ A block whose opening line carries a trailing comment is named by that comment.
 `legacy()` opens `public void legacy() { //count`, so `legacy/count` names the
 whole method.
 
-[samples/Inventory.java](./samples/Inventory.java#legacy/count)
+[samples/Inventory.java#legacy/count](./samples/Inventory.java#legacy/count)
 
 ```java
     public void legacy() { //count
@@ -180,7 +180,7 @@ The whole template is blanked before anything is counted, which is why
 `{` of the nested `` `{${item}}` `` never opens a body. TypeScript uses the same
 entry, so a `.ts` file masks exactly as a `.js` one does.
 
-[samples/cart.js](./samples/cart.js#Cart/render)
+[samples/cart.js#Cart/render](./samples/cart.js#Cart/render)
 
 ```js
     render() {
@@ -188,7 +188,7 @@ entry, so a `.ts` file masks exactly as a `.js` one does.
     }
 ```
 
-[samples/cart.js](./samples/cart.js#Cart/add)
+[samples/cart.js#Cart/add](./samples/cart.js#Cart/add)
 
 ```js
     add(item) {
@@ -202,7 +202,7 @@ entry, so a `.ts` file masks exactly as a `.js` one does.
 contains a whole `Decoy` function — is blanked before anything is counted, so it
 can never be mistaken for a member.
 
-[samples/Cart.go](./samples/Cart.go#Add)
+[samples/Cart.go#Add](./samples/Cart.go#Add)
 
 ```go
 func Add(items []string, item string) []string {
@@ -217,7 +217,7 @@ with the same name. The path retries them, so `Cart/add` reaches past the struct
 to the method and `Cart/remove` reaches past the first impl to the second. The
 nested comment at the bottom of the file hides a `decoy` the matcher never sees.
 
-[samples/Cart.rs](./samples/Cart.rs#Cart/add)
+[samples/Cart.rs#Cart/add](./samples/Cart.rs#Cart/add)
 
 ```rust
     fn add(&mut self, x: String) {
@@ -225,7 +225,7 @@ nested comment at the bottom of the file hides a `decoy` the matcher never sees.
     }
 ```
 
-[samples/Cart.rs](./samples/Cart.rs#Cart/remove)
+[samples/Cart.rs#Cart/remove](./samples/Cart.rs#Cart/remove)
 
 ```rust
     fn remove(&mut self) -> Option<String> {
@@ -238,7 +238,7 @@ nested comment at the bottom of the file hides a `decoy` the matcher never sees.
 The docstring hides a whole `def decoy` from the matcher, and the body of `add`
 is its indented block, so the selection ends where the indentation ends.
 
-[samples/Cart.py](./samples/Cart.py#Cart/add)
+[samples/Cart.py#Cart/add](./samples/Cart.py#Cart/add)
 
 ```python
     def add(self, item):
@@ -250,7 +250,7 @@ is its indented block, so the selection ends where the indentation ends.
 A verbatim string escapes its quote by doubling it (`""`), so the brace inside
 `@"cart ""}"" decoy"` is text, not structure.
 
-[samples/Cart.cs](./samples/Cart.cs#Cart/Add)
+[samples/Cart.cs#Cart/Add](./samples/Cart.cs#Cart/Add)
 
 ```csharp
     public void Add(string item)
@@ -264,7 +264,7 @@ A verbatim string escapes its quote by doubling it (`""`), so the brace inside
 `/* /* */ */` nests in Kotlin, so the comment above `add` can swallow anything —
 including a `decoy` — and a `"""` raw string is text with no escapes at all.
 
-[samples/Cart.kt](./samples/Cart.kt#Cart/add)
+[samples/Cart.kt#Cart/add](./samples/Cart.kt#Cart/add)
 
 ```kotlin
     fun add(item: String) {
@@ -277,7 +277,7 @@ including a `decoy` — and a `"""` raw string is text with no escapes at all.
 The `<<<SQL` body below is data, the `}` in it is not PHP syntax, and
 `#[Attribute]` — not used here — is an attribute rather than a `#` comment.
 
-[samples/Cart.php](./samples/Cart.php#Cart/add)
+[samples/Cart.php#Cart/add](./samples/Cart.php#Cart/add)
 
 ```php
     public function add(string $item): string
@@ -297,7 +297,7 @@ The `<<<SQL` body below is data, the `}` in it is not PHP syntax, and
 selection brings along. The `<<` in `@items << item` is an append, not a heredoc:
 only `<<~TAG`, `<<-TAG` or a quoted tag opens one.
 
-[samples/Cart.rb](./samples/Cart.rb#Cart/add)
+[samples/Cart.rb#Cart/add](./samples/Cart.rb#Cart/add)
 
 ```ruby
   def add(item)
@@ -311,7 +311,7 @@ SQL has no members to search, so this example uses a region directive the way an
 comment-bearing language can — and the string `'it''s a } decoy'` stays one
 string, because SQL escapes a quote by doubling it.
 
-[samples/report.sql](./samples/report.sql#monthly)
+[samples/report.sql#monthly](./samples/report.sql#monthly)
 
 ```sql
 select
@@ -327,7 +327,7 @@ group by 1;
 The heredoc body is data: the `}` inside it is not shell syntax, and the
 selection stops at the function's closing brace.
 
-[samples/run.sh](./samples/run.sh#deploy)
+[samples/run.sh#deploy](./samples/run.sh#deploy)
 
 ```bash
 deploy() {
@@ -344,7 +344,7 @@ VB declares with capitalised keywords and closes every block with a keyword line
 so `Add` is followed through `End Function`, and `""` doubling keeps the brace in
 the string literal out of the structure.
 
-[samples/Form.vb](./samples/Form.vb#Form/Add)
+[samples/Form.vb#Form/Add](./samples/Form.vb#Form/Add)
 
 ```vb
     Public Function Add(item As String) As String
@@ -358,14 +358,14 @@ the string literal out of the structure.
 A binding is `add x y = x + y`, and the `add ::` line above it is its annotation:
 `+add` brings the signature along, and `Cart` is the record declared with `data`.
 
-[samples/Main.hs](./samples/Main.hs#add/+)
+[samples/Main.hs#add/+](./samples/Main.hs#add/+)
 
 ```haskell
 add :: Int -> Int -> Int
 add x y = x + y
 ```
 
-[samples/Main.hs](./samples/Main.hs#Cart)
+[samples/Main.hs#Cart](./samples/Main.hs#Cart)
 
 ```haskell
 data Cart = Cart { items :: [Int] }
@@ -376,7 +376,7 @@ data Cart = Cart { items :: [Int] }
 `/* outer /* inner */ still outer */` nests in Zig, so the commented-out
 `fn decoy` is blanked whole; the non-nesting default mask would have leaked it.
 
-[samples/Nesting.zig](./samples/Nesting.zig#target)
+[samples/Nesting.zig#target](./samples/Nesting.zig#target)
 
 ```zig
 pub fn target() void {
@@ -390,14 +390,14 @@ A `.yaml` reference is a key path, spelled with the same `/` separator a code
 reference uses, rendered with the mappings that hold it so the block is a YAML
 document on its own; a `#` inside a quoted value is not a comment.
 
-[samples/app.yaml](./samples/app.yaml#server/port)
+[samples/app.yaml#server/port](./samples/app.yaml#server/port)
 
 ```yaml
 server:
   port: 8080
 ```
 
-[samples/app.yaml](./samples/app.yaml#server/tls/enabled)
+[samples/app.yaml#server/tls/enabled](./samples/app.yaml#server/tls/enabled)
 
 ```yaml
 server:
@@ -410,14 +410,14 @@ server:
 `server/port` renders `[server]` above the key, and a value that spans lines — an
 array here — comes with its continuation lines.
 
-[samples/app.toml](./samples/app.toml#server/port)
+[samples/app.toml#server/port](./samples/app.toml#server/port)
 
 ```toml
 [server]
 port = 8080
 ```
 
-[samples/app.toml](./samples/app.toml#server/hosts)
+[samples/app.toml#server/hosts](./samples/app.toml#server/hosts)
 
 ```toml
 [server]
@@ -432,14 +432,14 @@ hosts = [
 `section/key` renders the `[section]` header above the key, a bare section name
 selects the whole section, and both `key = value` and `key: value` are read.
 
-[samples/app.ini](./samples/app.ini#server/port)
+[samples/app.ini#server/port](./samples/app.ini#server/port)
 
 ```ini
 [server]
 port = 8080
 ```
 
-[samples/app.ini](./samples/app.ini#logging)
+[samples/app.ini#logging](./samples/app.ini#logging)
 
 ```ini
 [logging]
@@ -457,7 +457,7 @@ declarations without its selector.
 
 The design tokens, addressed by the pseudo-class that holds them:
 
-[samples/site.css](./samples/site.css#:root)
+[samples/site.css#:root](./samples/site.css#:root)
 
 ```css
 :root {
@@ -469,7 +469,7 @@ The design tokens, addressed by the pseudo-class that holds them:
 A class, and a variant of that same class — the compact one is reached by a
 predicate read from the selector, because two rules may share a name:
 
-[samples/site.css](./samples/site.css#.card[data-variant=compact])
+[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])
 
 ```css
 .card[data-variant="compact"] {
@@ -481,7 +481,7 @@ predicate read from the selector, because two rules may share a name:
 The media query, whole, and then the one rule inside it — the nesting is the
 path:
 
-[samples/site.css](./samples/site.css#@media)
+[samples/site.css#@media](./samples/site.css#@media)
 
 ```css
 @media (min-width: 700px) {
@@ -491,7 +491,7 @@ path:
 }
 ```
 
-[samples/site.css](./samples/site.css#@media/.card/-)
+[samples/site.css#@media/.card/-](./samples/site.css#@media/.card/-)
 
 ```css
 grid-template-columns: 1fr 1fr;
@@ -500,7 +500,7 @@ grid-template-columns: 1fr 1fr;
 An at-rule with a name of its own — `@keyframes:pulse` names one animation,
 `@keyframes` alone would be an error here because the file has two:
 
-[samples/site.css](./samples/site.css#@keyframes:pulse)
+[samples/site.css#@keyframes:pulse](./samples/site.css#@keyframes:pulse)
 
 ```css
 @keyframes pulse {
@@ -516,7 +516,7 @@ An at-rule with a name of its own — `@keyframes:pulse` names one animation,
 A region directive still works in CSS, and a class name cannot be a region
 name, so the two never collide:
 
-[samples/site.css](./samples/site.css#pulse)
+[samples/site.css#pulse](./samples/site.css#pulse)
 
 ```css
 @keyframes pulse {
@@ -539,7 +539,7 @@ the two ends are inclusive, exactly as an editor shows them. `Inventory.java`
 lines 8-14 are the blank line under the class header and the field below the
 `catalog` region:
 
-[samples/Inventory.java](./samples/Inventory.java#L8-L14)
+[samples/Inventory.java#L8-L14](./samples/Inventory.java#L8-L14)
 
 ```java
 
@@ -556,7 +556,7 @@ the order they were written — a semantic name and a line range mix freely. The
 class opening, then the documented `toString` and its body, then the last line of
 the file:
 
-[samples/Inventory.java](./samples/Inventory.java#L7,toString/++,L50)
+[samples/Inventory.java#L7,toString/++,L50](./samples/Inventory.java#L7,toString/++,L50)
 
 ```java
 public class Inventory {
@@ -578,7 +578,7 @@ JSON renders a selection of keys as valid JSON, in the order they were named, wi
 nested keys and array elements addressable by `/` — the same separator a code
 reference uses.
 
-[samples/api.json](./samples/api.json#name,server/port)
+[samples/api.json#name,server/port](./samples/api.json#name,server/port)
 
 ```json
 {

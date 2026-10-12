@@ -185,7 +185,7 @@ looks like a marker still works: injected content is data, not a new marker.
 This is the real code that decides whether a line is a marker, injected from
 `index.mjs` by its section:
 
-[../index.mjs](../index.mjs#parseMarker)
+[../index.mjs#parseMarker](../index.mjs#parseMarker)
 
 ```javascript
 /**
@@ -231,7 +231,7 @@ When only part of a file belongs in the document, the file carries region
 directives and the marker names the region. The next block is one region of
 `test/fixtures/example.ts`:
 
-[../test/fixtures/example.ts](../test/fixtures/example.ts#table)
+[../test/fixtures/example.ts#table](../test/fixtures/example.ts#table)
 
 ```typescript
 | name | qty |
@@ -243,7 +243,7 @@ The same file, a different region, through the same kind of marker — two
 markers may point at different regions of one file, because the duplicate
 rule only forbids identical marker text:
 
-[../test/fixtures/example.ts](../test/fixtures/example.ts#config)
+[../test/fixtures/example.ts#config](../test/fixtures/example.ts#config)
 
 ```typescript
 export const config = { retries: 3 };
@@ -302,7 +302,7 @@ declaration comes with it:
 
 All four, against `test/fixtures/Example.java` — first the declaration itself:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#toString)
+[../test/fixtures/Example.java#toString](../test/fixtures/Example.java#toString)
 
 ```java
     public String toString() {
@@ -312,7 +312,7 @@ All four, against `test/fixtures/Example.java` — first the declaration itself:
 
 then its body alone:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#toString/-)
+[../test/fixtures/Example.java#toString/-](../test/fixtures/Example.java#toString/-)
 
 ```java
         return String.join(",", items);
@@ -320,7 +320,7 @@ then its body alone:
 
 then the declaration with its annotation:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#toString/+)
+[../test/fixtures/Example.java#toString/+](../test/fixtures/Example.java#toString/+)
 
 ```java
     @Override
@@ -331,7 +331,7 @@ then the declaration with its annotation:
 
 then annotation and doc comment together:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#toString/++)
+[../test/fixtures/Example.java#toString/++](../test/fixtures/Example.java#toString/++)
 
 ```java
     /** Add one item to this cart. */
@@ -343,7 +343,7 @@ then annotation and doc comment together:
 
 The name may equally be a class-like declaration, nested or not:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#Line)
+[../test/fixtures/Example.java#Line](../test/fixtures/Example.java#Line)
 
 ```java
     public static class Line {
@@ -388,7 +388,7 @@ by its location rather than only by its (possibly ambiguous) name. `Cart` names
 the class, `Cart/Line` the inner class inside it, and `Cart/Line/render` the
 method inside that. This is the nested `render`, not the outer class:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#Cart/Line/render)
+[../test/fixtures/Example.java#Cart/Line/render](../test/fixtures/Example.java#Cart/Line/render)
 
 ```java
         String render() {
@@ -402,7 +402,7 @@ statement whose header carries the name as a double-quoted string is a
 **comment anchor**. `Anchors.java` has both — a `dispatch` method with an
 `if ("getUsers".equals(...))`, and a `handler` method opened with `//getUsers`:
 
-[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#dispatch/getUsers)
+[../test/fixtures/Anchors.java#dispatch/getUsers](../test/fixtures/Anchors.java#dispatch/getUsers)
 
 ```java
         if ("getUsers".equals(methodName)) {
@@ -413,7 +413,7 @@ statement whose header carries the name as a double-quoted string is a
 The `-` modifier selects how much of the match comes along; here the
 condition's body alone, without the `if (...) {` header or its closing brace:
 
-[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#dispatch/getUsers/-)
+[../test/fixtures/Anchors.java#dispatch/getUsers/-](../test/fixtures/Anchors.java#dispatch/getUsers/-)
 
 ```java
             System.out.println("users");
@@ -422,7 +422,7 @@ condition's body alone, without the `if (...) {` header or its closing brace:
 A name that is hard to reach by path can be reached by its anchor comment
 instead. This reaches the `handler` block by the `//getUsers` that opens it:
 
-[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#handler/getUsers)
+[../test/fixtures/Anchors.java#handler/getUsers](../test/fixtures/Anchors.java#handler/getUsers)
 
 ```java
     public void handler() { //getUsers
@@ -439,7 +439,7 @@ inside a name, so a `render-` is a name no file declares, and the message for it
 says what to write instead:
 
 ```text
-inject-examples: [a.java](./a.java#render++): "++" is a path segment now; write "#render/++"
+inject-examples: [a.java#render++](./a.java#render++): "++" is a path segment now; write "#render/++"
 ```
 
 A name may contain `-` (`item-list`, `update-document-test`) and a CSS custom
@@ -466,7 +466,7 @@ endpoint with no column runs to the end of its line:
 
 The three lines of `toString`, named by number rather than by name:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#L12-L14)
+[../test/fixtures/Example.java#L12-L14](../test/fixtures/Example.java#L12-L14)
 
 ```java
     public String toString() {
@@ -485,7 +485,7 @@ Because the comma is the contract every rule shares, one reference may name
 several pieces and they are injected in the order written — a name and a range
 mix freely. The annotated `toString`, then the inner `Line` class:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#toString/+,L16-L20)
+[../test/fixtures/Example.java#toString/+,L16-L20](../test/fixtures/Example.java#toString/+,L16-L20)
 
 ```java
     @Override
@@ -512,7 +512,7 @@ valid JSON — braces and all — in the order they are listed.
 
 Top-level keys and a nested one, from `package.json`:
 
-[../package.json](../package.json#name,version,scripts/test)
+[../package.json#name,version,scripts/test](../package.json#name,version,scripts/test)
 
 ```json
 {
@@ -526,7 +526,7 @@ Top-level keys and a nested one, from `package.json`:
 
 An array keeps only the elements named, in order:
 
-[../package.json](../package.json#keywords/0,keywords/2)
+[../package.json#keywords/0,keywords/2](../package.json#keywords/0,keywords/2)
 
 ```json
 {
@@ -581,7 +581,7 @@ a `.`/`@` name is never one, so a class name and a region name cannot collide.
 The design tokens of `docs/samples/site.css`, and the `.card` rule the media
 query overrides:
 
-[../docs/samples/site.css](../docs/samples/site.css#:root)
+[../docs/samples/site.css#:root](../docs/samples/site.css#:root)
 
 ```css
 :root {
@@ -590,7 +590,7 @@ query overrides:
 }
 ```
 
-[../docs/samples/site.css](../docs/samples/site.css#@media/.card/-)
+[../docs/samples/site.css#@media/.card/-](../docs/samples/site.css#@media/.card/-)
 
 ```css
 grid-template-columns: 1fr 1fr;
@@ -733,7 +733,7 @@ the library is pure and reads only through the `readFile` you hand it, which
 is why the test suite drives it in memory. The block below is the real test
 that drives the engine — a live marker into `test.mjs`, by its section:
 
-[../test.mjs](../test.mjs#update-document-test)
+[../test.mjs#update-document-test](../test.mjs#update-document-test)
 
 ```javascript
 test('updateDocument rewrites every marker and is idempotent', () => {

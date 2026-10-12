@@ -27,7 +27,7 @@ Add a `#<name>` fragment to inject just one part of a larger
 file, so a sample can show a slice of a big source file without duplicating it:
 
 ```markdown
-[test/fixtures/example.ts](./test/fixtures/example.ts#table)
+[test/fixtures/example.ts#table](./test/fixtures/example.ts#table)
 ```
 
 What the name may be depends on the file's type: a `#region` directive, a
@@ -126,13 +126,13 @@ between them:
 then
 
 ```markdown
-[test/fixtures/example.ts](./test/fixtures/example.ts#table)
+[test/fixtures/example.ts#table](./test/fixtures/example.ts#table)
 ```
 
 That pair, written live in this very README, is kept honest by the tool — the
 block below is not typed by hand; `inject-examples` rewrites it from the file:
 
-[test/fixtures/example.ts](./test/fixtures/example.ts#table)
+[test/fixtures/example.ts#table](./test/fixtures/example.ts#table)
 
 ```ts
 | name | qty |
@@ -185,7 +185,7 @@ function or class-like declaration (`class`, `interface`, `enum`, `record`,
 code needs no region comments added to it:
 
 ````markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#toString/++)
+[test/fixtures/Example.java#toString/++](./test/fixtures/Example.java#toString/++)
 
 ```java
     /** Add one item to this cart. */
@@ -273,7 +273,7 @@ same name, so `Cart/add` and `Cart/items` both resolve while a *last* segment
 still takes the first match in walk order.
 
 ````markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#Cart/Line/render)
+[test/fixtures/Example.java#Cart/Line/render](./test/fixtures/Example.java#Cart/Line/render)
 
 ```java
         String render() {
@@ -290,7 +290,7 @@ just what it declares:
   block, braces and all:
 
 ````markdown
-[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#dispatch/getUsers)
+[test/fixtures/Anchors.java#dispatch/getUsers](./test/fixtures/Anchors.java#dispatch/getUsers)
 
 ```java
         if ("getUsers".equals(methodName)) {
@@ -309,7 +309,7 @@ only be the last segment, and a modifier anywhere else is an error rather than
 another reading — `Cart/-/Line` says so, and the message quotes the segment:
 
 ```text
-inject-examples: [Cart.java](./Cart.java#Cart/-/Line): "-" may only modify the last path segment of "#Cart/-/Line"
+inject-examples: [Cart.java#Cart/-/Line](./Cart.java#Cart/-/Line): "-" may only modify the last path segment of "#Cart/-/Line"
 ```
 
 The full grammar — every accepted form, every error and its exact message — is
@@ -335,7 +335,7 @@ column runs to the end of its line:
 | `#L4:8-L4:22` | from the eighth character of line 4 to its twenty-second |
 
 ```markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#L12-L14)
+[test/fixtures/Example.java#L12-L14](./test/fixtures/Example.java#L12-L14)
 ```
 
 A range that names lines the file does not have is an error — `#L31` in a
@@ -351,7 +351,7 @@ in one injection, in the order they were written, and a name and a range mix
 freely:
 
 ```markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#toString/+,L16-L20)
+[test/fixtures/Example.java#toString/+,L16-L20](./test/fixtures/Example.java#toString/+,L16-L20)
 ```
 
 The pieces are joined with a newline and injected as one block, and a host that
@@ -367,7 +367,7 @@ written as dotted paths from the top level, and the selection is rendered as
 valid JSON — braces and all:
 
 ````markdown
-[package.json](./package.json#name,scripts.test)
+[package.json#name,scripts.test](./package.json#name,scripts.test)
 
 ```json
 {
@@ -439,7 +439,7 @@ name cannot be a region name, so the two never collide.
 `#.card[data-variant=compact]` in a real stylesheet:
 
 ````markdown
-[docs/samples/site.css](./docs/samples/site.css#.card[data-variant=compact])
+[docs/samples/site.css#.card[data-variant=compact]](./docs/samples/site.css#.card[data-variant=compact])
 
 ```css
 .card[data-variant="compact"] {
