@@ -17,7 +17,7 @@ use crate::block::{Block, BlockRef, Region, Scan};
 use crate::lexer::Lexer;
 use crate::mask::{bracket_balance, end_of_line, line_of, units};
 use crate::scanner::{scan_blocks, Lex};
-use crate::{Reference, Scope, SectionError, SectionReferenceError, Warning};
+use crate::{Reference, Scope, SectionError, SectionReferenceError};
 
 // ---------------------------------------------------------------------------
 // The reference grammar: one path selector, or a comma-separated selector list
@@ -41,8 +41,8 @@ pub(crate) struct ParsedRange {
 /// sibling-first walk, or an explicit line range, which selects verbatim lines and consults no matcher.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Selector {
-    /// A semantic path. `raw` is the selector as written — for the last one, without the modifier run
-    /// that belongs to the whole reference — and `scope` is the share *this* selector asks for.
+    /// A semantic path. `raw` is the selector as written — trimmed, and with the whole-segment
+    /// modifier that is that selector's own — and `scope` is the share *this* selector asks for.
     Path {
         raw: String,
         segments: Vec<String>,
@@ -65,124 +65,11 @@ impl Selector {
     }
 }
 
-/// The single modifier a selector or a whole reference carries, once its tokens are merged.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum MergedModifier {
-    /// One modifier: `++`, `+` or `-`.
-    Sole(&'static str),
-    /// `+`/`++` against `-`: the positive reading wins, and the user is told.
-    Contradiction {
-        kept: &'static str,
-        dropped: &'static str,
-    },
-}
-
-impl MergedModifier {
-    /// The spelling a merged modifier takes at the end of a canonical reference.
-    fn spelling(self) -> &'static str {
-        match self {
-            MergedModifier::Sole(modifier) => modifier,
-            MergedModifier::Contradiction { kept, .. } => kept,
-        }
-    }
-
-    fn scope(self) -> Scope {
-        crate::scope_from_modifier(Some(self.spelling()))
-    }
-
-    fn warning(self, canonical: &str) -> Option<Warning> {
-        match self {
-            MergedModifier::Sole(_) => None,
-            MergedModifier::Contradiction { kept, dropped } => Some(Warning {
-                kind: "contradiction",
-                kept,
-                dropped,
-                canonical: canonical.to_string(),
-                message: format!("\"{kept}\" contradicts \"{dropped}\"; using \"#{canonical}\""),
-            }),
-        }
-    }
-}
-
-/// The reference's own modifier, detached from the front of the whole reference.
-struct LeadingModifier {
-    modifier: Option<&'static str>,
-    remainder: String,
-}
-
-/// The longest prefix of `raw` that is a modifier run (`+`, `++`, `-`).
-fn detach_leading_modifier(raw: &str) -> LeadingModifier {
-    if let Some(rest) = raw.strip_prefix("++") {
-        return LeadingModifier {
-            modifier: Some("++"),
-            remainder: rest.to_string(),
-        };
-    }
-    if let Some(rest) = raw.strip_prefix('+') {
-        return LeadingModifier {
-            modifier: Some("+"),
-            remainder: rest.to_string(),
-        };
-    }
-    if let Some(rest) = raw.strip_prefix('-') {
-        return LeadingModifier {
-            modifier: Some("-"),
-            remainder: rest.to_string(),
-        };
-    }
-    LeadingModifier {
-        modifier: None,
-        remainder: raw.to_string(),
-    }
-}
-
-/// Whether `text` can open an identifier.
-fn starts_with_word(text: &str) -> bool {
-    text.chars().next().is_some_and(|character| {
-        character.is_ascii_alphanumeric() || character == '_' || character == '$'
-    })
-}
-
 /// Whether `text` can open a path selector at all (`[\w$/+-]`).
 fn starts_with_path(text: &str) -> bool {
     text.chars().next().is_some_and(|character| {
         character.is_ascii_alphanumeric() || matches!(character, '_' | '$' | '/' | '+' | '-')
     })
-}
-
-/// Combine the modifier tokens one selector carries into the single modifier it has, or fail when they
-/// cannot be combined.
-///
-/// `+` against `-` is the one contradiction: the reference asks for the declaration *with* its
-/// annotations and for the *body* alone, and no section is both. That is worth a warning rather than an
-/// error, because it is what a human types while refactoring — the annotation reading wins, and the
-/// caller reports it once. The same modifier twice is malformed.
-fn merge_modifiers(
-    modifiers: &[&'static str],
-    raw: &str,
-) -> Result<Option<MergedModifier>, SectionReferenceError> {
-    if modifiers.is_empty() {
-        return Ok(None);
-    }
-    if modifiers.len() == 1 {
-        return Ok(Some(MergedModifier::Sole(modifiers[0])));
-    }
-
-    let positive = modifiers
-        .iter()
-        .filter(|modifier| modifier.starts_with('+'))
-        .count();
-    let negative = modifiers
-        .iter()
-        .filter(|modifier| modifier.starts_with('-'))
-        .count();
-    if positive > 1 || negative > 1 {
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" carries more than one modifier"
-        )));
-    }
-    let kept = if modifiers.contains(&"++") { "++" } else { "+" };
-    Ok(Some(MergedModifier::Contradiction { kept, dropped: "-" }))
 }
 
 /// A decimal digit, as `\d` reads it in the grammar's own patterns.
@@ -346,16 +233,14 @@ pub(crate) fn line_range_of(raw: &str) -> Result<Option<ParsedRange>, SectionRef
 /// Read a whole reference as its selectors, or fail.
 ///
 /// A reference is one or more selectors separated by `,`: each is either a semantic path
-/// (`Cart/Line/render-`) or a line range (`L40:12-L44:3`). A single path selector is the degenerate
+/// (`Cart/Line/render/++`) or a line range (`L40:12-L44:3`). A single path selector is the degenerate
 /// case of it: everything [`parse_reference`](crate::parse_reference) accepts parses here to the same
 /// canonical spelling, the same segments and the same scope.
 ///
-/// Two modifiers with two readings are only ambiguous when they land on the **same** selector, because
-/// then neither says which reading was meant. A leading or trailing modifier of the whole reference
-/// therefore belongs to the **last** selector, exactly as it belonged to the last path segment before;
-/// a modifier written on a selector's own path is that selector's and nobody else's, so `add-,render++`
-/// is two selectors that each say what they mean. A line range has no modifier of its own and takes
-/// none: its own `-` is spoken for, so a range carrying one is malformed.
+/// A modifier belongs to the selector whose path carries it, so `add/-,render/++` is two selectors that
+/// each say what they mean and nothing is ambiguous between them. A line range takes no modifier: its
+/// own `-` is spoken for by the range, and there is nothing about a verbatim slice of lines for a scope
+/// to widen.
 ///
 /// # Errors
 ///
@@ -367,144 +252,67 @@ pub fn parse_selectors(raw: &str) -> Result<Reference, SectionReferenceError> {
         return Err(SectionReferenceError::new("\"#\" names nothing"));
     }
 
-    let leading = detach_leading_modifier(raw);
-    if leading.remainder.is_empty() {
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" names nothing"
-        )));
-    }
-
-    let parts: Vec<&str> = leading.remainder.split(',').collect();
+    let parts: Vec<&str> = raw.split(',').collect();
     if parts.iter().any(|part| part.trim().is_empty()) {
         return Err(SectionReferenceError::new(format!(
             "\"#{raw}\" has an empty selector"
         )));
     }
-    let last_part = parts.len() - 1;
-
-    // The reference's own modifier: the leading one, the trailing one, or both. It is collected
-    // separately from a selector's own run because only it can reach the last selector's path (`-a/b`
-    // is `a/b-`). A line range is read first and on its own: a range takes no modifier at all.
-    let mut reference_modifiers: Vec<&'static str> = leading.modifier.into_iter().collect();
-    let last_text = parts[last_part].trim();
-    if line_range_of(last_text)?.is_none() {
-        let (written_name, written_tokens) = crate::extract_trailing_modifier(last_text);
-        let parsed_last = if starts_with_word(&written_name) {
-            Some(crate::parse_reference(&written_name)?)
-        } else {
-            None
-        };
-        // The trailing run of the last selector is the reference's own, and so is a run written
-        // further up that selector's path (`a-/b++`): it is read back from the path's canonical
-        // spelling, which is where a modifier has always been canonicalised to.
-        let suffix = match &parsed_last {
-            Some(parsed) if !parsed.segments.is_empty() => {
-                let head = parsed.segments.join("/");
-                parsed
-                    .canonical
-                    .strip_prefix(&head)
-                    .unwrap_or("")
-                    .to_string()
-            }
-            _ => String::new(),
-        };
-        reference_modifiers.extend(written_tokens);
-        reference_modifiers.extend(crate::tokenize_modifier_run(&suffix));
-    }
-    let modifier = merge_modifiers(&reference_modifiers, raw)?;
 
     let mut selectors: Vec<Selector> = Vec::new();
-    for (index, part) in parts.iter().enumerate() {
-        let trimmed = part.trim();
+    // The canonical spelling of every selector, in the order written.
+    let mut canonical_parts: Vec<String> = Vec::new();
 
-        // A selector that opens `L<digit>` is a line range, and is read as one before anything is
-        // stripped from it: a range takes no modifier at all.
-        if index == last_part || is_line_range_prefix(trimmed) {
-            let text = if index == last_part {
-                last_text
-            } else {
-                trimmed
-            };
-            if let Some(range) = line_range_of(text)? {
-                selectors.push(Selector::Lines {
-                    raw: trimmed.to_string(),
-                    from: range.from,
-                    to: range.to,
-                });
-                continue;
-            }
+    for part in &parts {
+        let text = part.trim();
+
+        // A selector that opens `L<digit>` is a line range or a typo, never a name — read as a range
+        // before anything else, so `L40-` reports the range rather than a path about a name nobody
+        // meant.
+        if let Some(range) = line_range_of(text)? {
+            canonical_parts.push(text.to_string());
+            selectors.push(Selector::Lines {
+                raw: text.to_string(),
+                from: range.from,
+                to: range.to,
+            });
+            continue;
         }
-
-        // The last selector is read without the run that is the reference's own, so the reference's
-        // modifier and the selector's are compared rather than counted twice.
-        let text = if index == last_part {
-            crate::extract_trailing_modifier(trimmed).0
-        } else {
-            trimmed.to_string()
-        };
 
         // A path is a name. What cannot even open a name — `@x` — names nothing; anything else is read
         // by the single-selector grammar, whose own errors quote the selector and are the ones a user
         // needs to see.
-        if !starts_with_path(&text) {
+        if !starts_with_path(text) {
             return Err(SectionReferenceError::new(format!(
                 "\"#{text}\" names nothing"
             )));
         }
-        let parsed = crate::parse_reference(&text)?;
-        // The reference's own modifier applies to the last selector, as it has always applied to the
-        // last path segment; every earlier selector keeps the scope its own spelling gave it.
-        let scope = if index == last_part {
-            modifier.map_or(parsed.scope, MergedModifier::scope)
-        } else {
-            parsed.scope
-        };
+        let parsed = crate::parse_reference(text)?;
+        canonical_parts.push(parsed.canonical);
         selectors.push(Selector::Path {
-            raw: text,
+            raw: text.to_string(),
             segments: parsed.segments,
-            scope,
+            scope: parsed.scope,
         });
     }
 
-    // Every selector but the last keeps the spelling it was written with — its modifier included, since
-    // that modifier belongs to that selector. The last one is spelled from its parsed path, with the
-    // reference's own modifier appended, which is where a modifier has always been canonicalised to.
-    let spellings: Vec<String> = selectors
-        .iter()
-        .enumerate()
-        .map(|(index, selector)| match selector {
-            Selector::Lines { raw, .. } => raw.clone(),
-            Selector::Path { raw, segments, .. } => {
-                if index == selectors.len() - 1 {
-                    segments.join("/")
-                } else {
-                    raw.clone()
-                }
-            }
-        })
-        .collect();
-    let canonical = format!(
-        "{}{}",
-        spellings.join(","),
-        modifier.map_or("", MergedModifier::spelling)
-    );
+    let canonical = canonical_parts.join(",");
 
-    // A reference of one path selector carries a scope the resolver applies; in a mixed reference the
-    // reference's modifier belongs to the last path selector, and a line range has no scope at all.
+    // A reference of one path selector carries a scope the resolver applies; a line range has none, and
+    // a mixed reference resolves each selector with its own.
     let sole = if selectors.len() == 1 {
         selectors.first()
     } else {
         None
     };
     let scope = match sole {
-        Some(Selector::Path { scope, .. }) => modifier.map_or(*scope, MergedModifier::scope),
+        Some(Selector::Path { scope, .. }) => *scope,
         _ => Scope::Declaration,
     };
     let segments = match sole {
         Some(Selector::Path { segments, .. }) => segments.clone(),
         _ => Vec::new(),
     };
-    let warning = modifier.and_then(|modifier| modifier.warning(&canonical));
 
     Ok(Reference {
         raw: raw.to_string(),
@@ -512,7 +320,6 @@ pub fn parse_selectors(raw: &str) -> Result<Reference, SectionReferenceError> {
         selectors,
         segments,
         scope,
-        warning,
     })
 }
 
@@ -982,9 +789,16 @@ fn has_body(block: &Block) -> bool {
 // The walk
 // ---------------------------------------------------------------------------
 
-/// Resolve `segments[index..]` starting at `scope`, retrying same-named candidates: a candidate that
-/// cannot be a scope, or that does not hold the rest of the path, gives way to the next one at the same
-/// level. The last segment is not retried.
+/// Resolve `segments[index..]` starting at `scope`.
+///
+/// A name declared more than once at one level is **ambiguous**, and ambiguity is an error, never a
+/// guess: `#add` must not inject the first of two `add`s, and `#Cart` must not inject the `struct`
+/// when an `impl Cart` sits beside it.
+///
+/// What is *not* ambiguity is a name that several blocks share where the rest of the path decides: a
+/// Rust `struct Cart` beside its `impl Cart` blocks all answer to `Cart`, and `Cart/add` is resolved
+/// by retrying them in walk order — the one that holds `add` wins. Only a last segment, or a set of
+/// candidates whose descents *all* succeed, is ambiguous.
 fn resolve_path(
     segments: &[String],
     index: usize,
@@ -1010,7 +824,18 @@ fn resolve_path(
         .into());
     }
 
+    // The selection itself: nothing follows, so a second candidate is a second
+    // answer and the reference does not say which one it wants.
+    if last && candidates.len() > 1 {
+        return Err(SectionError::new(format!(
+            "\"{segment}\" is declared {} times; names must be unique",
+            candidates.len()
+        ))
+        .into());
+    }
+
     let mut failure: Option<PlanError> = None;
+    let mut matched: Option<Hit> = None;
     for candidate in &candidates {
         if last {
             return Ok(Hit {
@@ -1032,7 +857,7 @@ fn resolve_path(
             continue;
         }
         let block = candidate.block.clone().expect("a container has a block");
-        match resolve_path(
+        let resolved = match resolve_path(
             segments,
             index + 1,
             &block,
@@ -1041,11 +866,26 @@ fn resolve_path(
             scan,
             lexer,
         ) {
-            Ok(hit) => return Ok(hit),
+            Ok(hit) => hit,
             Err(error) => {
                 failure.get_or_insert(error);
+                continue;
             }
+        };
+        // Two candidates both holding the rest of the path is the same ambiguity
+        // one level down: the path does not choose between them. Decided after
+        // the match, because the error belongs to this frame, not that one.
+        if matched.is_some() {
+            return Err(SectionError::new(format!(
+                "\"{segment}\" is declared {} times; names must be unique",
+                candidates.len()
+            ))
+            .into());
         }
+        matched = Some(resolved);
+    }
+    if let Some(hit) = matched {
+        return Ok(hit);
     }
     Err(failure.unwrap_or_else(|| SectionError::new("no match").into()))
 }
@@ -1549,52 +1389,54 @@ mod tests {
     }
 
     /// The spelling the vectors do not carry: `canonical` is an answer the grammar owes, but the
-    /// corpus pins errors and warnings only, so it is asserted here.
+    /// corpus pins errors only, so it is asserted here.
     #[test]
     fn a_selector_list_keeps_each_selectors_own_spelling() {
-        assert_eq!("add-,render++", canonical("add-,render++"));
+        assert_eq!("add/-,render/++", canonical("add/-,render/++"));
         assert_eq!("a,b,c", canonical("a,b,c"));
         assert_eq!(
             "add,L40:2-L40:8,remove",
             canonical("add,L40:2-L40:8,remove")
         );
-        // A leading modifier is the whole reference's, and a range ignores it: it is canonicalised to
-        // the very end either way.
-        assert_eq!("L40-L44+", canonical("+L40-L44"));
-        // The two-segment and mid-path spellings still land on one path.
-        assert_eq!("a/b-", canonical("-a/b"));
-        assert_eq!("Cart/Line/render-", canonical("Cart/Line/-render"));
+        // A modifier is canonicalised to the end of the path it belongs to, and nowhere else.
+        assert_eq!("a/b/-", canonical("a/b/-"));
+        assert_eq!("Cart/Line/render/-", canonical("Cart/Line/render/-"));
+        // A `-` is a name character: a hyphenated name and a CSS custom property keep their spelling.
+        assert_eq!("item-list", canonical("item-list"));
+        assert_eq!("--brand", canonical("--brand"));
     }
 
     #[test]
-    fn the_reference_modifier_belongs_to_the_last_selector() {
-        let parsed = parse_selectors("getUsers++-").expect("a contradiction is a warning");
-        assert_eq!("getUsers++", parsed.canonical);
-        let warning = parsed.warning.expect("the contradiction is reported");
-        assert_eq!(
-            ("contradiction", "++", "-"),
-            (warning.kind, warning.kept, warning.dropped)
-        );
-        assert!(warning.message.contains("using \"#getUsers++\""));
-        assert_eq!(Scope::Documented, parsed.scope);
-
-        let Selector::Path {
-            segments, scope, ..
-        } = &parsed.selectors[0]
-        else {
-            panic!("a single path selector");
-        };
-        assert_eq!(vec!["getUsers".to_string()], *segments);
-        assert_eq!(Scope::Documented, *scope);
+    fn the_old_trailing_and_leading_spellings_are_grammar_errors() {
+        for (raw, message) in [
+            (
+                "getUsers++",
+                "\"++\" is a path segment now; write \"#getUsers/++\"",
+            ),
+            (
+                "getUsers+",
+                "\"+\" is a path segment now; write \"#getUsers/+\"",
+            ),
+            (
+                "+getUsers",
+                "\"+\" is a path segment now; it follows the path, as \"#<path>/+\"",
+            ),
+        ] {
+            assert_eq!(
+                message,
+                parse_selectors(raw)
+                    .expect_err("the old spelling is gone")
+                    .message()
+            );
+        }
     }
 
     #[test]
     fn every_selector_keeps_its_own_scope() {
-        // Two selectors that each say what they mean: the earlier one's `-` is its own, not the
-        // reference's, so there is nothing to contradict and the last one keeps its `++`.
-        let parsed = parse_selectors("add-,render++").expect("two selectors");
-        assert_eq!("add-,render++", parsed.canonical);
-        assert!(parsed.warning.is_none());
+        // Two selectors that each say what they mean: the earlier one's `-` is its own, so there is
+        // nothing to merge and the last one keeps its `++`.
+        let parsed = parse_selectors("add/-,render/++").expect("two selectors");
+        assert_eq!("add/-,render/++", parsed.canonical);
         let scopes: Vec<&str> = parsed
             .selectors
             .iter()
@@ -1617,13 +1459,22 @@ mod tests {
 
     #[test]
     fn a_range_takes_no_modifier() {
-        let parsed = parse_selectors("+L40-L44").expect("a leading modifier on a range is ignored");
-        assert_eq!("L40-L44+", parsed.canonical);
-        assert!(parsed.warning.is_none());
+        let parsed = parse_selectors("L40-L44").expect("a range");
+        assert_eq!("L40-L44", parsed.canonical);
         assert_eq!(Scope::Declaration, parsed.scope);
         assert!(matches!(parsed.selectors[0], Selector::Lines { .. }));
 
-        for raw in ["L40-L44+", "L40-", "L40:x", "L0", "L44-L40"] {
+        // A line range takes no modifier anywhere: `L40/+` is not a range, and the range's own `-` is
+        // spoken for, so neither is `L40-L44/-`.
+        for raw in [
+            "L40/+",
+            "L40-L44/-",
+            "L40-L44+",
+            "L40-",
+            "L40:x",
+            "L0",
+            "L44-L40",
+        ] {
             assert!(
                 parse_selectors(raw).is_err(),
                 "{raw} is not a well-formed range"
@@ -1635,11 +1486,31 @@ mod tests {
 
     #[test]
     fn the_same_modifier_twice_is_an_error() {
-        for raw in ["a+++", "a---", "-a-"] {
+        for raw in ["a/+++", "a/---"] {
             let error = parse_selectors(raw).expect_err("two readings of one modifier");
             assert_eq!(
                 format!("\"#{raw}\" carries more than one modifier"),
                 error.message()
+            );
+        }
+        // A modifier anywhere but the last segment is an error.
+        for (raw, message) in [
+            (
+                "a/++/-",
+                "\"++\" may only modify the last path segment of \"#a/++/-\"",
+            ),
+            (
+                "a/-/b",
+                "\"-\" may only modify the last path segment of \"#a/-/b\"",
+            ),
+            (
+                "a/-/++",
+                "\"-\" may only modify the last path segment of \"#a/-/++\"",
+            ),
+        ] {
+            assert_eq!(
+                message,
+                parse_selectors(raw).expect_err("not last").message()
             );
         }
     }

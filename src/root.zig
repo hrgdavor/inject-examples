@@ -2140,17 +2140,15 @@ pub fn resolveMarker(
     return (try planMarker(alloc, marker, read, rule, failure)).text;
 }
 
-/// `planMarker`: the text a marker stands for, plus the section warning the
-/// code rule may carry when a reference contradicts itself (§11).
+/// `planMarker`: the text a marker stands for, plus the line span of each
+/// selector the reference named.
 ///
-/// `ranges` is the line span of each selector the reference named, for the code
-/// rule — the same answer `planSection` gives, so a host that highlights or
-/// navigates does not have to find the text again. A rule that *renders* its
-/// selection (JSON, YAML, TOML, INI) answers null: its selection is not a byte
-/// slice of the file.
+/// `ranges` is for the code rule — the same answer `planSection` gives, so a
+/// host that highlights or navigates does not have to find the text again. A
+/// rule that *renders* its selection (JSON, YAML, TOML, INI) answers null: its
+/// selection is not a byte slice of the file.
 pub const MarkerPlan = struct {
     text: []u16,
-    warning: ?section.Reference.Warning = null,
     ranges: ?[]const section.LineSpan = null,
 };
 
@@ -2165,8 +2163,8 @@ pub fn planMarker(
     const text = try utf8Decode(alloc, bytes);
     const region = marker.region orelse return .{ .text = try normalize(alloc, text) };
 
-    // The built-in code rule is the one whose reference can contradict itself;
-    // a caller-supplied rule for another type resolves to a plain string.
+    // The built-in code rule is the one whose reference names declarations; a
+    // caller-supplied rule for another type resolves to a plain string.
     if (isCodeRule(rule)) {
         var section_failure = section.Failure{};
         const plan = section.planSection(
@@ -2181,7 +2179,6 @@ pub fn planMarker(
         };
         return .{
             .text = plan.text,
-            .warning = plan.reference.warning,
             .ranges = plan.ranges,
         };
     }
@@ -2221,8 +2218,6 @@ pub const Entry = struct {
     skipped: bool,
     /// The cause when `lenient` turned a broken include into a skip.
     failure: ?Str = null,
-    /// A contradictory modifier: a finding, reported in every mode.
-    warning: ?Str = null,
 };
 
 pub const DocumentResult = struct {
@@ -2343,7 +2338,6 @@ pub fn updateDocument(
             else => return err,
         };
         const content = plan.text;
-        const warning: ?Str = if (plan.warning) |found| found.message else null;
 
         var inject_failure = Failure{};
         const injected = injectInto(
@@ -2368,7 +2362,6 @@ pub fn updateDocument(
                     .changed = false,
                     .skipped = true,
                     .failure = inject_failure.message,
-                    .warning = warning,
                 });
                 continue;
             },
@@ -2381,7 +2374,6 @@ pub fn updateDocument(
             .content = content,
             .changed = injected.changed,
             .skipped = false,
-            .warning = warning,
         });
     }
 
@@ -2798,7 +2790,7 @@ test "a declaration whose header does not fit on one line" {
     // the span still starts after the `{` of the closing line.
     try expectText(
         "        return name + \" x\" + quantity;",
-        try extractCodeRegion(alloc, java, try context.units("render-"), file, &failure),
+        try extractCodeRegion(alloc, java, try context.units("render/-"), file, &failure),
     );
 
     // The same declaration reached through its class scope, and a wrapped
@@ -2826,13 +2818,13 @@ test "a declaration whose header does not fit on one line" {
     );
     try expectText(
         "        this.name = name;",
-        try extractCodeRegion(alloc, java, try context.units("store-"), file, &failure),
+        try extractCodeRegion(alloc, java, try context.units("store/-"), file, &failure),
     );
 
     // The `+` scope reaches the annotation above a header that wraps.
     try expectText(
         "    @Override\n    public String toString(\n    ) {\n        return name;\n    }",
-        try extractCodeRegion(alloc, java, try context.units("toString+"), file, &failure),
+        try extractCodeRegion(alloc, java, try context.units("toString/+"), file, &failure),
     );
 }
 
@@ -2930,7 +2922,7 @@ test "extractCodeRegion prefers an explicit region directive" {
 
     const text = try context.units("// #region add\nthe region body\n// #endregion\n\nvoid add() { body(); }");
     try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("add"), try context.units("x.java"), &failure));
-    try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("-add"), try context.units("x.java"), &failure));
+    try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("add/-"), try context.units("x.java"), &failure));
 }
 
 test "extractCodeRegion reads declarations and fails loudly on nothing" {
@@ -2943,7 +2935,7 @@ test "extractCodeRegion reads declarations and fails loudly on nothing" {
 
     try expectText(
         "    @Override\n    public String toString() {\n        return String.join(\",\", items);\n    }",
-        try extractCodeRegion(alloc, java, try context.units("+toString"), try context.units("x.java"), &failure),
+        try extractCodeRegion(alloc, java, try context.units("toString/+"), try context.units("x.java"), &failure),
     );
 
     failure = Failure{};

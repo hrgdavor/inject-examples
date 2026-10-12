@@ -27,7 +27,6 @@ import {
     REGION_RULES,
     TOML_RULE,
     YAML_RULE,
-    codeReference,
     extractCodeRegion,
     extractCssRuleRegion,
     extractDeclaration,
@@ -160,12 +159,24 @@ const JAVA = [
 // Scope modifiers, declarations and code regions
 // ---------------------------------------------------------------------------
 
-test('codeReference reads the scope modifiers', () => {
-    assert.deepEqual(codeReference('add'), { scope: 'declaration', name: 'add' });
-    assert.deepEqual(codeReference('-add'), { scope: 'body', name: 'add' });
-    assert.deepEqual(codeReference('+add'), { scope: 'annotated', name: 'add' });
-    assert.deepEqual(codeReference('++add'), { scope: 'documented', name: 'add' });
-    assert.deepEqual(codeReference('++'), { scope: 'documented', name: '' });
+test('a modifier is the last path segment, and only that', () => {
+    assert.deepEqual(parseSelectors('add').scope, 'declaration');
+    assert.deepEqual(parseSelectors('add/-').scope, 'body');
+    assert.deepEqual(parseSelectors('add/+').scope, 'annotated');
+    assert.deepEqual(parseSelectors('add/++').scope, 'documented');
+    assert.deepEqual(parseSelectors('Cart/Line/render/-').segments, ['Cart', 'Line', 'render'],
+        'the modifier is not one of the segments');
+    assert.deepEqual(parseSelectors('item-list').segments, ['item-list'], 'a hyphen is a name character');
+    assert.deepEqual(parseSelectors('--brand').segments, ['--brand'], 'so is a double hyphen');
+    assert.deepEqual(parseSelectors('add/-,render/++').selectors.map((s) => s.scope), ['body', 'documented'],
+        'each selector carries its own modifier');
+    // `-` is a modifier only as a whole segment, so `add-` is the name `add-`
+    // and the reference resolves to nothing rather than to `add`.
+    assert.equal(parseSelectors('add-').segments[0], 'add-');
+    // The old spellings are gone, and the message says what to write instead.
+    assert.throws(() => parseSelectors('add++'), /write "#add\/\+\+"/);
+    assert.throws(() => parseSelectors('++add'), /it follows the path/);
+    assert.throws(() => parseSelectors('a/++/b'), /may only modify the last path segment/);
 });
 
 test('extractDeclaration matches a method and a class-like declaration', () => {
@@ -263,11 +274,11 @@ test('extractDeclaration rejects ambiguous names and ignores calls', () => {
 test('extractCodeRegion prefers an explicit region directive', () => {
     const text = ['// #region add', 'the region body', '// #endregion', '', 'void add() { body(); }'].join('\n');
     assert.equal(extractCodeRegion(text, 'add'), 'the region body');
-    assert.equal(extractCodeRegion(text, '-add'), 'the region body', 'a modifier cannot change a region');
+    assert.equal(extractCodeRegion(text, 'add/-'), 'the region body', 'a modifier cannot change a region');
 });
 
 test('extractCodeRegion reads declarations and fails loudly on nothing', () => {
-    assert.equal(extractCodeRegion(JAVA, '+toString'),
+    assert.equal(extractCodeRegion(JAVA, 'toString/+'),
         '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
     assert.throws(
         () => extractCodeRegion(JAVA, 'missing'),
@@ -293,29 +304,23 @@ const EXAMPLE = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtur
 // The section-matching spec, against the shared fixtures
 // ---------------------------------------------------------------------------
 
-test('section-matching: existing Example.java modifiers are unchanged', () => {
+test('section-matching: Example.java resolves through the modifier segments', () => {
     assert.equal(extractCodeRegion(EXAMPLE, 'toString'),
         '    public String toString() {\n        return String.join(",", items);\n    }');
-    assert.equal(extractCodeRegion(EXAMPLE, 'toString-'),
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString/-'),
         '        return String.join(",", items);');
-    assert.equal(extractCodeRegion(EXAMPLE, '-toString'),
-        '        return String.join(",", items);');
-    assert.equal(extractCodeRegion(EXAMPLE, 'toString+'),
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString/+'),
         '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
-    assert.equal(extractCodeRegion(EXAMPLE, '+toString'),
-        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
-    assert.equal(extractCodeRegion(EXAMPLE, 'toString++'),
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString/++'),
         '    /** Add one item to this cart. */\n'
         + '    @Override\n'
         + '    public String toString() {\n'
         + '        return String.join(",", items);\n'
         + '    }');
-    assert.equal(extractCodeRegion(EXAMPLE, '++toString'),
-        '    /** Add one item to this cart. */\n'
-        + '    @Override\n'
-        + '    public String toString() {\n'
-        + '        return String.join(",", items);\n'
-        + '    }');
+    // The old spellings are not readings of the same thing any more: `-toString`
+    // is a name no file declares, and `++toString` says what to write instead.
+    assert.throws(() => extractCodeRegion(EXAMPLE, '-toString'), /no section named "-toString"/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, '++toString'), /it follows the path/);
     assert.equal(extractCodeRegion(EXAMPLE, 'Line'),
         '    public static class Line {\n'
         + '        private final String name;\n'
@@ -332,15 +337,13 @@ test('section-matching: existing Example.java modifiers are unchanged', () => {
         + '    }');
 });
 
-// --- 2b: nested references on Example.java (positive — fail today) ---
+// --- 2b: nested references on Example.java ---
 test('section-matching: nested references on Example.java', () => {
     assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/render'),
         '        String render() {\n            return name + " x" + quantity;\n        }');
-    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/render-'),
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/render/-'),
         '            return name + " x" + quantity;');
-    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/-render'),
-        '            return name + " x" + quantity;');
-    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line-'),
+    assert.equal(extractCodeRegion(EXAMPLE, 'Cart/Line/-'),
         '        private final String name;\n'
         + '        private final int quantity;\n'
         + '\n'
@@ -352,6 +355,10 @@ test('section-matching: nested references on Example.java', () => {
         + '        String render() {\n'
         + '            return name + " x" + quantity;\n'
         + '        }');
+    // The modifier describes the selection, so it may not sit in the middle of
+    // the path that makes it.
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'Cart/Line/-/render'),
+        /"-" may only modify the last path segment/);
 });
 
 // --- 2c: anchors and condition literals on Anchors.java ---
@@ -363,7 +370,7 @@ test('section-matching: anchors and condition literals on Anchors.java', () => {
         '    public void handler() { //getUsers\n'
         + '        System.out.println("anchor same line");\n'
         + '    }');
-    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-'),
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers/-'),
         '        System.out.println("anchor same line");');
     assert.equal(extractCodeRegion(ANCHORS, 'dispatch/getUsers'),
         '        if ("getUsers".equals(methodName)) {\n'
@@ -380,14 +387,14 @@ test('section-matching: anchors and condition literals on Anchors.java', () => {
         '    public void handler() { //getUsers\n'
         + '        System.out.println("anchor same line");\n'
         + '    }');
-    assert.equal(extractCodeRegion(ANCHORS, 'handler/getUsers-'),
+    assert.equal(extractCodeRegion(ANCHORS, 'handler/getUsers/-'),
         '        System.out.println("anchor same line");');
     assert.equal(extractCodeRegion(ANCHORS, 'other/getOrders'),
         '    public void other() {\n'
         + '        //getOrders\n'
         + '        System.out.println("anchor next line");\n'
         + '    }');
-    assert.equal(extractCodeRegion(ANCHORS, 'other/getOrders-'),
+    assert.equal(extractCodeRegion(ANCHORS, 'other/getOrders/-'),
         '        System.out.println("anchor next line");');
 
     // Negative: string-literal mention is not a condition literal.
@@ -396,7 +403,7 @@ test('section-matching: anchors and condition literals on Anchors.java', () => {
         /no section named "getUsers" in "commentFromString"/,
     );
     assert.throws(
-        () => extractCodeRegion(ANCHORS, 'commentFromString/getUsers-'),
+        () => extractCodeRegion(ANCHORS, 'commentFromString/getUsers/-'),
         /no section named "getUsers" in "commentFromString"/,
     );
 });
@@ -410,14 +417,14 @@ test('section-matching: grammar errors throw the §9 shapes', () => {
         /"#\/a" has an empty path segment/);
     assert.throws(() => extractCodeRegion(EXAMPLE, 'a//b'),
         /"#a\/\/b" has an empty path segment/);
-    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/+b'),
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/+/b'),
         /"\+" may only modify the last path segment/);
-    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/-b/c'),
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/-/b'),
         /"\-" may only modify the last path segment/);
-    assert.throws(() => extractCodeRegion(EXAMPLE, 'a+++'),
-        /"#a\+\+\+" carries more than one modifier/);
-    assert.throws(() => extractCodeRegion(EXAMPLE, 'a---'),
-        /"#a---" carries more than one modifier/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/+++'),
+        /"#a\/\+\+\+" carries more than one modifier/);
+    assert.throws(() => extractCodeRegion(EXAMPLE, 'a/---'),
+        /"#a\/---" carries more than one modifier/);
     assert.throws(
         () => extractCodeRegion(EXAMPLE, 'a/b/c/d/e/f/g/h/i'),
         /is deeper than 8 sections/,
@@ -441,26 +448,24 @@ test('a reference names one file, so a second # is not a nested reference', () =
     assert.throws(() => parseSelectors('#a'), /"##a" names nothing/);
 });
 
-// --- 2e: contradictory modifiers resolve to the dominant reading ---
-test('section-matching: contradictory modifiers resolve to the dominant reading', () => {
+// --- 2e: a modifier is the last segment, so two cannot contradict ---
+test('section-matching: a modifier is the last segment of a path', () => {
     const expected = '    public void handler() { //getUsers\n'
         + '        System.out.println("anchor same line");\n'
         + '    }';
 
-    assert.equal(extractCodeRegion(ANCHORS, 'getUsers++-'), expected,
-        '++ wins over trailing -');
-    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-++'), expected,
-        '++ wins over leading -');
-    assert.equal(extractCodeRegion(ANCHORS, 'getUsers+-'), expected,
-        '+ wins over trailing -');
-    assert.equal(extractCodeRegion(ANCHORS, 'getUsers-+'), expected,
-        '+ wins over leading -');
-
-    // TODO(step 4): assert the warning field once parseReference returns one.
-    // The contradiction warning is reported once per document, not per
-    // reference; the CLI prints it and exits 1. The parse layer returns a
-    // `warning` string; the CLI consumes it. Pin the resolved text above;
-    // the warning surface is pinned in the §11 unit tests in step 4.
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers/++'), expected, 'a modifier on the path names the block');
+    assert.equal(extractCodeRegion(ANCHORS, 'getUsers/-'),
+        '        System.out.println("anchor same line");');
+    // Two modifiers on one path is not a reading to choose between: nothing may
+    // follow the modifier, so the second one is misplaced.
+    assert.throws(() => extractCodeRegion(ANCHORS, 'getUsers/++/-'),
+        /"\+\+" may only modify the last path segment/);
+    assert.throws(() => extractCodeRegion(ANCHORS, 'getUsers/-/++'),
+        /"-" may only modify the last path segment/);
+    // The old spellings are not spellings any more, and the message says so.
+    assert.throws(() => extractCodeRegion(ANCHORS, 'getUsers++-'),
+        /"\+\+" is a path segment now; write "#getUsers\/\+\+"/);
 });
 
 // ---------------------------------------------------------------------------
@@ -478,12 +483,14 @@ import { resolveSection, planSection } from './lib/section.mjs';
 test('parseReference: single-segment canonicalisation', () => {
     const cases = [
         ['add', 'add', ['add'], 'declaration'],
-        ['add-', 'add-', ['add'], 'body'],
-        ['add+', 'add+', ['add'], 'annotated'],
-        ['add++', 'add++', ['add'], 'documented'],
-        ['-add', 'add-', ['add'], 'body'],
-        ['+add', 'add+', ['add'], 'annotated'],
-        ['++add', 'add++', ['add'], 'documented'],
+        ['add/-', 'add/-', ['add'], 'body'],
+        ['add/+', 'add/+', ['add'], 'annotated'],
+        ['add/++', 'add/++', ['add'], 'documented'],
+        // A name may contain a hyphen, at any position: only a whole segment is
+        // a modifier, so these are three names and no scope at all.
+        ['add-', 'add-', ['add-'], 'declaration'],
+        ['-add', '-add', ['-add'], 'declaration'],
+        ['--brand', '--brand', ['--brand'], 'declaration'],
     ];
     for (const [raw, canonical, segments, scope] of cases) {
         const r = parseReference(raw);
@@ -491,7 +498,6 @@ test('parseReference: single-segment canonicalisation', () => {
         assert.equal(r.canonical, canonical);
         assert.deepEqual(r.segments, segments);
         assert.equal(r.scope, scope);
-        assert.equal(r.warning, null);
     }
 });
 
@@ -502,29 +508,26 @@ test('parseReference: multi-segment without modifiers', () => {
     assert.equal(r.canonical, 'Cart/Line/render');
     assert.deepEqual(r.segments, ['Cart', 'Line', 'render']);
     assert.equal(r.scope, 'declaration');
-    assert.equal(r.warning, null);
 });
 
-// Group 3: modifier variants across segment positions
+// Group 3: the modifier is the last segment, whatever the path's depth
 test('parseReference: modifier variants produce same scope/segments', () => {
-    // Equivalence class 1: Cart/Line- (2 segments, body scope)
-    const class1 = ['Cart/Line-', 'Cart/-Line', '-Cart/Line'];
-    for (const raw of class1) {
+    // The one spelling per scope: the modifier follows the path it modifies.
+    const cases = [
+        ['Cart/Line/-', 'Cart/Line/-', ['Cart', 'Line'], 'body'],
+        ['Cart/Line/++', 'Cart/Line/++', ['Cart', 'Line'], 'documented'],
+        ['Cart/Line/render/-', 'Cart/Line/render/-', ['Cart', 'Line', 'render'], 'body'],
+        ['Cart/Line/render/+', 'Cart/Line/render/+', ['Cart', 'Line', 'render'], 'annotated'],
+    ];
+    for (const [raw, canonical, segments, scope] of cases) {
         const r = parseReference(raw);
-        assert.equal(r.canonical, 'Cart/Line-');
-        assert.deepEqual(r.segments, ['Cart', 'Line']);
-        assert.equal(r.scope, 'body');
-        assert.equal(r.warning, null);
+        assert.equal(r.canonical, canonical);
+        assert.deepEqual(r.segments, segments);
+        assert.equal(r.scope, scope);
     }
-    // Equivalence class 2: Cart/Line/render- (3 segments, body scope)
-    const class2 = ['Cart/Line/render-', 'Cart/Line/-render'];
-    for (const raw of class2) {
-        const r = parseReference(raw);
-        assert.equal(r.canonical, 'Cart/Line/render-');
-        assert.deepEqual(r.segments, ['Cart', 'Line', 'render']);
-        assert.equal(r.scope, 'body');
-        assert.equal(r.warning, null);
-    }
+    // A modifier anywhere but the end is a mistake, not another reading.
+    assert.throws(() => parseReference('Cart/Line/-/render'), /"-" may only modify the last path segment/);
+    assert.throws(() => parseReference('Cart/-/Line'), /"-" may only modify the last path segment/);
 });
 
 // Group 4: grammar errors throw §9 shapes
@@ -533,46 +536,42 @@ test('parseReference: grammar errors throw §9 shapes', () => {
     assert.throws(() => parseReference('a/'), /has an empty path segment/);
     assert.throws(() => parseReference('/a'), /has an empty path segment/);
     assert.throws(() => parseReference('a//b'), /has an empty path segment/);
-    assert.throws(() => parseReference('a/+b'), /"\+\" may only modify the last path segment/);
-    assert.throws(() => parseReference('a/-b/c'), /"\-" may only modify the last path segment/);
-    assert.throws(() => parseReference('a+++'), /carries more than one modifier/);
-    assert.throws(() => parseReference('a---'), /carries more than one modifier/);
+    assert.throws(() => parseReference('a/+/b'), /"\+" may only modify the last path segment/);
+    assert.throws(() => parseReference('a/-/b'), /"\-" may only modify the last path segment/);
+    assert.throws(() => parseReference('a/+++'), /carries more than one modifier/);
+    assert.throws(() => parseReference('a/---'), /carries more than one modifier/);
     assert.throws(() => parseReference('a/b/c/d/e/f/g/h/i'), /is deeper than 8 sections/);
-    assert.throws(() => parseReference('-a-'), /carries more than one modifier/);
+    assert.throws(() => parseReference('+++'), /carries more than one modifier/);
 });
 
-// Group 5: contradictory modifiers return warning
-test('parseReference: contradictory modifiers return warning', () => {
+// Group 5: `+` never occurs inside a name, so the old spellings are errors
+test('parseReference: the old modifier spellings are errors that name the new one', () => {
     const cases = [
-        ['a++-', '++', 'documented'],
-        ['a-++', '++', 'documented'],
-        ['a+-', '+', 'annotated'],
-        ['a-+', '+', 'annotated'],
-        ['a-/b++', '++', 'documented'],
+        ['add++', '#add/++'],
+        ['add+', '#add/+'],
+        ['a/b++', '#b/++'],
+        ['a/b++-', '#b/++'],
     ];
-    for (const [raw, kept, scope] of cases) {
-        const r = parseReference(raw);
-        assert.equal(r.scope, scope);
-        assert.notEqual(r.warning, null);
-        assert.equal(r.warning.kind, 'contradiction');
-        assert.equal(r.warning.kept, kept);
-        assert.equal(r.warning.dropped, '-');
-        assert.equal(r.canonical, r.canonical.replace(/--/, '')); // canonical drops the '-'
+    for (const [raw, replacement] of cases) {
+        assert.throws(() => parseReference(raw), (err) => {
+            assert.match(err.message, /is a path segment now/);
+            assert.ok(err.message.includes(replacement), `${raw}: message names ${replacement}`);
+            return true;
+        });
     }
+    // A leading `+` has no path before it to append to.
+    assert.throws(() => parseReference('++add'), /it follows the path/);
+    assert.throws(() => parseReference('+add'), /it follows the path/);
 });
 
-// Group 6: boundary - a+++ throws, a++- warns
-test('parseReference: boundary between error and warning', () => {
-    assert.throws(() => parseReference('a+++'), /carries more than one modifier/);
-    assert.throws(() => parseReference('a---'), /carries more than one modifier/);
-
-    const r1 = parseReference('a++-');
-    assert.equal(r1.warning.kind, 'contradiction');
-    assert.equal(r1.scope, 'documented');
-
-    const r2 = parseReference('a+-');
-    assert.equal(r2.warning.kind, 'contradiction');
-    assert.equal(r2.scope, 'annotated');
+// Group 6: a modifier path with nothing to modify
+test('parseReference: a path of modifiers only names nothing', () => {
+    // One bare modifier is the old leading spelling with nothing to lead, and
+    // `+++` is a run of two on one segment: both are reported as what they are.
+    assert.throws(() => parseReference('++'), /names nothing/);
+    assert.throws(() => parseReference('+'), /names nothing/);
+    assert.throws(() => parseReference('-'), /names nothing/);
+    assert.throws(() => parseReference('+++'), /carries more than one modifier/);
 });
 
 // isSingleSegment / finalSegment accept Reference or string
@@ -601,8 +600,8 @@ test('parseReference: SectionReferenceError is Error subclass', () => {
 // error messages quote raw reference
 test('parseReference: error messages quote raw reference', () => {
     assert.throws(
-        () => parseReference('Cart/-Line/render'),
-        /"#Cart\/-Line\/render"/
+        () => parseReference('Cart/-/Line'),
+        /"#Cart\/-\/Line"/
     );
 });
 
@@ -618,11 +617,12 @@ test('parseSelectors: a reference is a comma-separated list of selectors', () =>
         ['L40-L44', 'L40-L44', 'declaration'],
         ['L40:12-L44:3', 'L40:12-L44:3', 'declaration'],
         ['add,render', 'add,render', 'declaration'],
-        // Each selector's own modifier is that selector's, and two selectors
-        // that each say what they mean do not contradict one another.
-        ['add-,render++', 'add-,render++', 'declaration'],
+        // Each selector's own modifier is that selector's: `add/-` is a name
+        // with a hyphen, and `render/++` carries the scope of the list's last
+        // selector only because it *is* the last selector.
+        ['add-,render/++', 'add-,render/++', 'declaration'],
         ['add,L40-L44', 'add,L40-L44', 'declaration'],
-        ['L40-L44,add-', 'L40-L44,add-', 'declaration'],
+        ['L40-L44,add/-', 'L40-L44,add/-', 'declaration'],
         ['L40,L50-L52', 'L40,L50-L52', 'declaration'],
         // A comma between selectors is structure, not part of a name: whitespace
         // around it is irrelevant, exactly as it is around a JSON key path.
@@ -632,24 +632,20 @@ test('parseSelectors: a reference is a comma-separated list of selectors', () =>
         const reference = parseSelectors(raw);
         assert.equal(reference.canonical, canonical, `${raw}: canonical`);
         assert.equal(reference.scope, scope, `${raw}: scope`);
-        assert.equal(reference.warning, null, `${raw}: no warning`);
     }
 
-    // The reference's own modifier — leading or trailing the whole thing —
-    // binds to the last selector: `+add,render` is `add,render+`. A modifier
-    // written on a selector's path stays where it was written.
-    assert.equal(parseSelectors('+add,render').canonical, 'add,render+');
-    assert.equal(parseSelectors('+add,render').scope, 'declaration',
+    // A modifier belongs to the selector whose path carries it, and to no other.
+    assert.equal(parseSelectors('add/-,render').selectors[0].scope, 'body');
+    assert.equal(parseSelectors('add/-,render').selectors[1].scope, 'declaration');
+    assert.equal(parseSelectors('add,render/++').selectors[1].scope, 'documented');
+    assert.equal(parseSelectors('add,render/++').scope, 'declaration',
         'a list has no single scope of its own');
-    assert.deepEqual(parseSelectors('+add,render').selectors.map((s) => s.scope),
-        ['declaration', 'annotated'], 'the last selector takes the reference modifier');
-    assert.equal(parseSelectors('+add').scope, 'annotated', 'one selector does carry it');
-    assert.equal(parseSelectors('add,render+').scope, 'declaration');
+    assert.equal(parseSelectors('add/++').scope, 'documented', 'one selector does carry it');
     assert.deepEqual(parseSelectors('add,render').segments, [],
         'a list of selectors is not one path');
 
     // A single path selector keeps every field the single-reference grammar had.
-    const sole = parseSelectors('Cart/Line/render-');
+    const sole = parseSelectors('Cart/Line/render/-');
     assert.deepEqual(sole.segments, ['Cart', 'Line', 'render']);
     assert.equal(sole.scope, 'body');
     assert.equal(sole.selectors.length, 1);
@@ -666,7 +662,7 @@ test('parseSelectors: a reference is a comma-separated list of selectors', () =>
 });
 
 test('parseSelectors: a line range is malformed, or has a modifier, but never a name', () => {
-    assert.throws(() => parseSelectors('L40-'), /is not a line range/);
+    assert.throws(() => parseSelectors('L40/-'), /is not a line range/);
     assert.throws(() => parseSelectors('L40:x'), /is not a line range/);
     assert.throws(() => parseSelectors('L40:x-L44'), /is not a line range/);
     assert.throws(() => parseSelectors('L40-L44:'), /is not a line range/);
@@ -675,21 +671,19 @@ test('parseSelectors: a line range is malformed, or has a modifier, but never a 
     assert.throws(() => parseSelectors('L44-L40'), /ends before it starts/);
     assert.throws(() => parseSelectors('L40:5-L40:2'), /ends before it starts/);
 
-    // A range has nothing for a modifier to select, and its own `-` is already
-    // spoken for, so a modifier written *on* the range — where it would have to
-    // be read as part of the range — is not a range at all.
-    assert.throws(() => parseSelectors('L40-L44+'), /is not a line range/);
-    assert.throws(() => parseSelectors('L40-L44-'), /is not a line range/);
-    assert.throws(() => parseSelectors('L40+'), /is not a line range/);
+    // A range has nothing for a modifier to select, and `/` is the path
+    // separator rather than part of a range, so a modifier written after one is
+    // not a range at all.
+    assert.throws(() => parseSelectors('L40-L44/+'), /is not a line range/);
+    assert.throws(() => parseSelectors('L40-L44/-'), /is not a line range/);
+    assert.throws(() => parseSelectors('L40/+'), /is not a line range/);
     // The message names the selector that is wrong, not the whole reference.
-    assert.throws(() => parseSelectors('a,L40+'), /"#L40\+" is not a line range/);
+    assert.throws(() => parseSelectors('a,L40/+'), /"#L40\/\+" is not a line range/);
 
-    // A modifier in front of the whole reference is a different matter: it is
-    // the reference's own, and a line range ignores it, exactly as a `#region`
-    // ignores one — there is nothing about lines for a modifier to widen.
-    assert.equal(parseSelectors('+L40').canonical, 'L40+');
-    assert.equal(parseSelectors('+L40').selectors[0].kind, 'lines');
-    assert.equal(extractCodeRegion(EXAMPLE, '+L12-L14'), extractCodeRegion(EXAMPLE, 'L12-L14'));
+    // A line range takes no modifier anywhere: a bare one before the range is
+    // not a leading spelling any more either.
+    assert.throws(() => parseSelectors('+/L40'), /may only modify the last path segment/);
+    assert.equal(extractCodeRegion(EXAMPLE, 'L12-L14'), extractCodeRegion(EXAMPLE, 'L12-L14'));
 
     // A comma joins selectors, so an empty one is an error, not a name.
     assert.throws(() => parseSelectors('add,'), /has an empty selector/);
@@ -737,9 +731,9 @@ test('a wrapped parameter list is still a declaration', () => {
 
     // The body alone: the signature (wrapped across lines) is dropped whole, and
     // the span still starts after the `{` of the closing line.
-    const body = extractCodeRegion(WRAPPED_JAVA, 'render-');
+    const body = extractCodeRegion(WRAPPED_JAVA, 'render/-');
     assert.equal(body, '        return name + " x" + quantity;');
-    const plan = planSection(WRAPPED_JAVA, 'render-', lexerFor('Wrapped.java'));
+    const plan = planSection(WRAPPED_JAVA, 'render/-', lexerFor('Wrapped.java'));
     assert.deepEqual(plan.ranges, [{ from: 9, to: 9 }]);
 
     // A wrapped signature with a generic method's type parameters, and the same
@@ -759,8 +753,8 @@ test('a wrapped parameter list is still a declaration', () => {
 
     // The `+` scope reaches the annotation above a header that wraps, and the
     // body scope starts after the brace the wrapped header ends on.
-    assert.match(extractCodeRegion(WRAPPED_JAVA, 'toString+'), /^    @Override\n    public String toString\(/m);
-    assert.equal(extractCodeRegion(WRAPPED_JAVA, 'store-'), '        this.name = name;');
+    assert.match(extractCodeRegion(WRAPPED_JAVA, 'toString/+'), /^    @Override\n    public String toString\(/m);
+    assert.equal(extractCodeRegion(WRAPPED_JAVA, 'store/-'), '        this.name = name;');
 });
 
 test('a wrapped header is a gap in more than one language', () => {
@@ -771,7 +765,7 @@ test('a wrapped header is a gap in more than one language', () => {
     assert.match(kotlin, /^\s+quantity: Int$/m);
     assert.match(kotlin, /^\s+\): String \{$/m);
     assert.match(kotlin, /return "\$name x\$quantity"/);
-    assert.equal(extractCodeRegion(WRAPPED_KOTLIN, 'render-'), '        return "$name x$quantity"');
+    assert.equal(extractCodeRegion(WRAPPED_KOTLIN, 'render/-'), '        return "$name x$quantity"');
 
     // TypeScript: the class itself resolves, and so do the members whose
     // parameters wrap.
@@ -788,7 +782,7 @@ test('a wrapped header is a gap in more than one language', () => {
     assert.match(python, /^    def render\($/m);
     assert.match(python, /^\s+quantity: int\) -> str:$/m);
     assert.match(python, /return f"\{name\} x\{quantity\}"/);
-    assert.equal(extractCodeRegion(WRAPPED_PYTHON, 'Wrapped/render-'),
+    assert.equal(extractCodeRegion(WRAPPED_PYTHON, 'Wrapped/render/-'),
         '        return f"{name} x{quantity}"');
     assert.equal(extractCodeRegion(WRAPPED_PYTHON, 'label'),
         '    def label(self) -> str:\n        return self.name');
@@ -907,7 +901,7 @@ test('line ranges select the lines they name, byte for byte', () => {
     // whole point of being allowed to write a line number at all.
     assert.equal(extractCodeRegion(EXAMPLE, 'L12-L14'), extractCodeRegion(EXAMPLE, 'toString'));
     assert.equal(extractCodeRegion(EXAMPLE, 'L12-L14'), expected);
-    assert.equal(extractCodeRegion(EXAMPLE, 'L13'), extractCodeRegion(EXAMPLE, 'toString-'));
+    assert.equal(extractCodeRegion(EXAMPLE, 'L13'), extractCodeRegion(EXAMPLE, 'toString/-'));
     assert.equal(extractCodeRegion(EXAMPLE, 'L1-L3'), 'package example;\n\nimport java.util.ArrayList;');
 
     // A column is an offset within its line, counted from 1, and the range runs
@@ -951,24 +945,15 @@ test('several selectors inject in order, each from its own lines', () => {
         /no "#region missing" found, and no section named "missing"/,
     );
 
-    // A modifier belongs to the last selector when it is the reference's own —
-    // leading or trailing the whole reference — and to its own selector when it
-    // is written on that selector's path, which is where it was written.
-    // A modifier belongs to the last selector when it is the reference's own —
-    // leading or trailing the whole reference — and to its own selector when it
-    // is written on that selector's path, which is where it was written.
-    assert.equal(extractCodeRegion(EXAMPLE, '+toString,Line'),
-        extractCodeRegion(EXAMPLE, 'toString') + '\n' + extractCodeRegion(EXAMPLE, 'Line+'));
-    assert.equal(extractCodeRegion(EXAMPLE, '-toString,Line'),
-        extractCodeRegion(EXAMPLE, 'toString') + '\n' + extractCodeRegion(EXAMPLE, 'Line-'));
-    assert.equal(extractCodeRegion(EXAMPLE, 'toString,Line-'),
-        extractCodeRegion(EXAMPLE, 'toString') + '\n' + extractCodeRegion(EXAMPLE, 'Line-'));
-
-    // The reference's own modifier makes the *last* selector carry it; a
-    // selector that writes its own keeps it, and the two are compared rather
-    // than counted twice.
-    assert.equal(extractCodeRegion(EXAMPLE, 'toString+,Line'),
-        extractCodeRegion(EXAMPLE, 'toString+') + '\n' + extractCodeRegion(EXAMPLE, 'Line'));
+    // A modifier belongs to the selector whose path carries it, and to no other.
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString/+,Line'),
+        extractCodeRegion(EXAMPLE, 'toString/+') + '\n' + extractCodeRegion(EXAMPLE, 'Line'));
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString/-,Line'),
+        extractCodeRegion(EXAMPLE, 'toString/-') + '\n' + extractCodeRegion(EXAMPLE, 'Line'));
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString,Line/-'),
+        extractCodeRegion(EXAMPLE, 'toString') + '\n' + extractCodeRegion(EXAMPLE, 'Line/-'));
+    assert.equal(extractCodeRegion(EXAMPLE, 'toString,Line/+'),
+        extractCodeRegion(EXAMPLE, 'toString') + '\n' + extractCodeRegion(EXAMPLE, 'Line/+'));
 });
 
 test('every selection reports the lines it came from, regions included', () => {
@@ -1009,9 +994,9 @@ test('updateDocument injects a CSS selection, with ranges, and is idempotent', (
         if (!(path in files)) throw new Error(`ENOENT ${path}`);
         return files[path];
     };
-    const doc = ['[docs/site.css](./docs/site.css#@media/.card-)', '```', 'stale', '```', ''].join('\n');
+    const doc = ['[docs/site.css](./docs/site.css#@media/.card/-)', '```', 'stale', '```', ''].join('\n');
 
-    const plan = planMarker(parseMarker('[docs/site.css](./docs/site.css#@media/.card-)'), read);
+    const plan = planMarker(parseMarker('[docs/site.css](./docs/site.css#@media/.card/-)'), read);
     assert.equal(plan.text, 'gap: 2px;');
     assert.deepEqual(plan.ranges, [{ from: 20, to: 20 }], 'a CSS selection answers with the lines it came from');
 
@@ -1042,7 +1027,7 @@ test('a line range and a multi-selector reference survive a document round trip'
     const doc = [
         '# Doc',
         '',
-        '[a.java](./a.java#L1-L3,toString-)',
+        '[a.java](./a.java#L1-L3,toString/-)',
         '',
         '```',
         '',
@@ -1292,19 +1277,17 @@ test('scanBlocks: region directives on example.ts', () => {
 test('resolveSection: Example.java modifiers unchanged', () => {
     assert.equal(resolveSection(EXAMPLE, 'toString'),
         '    public String toString() {\n        return String.join(",", items);\n    }');
-    assert.equal(resolveSection(EXAMPLE, 'toString-'), '        return String.join(",", items);');
-    assert.equal(resolveSection(EXAMPLE, '-toString'), '        return String.join(",", items);');
-    assert.equal(resolveSection(EXAMPLE, 'toString+'),
+    assert.equal(resolveSection(EXAMPLE, 'toString/-'), '        return String.join(",", items);');
+    assert.equal(resolveSection(EXAMPLE, 'toString/+'),
         '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
-    assert.equal(resolveSection(EXAMPLE, '+toString'),
-        '    @Override\n    public String toString() {\n        return String.join(",", items);\n    }');
-    assert.equal(resolveSection(EXAMPLE, 'toString++'),
+    assert.equal(resolveSection(EXAMPLE, 'toString/++'),
         '    /** Add one item to this cart. */\n'
         + '    @Override\n'
         + '    public String toString() {\n'
         + '        return String.join(",", items);\n'
         + '    }');
-    assert.equal(resolveSection(EXAMPLE, '++toString'), resolveSection(EXAMPLE, 'toString++'));
+    assert.throws(() => resolveSection(EXAMPLE, '++toString'), /it follows the path/,
+        'the old leading spelling is not a spelling');
     assert.equal(resolveSection(EXAMPLE, 'Line'),
         '    public static class Line {\n'
         + '        private final String name;\n        private final int quantity;\n\n'
@@ -1319,9 +1302,10 @@ test('resolveSection: nested references', () => {
     assert.equal(resolveSection(EXAMPLE, 'Cart/toString'), resolveSection(EXAMPLE, 'toString'));
     assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render'),
         '        String render() {\n            return name + " x" + quantity;\n        }');
-    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render-'), '            return name + " x" + quantity;');
-    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/-render'), '            return name + " x" + quantity;');
-    assert.equal(resolveSection(EXAMPLE, 'Cart/Line-'),
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render/-'), '            return name + " x" + quantity;');
+    assert.throws(() => resolveSection(EXAMPLE, 'Cart/Line/-/render'),
+        /"-" may only modify the last path segment/);
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/-'),
         '        private final String name;\n'
         + '        private final int quantity;\n'
         + '\n'
@@ -1343,7 +1327,7 @@ test('resolveSection: anchors and condition literals', () => {
         '    public void handler() { //getUsers\n'
         + '        System.out.println("anchor same line");\n'
         + '    }');
-    assert.equal(resolveSection(ANCHORS, 'getUsers-'), '        System.out.println("anchor same line");');
+    assert.equal(resolveSection(ANCHORS, 'getUsers/-'), '        System.out.println("anchor same line");');
     assert.equal(resolveSection(ANCHORS, 'dispatch/getUsers'),
         '        if ("getUsers".equals(methodName)) {\n'
         + '            System.out.println("users");\n'
@@ -1361,18 +1345,18 @@ test('resolveSection: anchors and condition literals', () => {
         '    public void handler() { //getUsers\n'
         + '        System.out.println("anchor same line");\n'
         + '    }');
-    assert.equal(resolveSection(ANCHORS, 'handler/getUsers-'), '        System.out.println("anchor same line");');
+    assert.equal(resolveSection(ANCHORS, 'handler/getUsers/-'), '        System.out.println("anchor same line");');
     assert.equal(resolveSection(ANCHORS, 'other/getOrders'),
         '    public void other() {\n'
         + '        //getOrders\n'
         + '        System.out.println("anchor next line");\n'
         + '    }');
-    assert.equal(resolveSection(ANCHORS, 'other/getOrders-'), '        System.out.println("anchor next line");');
+    assert.equal(resolveSection(ANCHORS, 'other/getOrders/-'), '        System.out.println("anchor next line");');
 
     // Negative: a string-literal mention is not a condition literal (§12).
     assert.throws(() => resolveSection(ANCHORS, 'commentFromString/getUsers'),
         /no section named "getUsers" in "commentFromString"/);
-    assert.throws(() => resolveSection(ANCHORS, 'commentFromString/getUsers-'),
+    assert.throws(() => resolveSection(ANCHORS, 'commentFromString/getUsers/-'),
         /no section named "getUsers" in "commentFromString"/);
 });
 
@@ -1439,8 +1423,8 @@ test('resolveSection: region directives', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
     const ts = read('test/fixtures/example.ts');
     assert.equal(resolveSection(ts, 'table'), '| name | qty |\n| ---- | --- |\n| bolt | 12  |');
-    assert.equal(resolveSection(ts, 'table+'), resolveSection(ts, 'table'), 'region ignores modifier');
-    assert.equal(resolveSection(ts, 'table++'), resolveSection(ts, 'table'));
+    assert.equal(resolveSection(ts, 'table/+'), resolveSection(ts, 'table'), 'region ignores modifier');
+    assert.equal(resolveSection(ts, 'table/++'), resolveSection(ts, 'table'));
     assert.equal(resolveSection(ts, 'config'), 'export const config = { retries: 3 };');
 });
 
@@ -1460,7 +1444,7 @@ test('resolveSection: region outranks a declaration', () => {
 });
 
 // --- Ambiguity pin: two inner classes each have `render` ---
-test('resolveSection: ambiguous name resolves to the first in the walk', () => {
+test('resolveSection: an ambiguous name is an error, never the first in the walk', () => {
     const text = [
         'class Outer {',            // 0
         '    class A {',            // 1
@@ -1475,26 +1459,54 @@ test('resolveSection: ambiguous name resolves to the first in the walk', () => {
         '    }',                    // 10
         '}',                        // 11
     ].join('\n');
+    // The path that names the holder resolves, because only one `A`/`B` can hold
+    // it; that is what a path is for.
     assert.equal(resolveSection(text, 'A/render'),
         '        void render() {\n            one();\n        }');
     assert.equal(resolveSection(text, 'B/render'),
         '        void render() {\n            two();\n        }');
-    assert.equal(resolveSection(text, 'render'), resolveSection(text, 'A/render'),
-        'a bare name resolves to whichever comes first');
+    // A bare `render` names neither of them, so there is no answer to inject —
+    // and picking the first would put `one()` in every document that asked for
+    // *the* render. `A/render` is the spelling that says which.
+    assert.throws(() => resolveSection(text, 'render'),
+        /"render" is declared 2 times; names must be unique/);
+    // The same rule one level up: two names for one class is a broken reference.
+    assert.throws(() => resolveSection('class X {}\nclass X {}\n', 'X'),
+        /"X" is declared 2 times; names must be unique/);
+
+    // And the same rule *below* a path: if both candidates hold the rest of the
+    // path, the path has not decided either. Only naming the holder does.
+    const nested = [
+        'class A {',
+        '    class Inner {',
+        '        class Deep { void one() {} }',
+        '    }',
+        '}',
+        'class B {',
+        '    class Inner {',
+        '        class Deep { void two() {} }',
+        '    }',
+        '}',
+    ].join('\n');
+    assert.equal(resolveSection(nested, 'A/Inner/Deep'), '        class Deep { void one() {} }');
+    assert.equal(resolveSection(nested, 'B/Inner/Deep'), '        class Deep { void two() {} }');
+    assert.throws(() => resolveSection(nested, 'Inner/Deep'),
+        /"Inner" is declared 2 times; names must be unique/);
 });
 
-// --- Contradiction warnings (§11): the `++` reading wins, warning is set ---
-test('planSection: contradiction resolves to the dominant reading with a warning', () => {
+// --- The scope a modifier selects is the only thing a modifier does ---
+test('planSection: a modifier selects a scope, and nothing else', () => {
     const expected = '    public void handler() { //getUsers\n'
         + '        System.out.println("anchor same line");\n'
         + '    }';
-    for (const ref of ['getUsers++-', 'getUsers-++', 'getUsers+-', 'getUsers-+']) {
-        const plan = planSection(ANCHORS, ref);
-        assert.equal(plan.text, expected, `${ref} resolves to the ++/dominant reading`);
-        assert.ok(plan.reference.warning !== null, `${ref} carries a contradiction warning`);
-    }
-    // A non-contradictory reference carries no warning.
-    assert.equal(planSection(ANCHORS, 'getUsers').reference.warning, null);
+    assert.equal(planSection(ANCHORS, 'getUsers/++').text, expected);
+    assert.equal(planSection(ANCHORS, 'getUsers/++').reference.scope, 'documented');
+    assert.equal(planSection(ANCHORS, 'getUsers/-').reference.scope, 'body');
+    // A reference carries no warning: a modifier chooses how much of the match
+    // comes along, and two of them on one path is an error rather than a
+    // reading to choose between.
+    assert.throws(() => planSection(ANCHORS, 'getUsers/++/-'),
+        /"\+\+" may only modify the last path segment/);
 });
 
 // ---------------------------------------------------------------------------
@@ -1543,10 +1555,10 @@ test('lexer hook: lexerFor maps known types and omits unknown ones', () => {
 });
 
 test('lexer hook: a known-type lexer resolves byte-identical to the default engine', () => {
-    for (const ref of ['getUsers', 'getUsers-', 'getOrders', 'dispatch/getUsers', 'handler/getUsers']) {
+    for (const ref of ['getUsers', 'getUsers/-', 'getOrders', 'dispatch/getUsers', 'handler/getUsers']) {
         assert.equal(resolveSection(ANCHORS, ref, lexerJava), resolveSection(ANCHORS, ref), `Anchors ${ref}`);
     }
-    for (const ref of ['toString', 'toString++', 'Line', 'Cart/Line/render', 'Cart/Line/render-']) {
+    for (const ref of ['toString', 'toString/++', 'Line', 'Cart/Line/render', 'Cart/Line/render/-']) {
         assert.equal(resolveSection(EXAMPLE, ref, lexerJava), resolveSection(EXAMPLE, ref), `Example ${ref}`);
     }
     const ts = lexRead('test/fixtures/example.ts');
@@ -1556,10 +1568,13 @@ test('lexer hook: a known-type lexer resolves byte-identical to the default engi
 });
 
 test('lexer hook: the modifier still binds only to the last segment through a lexer', () => {
-    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render-', lexerJava),
+    assert.equal(resolveSection(EXAMPLE, 'Cart/Line/render/-', lexerJava),
         '            return name + " x" + quantity;');
-    assert.throws(() => resolveSection(EXAMPLE, 'Cart/-Line/render', lexerJava),
+    assert.throws(() => resolveSection(EXAMPLE, 'Cart/Line/-/render', lexerJava),
         /may only modify the last path segment/);
+    // A `-` inside a name is a name, so this is a miss, not a modifier.
+    assert.throws(() => resolveSection(EXAMPLE, 'Cart/-Line/render', lexerJava),
+        /no section named "-Line" in "Cart"/);
 });
 
 test('lexer hook: the Zig lexer hides a declaration a nested block comment wraps', () => {
@@ -1718,10 +1733,11 @@ test('paths retry a duplicated scope name, and the selection keeps walk order', 
     // lives in the second impl, past the first one.
     assert.equal(resolveSection(rust, 'Cart/add', lexerFor('cart.rs')), '    fn add(&mut self) {}');
     assert.equal(resolveSection(rust, 'Cart/remove', lexerFor('cart.rs')), '    fn remove(&mut self) {}');
-    // The last segment is not retried: the first match in walk order is the
-    // selection, exactly as the contract says.
-    assert.equal(resolveSection(rust, 'Cart', lexerFor('cart.rs')),
-        'struct Cart {\n    items: Vec<String>,\n}');
+    // `Cart` alone names three blocks — the struct and two impls — and the
+    // reference does not say which. A path that descends is how you say it; a
+    // bare name that would have to pick is an error.
+    assert.throws(() => resolveSection(rust, 'Cart', lexerFor('cart.rs')),
+        /"Cart" is declared 3 times; names must be unique/);
     // No candidate holds the rest: the error is the one the first candidate gave.
     assert.throws(() => resolveSection(rust, 'Cart/nope', lexerFor('cart.rs')),
         /no section named "nope" in "Cart"/);
@@ -1748,7 +1764,7 @@ test('language table: the shapes a language adds are members, not text', () => {
     // `def add` needs no parentheses, and `end` closes the declaration.
     assert.equal(resolveSection(ruby, 'Cart/add', lexerFor('cart.rb')),
         '  def add(item)\n    @items << item\n  end');
-    assert.equal(resolveSection(ruby, 'Cart/add-', lexerFor('cart.rb')), '    @items << item');
+    assert.equal(resolveSection(ruby, 'Cart/add/-', lexerFor('cart.rb')), '    @items << item');
     assert.equal(resolveSection(ruby, 'build', lexerFor('cart.rb')), '  def self.build\n    new\n  end',
         '`self.` is not part of the name');
     assert.throws(() => resolveSection(ruby, 'decoy', lexerFor('cart.rb')), /no /, 'a commented def is not one');
@@ -1770,7 +1786,7 @@ test('language table: the shapes a language adds are members, not text', () => {
     ].join('\n');
 
     assert.equal(resolveSection(haskell, 'add', lexerFor('Main.hs')), 'add x y = x + y');
-    assert.equal(resolveSection(haskell, '+add', lexerFor('Main.hs')),
+    assert.equal(resolveSection(haskell, 'add/+', lexerFor('Main.hs')),
         'add :: Int -> Int -> Int\nadd x y = x + y', 'the type signature is what labels a binding');
     assert.equal(resolveSection(haskell, 'Store', lexerFor('Main.hs')), 'class Store s where\n  get :: s -> Int');
     assert.equal(resolveSection(haskell, 'Cart', lexerFor('Main.hs')), 'data Cart = Cart { items :: [Int] }');
@@ -1790,67 +1806,57 @@ test('language table: the shapes a language adds are members, not text', () => {
     assert.equal(resolveSection(vb, 'Form/Add', lexerFor('Form.vb')),
         '    Public Function Add(item As String) As String\n'
         + '        Dim note As String = "a ""}"" decoy"\n        Return note\n    End Function');
-    assert.equal(resolveSection(vb, 'Form/Add-', lexerFor('Form.vb')),
+    assert.equal(resolveSection(vb, 'Form/Add/-', lexerFor('Form.vb')),
         '        Dim note As String = "a ""}"" decoy"\n        Return note',
         'the body stops before the terminator');
     assert.throws(() => resolveSection(vb, 'form/add'), /no /, 'VB names are case-sensitive here, as everywhere');
 });
 
 // ---------------------------------------------------------------------------
-// Step 7 — warning surfaces through the library (planMarker/updateDocument)
-// and the CLI (exit code + stderr line), and the delegation is byte-identical
+// The marker layer — planMarker answers text and ranges, and nothing else
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Warnings through the marker layer
-// ---------------------------------------------------------------------------
-
-test('planMarker carries the section warning for a contradiction', () => {
+test('planMarker carries the text and the ranges of a code reference', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
-    const plan = planMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers++-)'), read);
-    assert.equal(plan.text, resolveSection(ANCHORS, 'getUsers++-'));
-    assert.ok(plan.warning !== null, 'warning surfaced through planMarker');
-    assert.equal(plan.warning.kind, 'contradiction');
-    assert.match(plan.warning.message, /"\+\+" contradicts "-"/);
-    assert.match(plan.warning.message, /using "#getUsers\+\+"/);
-    // resolveMarker stays a string and drops the warning.
+    const plan = planMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers/++)'), read);
+    assert.equal(plan.text, resolveSection(ANCHORS, 'getUsers/++'));
+    assert.deepEqual(plan.ranges, [{ from: 14, to: 16 }]);
+    assert.deepEqual(Object.keys(plan).sort(), ['ranges', 'text'], 'the answer is those two fields');
+    // resolveMarker stays a string.
     assert.equal(typeof resolveMarker(parseMarker('[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers)'), read), 'string');
 });
 
-test('updateDocument reports a warning and stays idempotent', () => {
+test('updateDocument injects a modifier reference and is idempotent', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
     const doc = [
-        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers++-)',
+        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers/-)',
         '```java',
         'stale',
         '```',
     ].join('\n');
     const first = updateDocument(doc, { readFile: read });
     assert.equal(first.results.length, 1);
-    assert.ok(first.results[0].warning !== null, 'the contradiction warning rides on the result');
     assert.equal(first.changed, true);
-    assert.match(first.text, /public void handler\(\) \{ \/\/getUsers/);
+    assert.match(first.text, /System\.out\.println\("anchor same line"\)/);
     assert.doesNotMatch(first.text, /stale/);
 
     const second = updateDocument(first.text, { readFile: read });
     assert.equal(second.changed, false, 'a second pass is a no-op');
-    assert.ok(second.results[0].warning !== null, 'the warning is reported again on the second pass');
 });
 
-test('updateDocument: an over-concrete reference is an error, not a warning', () => {
+test('updateDocument: more than one modifier is an error, not a warning', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
     const doc = [
-        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers+++)',
+        '[test/fixtures/Anchors.java](./test/fixtures/Anchors.java#getUsers/+++)',
         '```java',
         'x',
         '```',
     ].join('\n');
-    // `a+++`-shaped references throw (strict), the error is not a warning.
     assert.throws(() => updateDocument(doc, { readFile: read }), /more than one modifier/);
 });
 
-test('CLI: a contradiction warns and forces exit 1 even when the block is fresh', (t) => {
-    const dir = mkdtempSync(join(process.cwd(), '.cli-warn-'));
+test('CLI: an old modifier spelling is an error that names the new one', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-old-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
 
     const java = [
@@ -1865,36 +1871,30 @@ test('CLI: a contradiction warns and forces exit 1 even when the block is fresh'
     writeFileSync(join(dir, 'C.java'), java + '\n');
     const docPath = join(dir, 'doc.md');
     writeFileSync(docPath, [
-        '[C.java](./C.java#getUsers++-)',
+        '[C.java](./C.java#getUsers++)',
         '',
         '```java',
         'stale',
         '```',
     ].join('\n'));
 
-    // Capture stderr to assert the warning line, mirroring the failure-warning shape.
     const captured = [];
     const original = console.error;
     console.error = (...a) => captured.push(a.join(' '));
+    let code;
     try {
-        assert.equal(main([docPath]), 1, 'a warning exits 1');
-        assert.equal(main([docPath, '--check']), 1, 'a warning exits 1 in --check even when nothing is stale');
+        code = main([docPath]);
     } finally {
         console.error = original;
     }
 
-    const line = captured.find((s) => /warn:.*getUsers\+\+-.*contradicts/.test(s));
-    assert.ok(line, `warning line printed, saw: ${JSON.stringify(captured)}`);
-    assert.ok(line.startsWith('inject-examples: warn:'), 'same shape as a failure warning');
-    assert.ok(line.includes(':1:'), 'reports the marker line (1-based)');
-    assert.ok(line.includes('#getUsers++-'), 'quotes the raw marker');
-    assert.ok(line.includes('"++" contradicts "-"'), 'the contradiction message');
-    assert.ok(line.includes('using "#getUsers++"'), 'the canonical reference');
-    assert.match(line, /"\+\+" contradicts "-"/);
-    assert.match(line, /using "#getUsers\+\+"/);
-    // --check with nothing stale but a warning still returns 1 (asserted above),
-    // and the document was written by the first (non-check) run.
-    assert.match(readFileSync(docPath, 'utf8'), /if \("getUsers"\.equals/);
+    assert.equal(code, 1, 'a broken reference fails the run');
+    const line = captured.find((s) => s.includes('#getUsers++'));
+    assert.ok(line, `the failure names the marker, saw: ${JSON.stringify(captured)}`);
+    assert.ok(line.includes('is a path segment now'), 'and says what to write instead');
+    assert.ok(line.includes('"#getUsers/++"'), 'naming the replacement');
+    assert.equal(readFileSync(docPath, 'utf8').includes('stale'), true,
+        'nothing was written for a reference that does not resolve');
 });
 
 // ---------------------------------------------------------------------------
@@ -2042,6 +2042,40 @@ test('extractYamlRegion renders a key with the mapping that holds it', () => {
     assert.throws(() => extractYamlRegion(YAML_DOC, ' , '), /names no keys/);
 });
 
+test('a duplicated key, table or section is an error, not the first one to appear', () => {
+    // Every rule that selects a key may not guess which of two identical names
+    // was meant: the answer would be a silent lie in the document. The message
+    // names the key and the count, and the fix is to remove the duplicate.
+    const yaml = ['server:', '  port: 8080', 'server:', '  port: 9090'].join('\n');
+    assert.throws(() => extractYamlRegion(yaml, 'server'),
+        /"server": key "server" appears 2 times; names must be unique/);
+    assert.throws(() => extractYamlRegion(yaml, 'server/port'),
+        /"server\/port": key "server" appears 2 times/);
+
+    const toml = ['[server]', 'port = 8080', '', '[server]', 'port = 9090'].join('\n');
+    assert.throws(() => extractTomlRegion(toml, 'server'),
+        /"server": table "\[server\]" appears 2 times; names must be unique/);
+    assert.throws(() => extractTomlRegion(toml, 'server/port'),
+        /"server\/port": table "\[server\]" appears 2 times/);
+
+    const ini = ['[server]', 'port = 8080', '', '[server]', 'port = 9090'].join('\n');
+    assert.throws(() => extractIniRegion(ini, 'server'),
+        /"server": section "\[server\]" appears 2 times; names must be unique/);
+    assert.throws(() => extractIniRegion(ini, 'server/port'),
+        /"server\/port": section "\[server\]" appears 2 times/);
+
+    // A duplicated *key* inside one section is the same mistake one level down.
+    const dupKey = ['[server]', 'port = 1', 'port = 2'].join('\n');
+    assert.throws(() => extractIniRegion(dupKey, 'server/port'),
+        /"server\/port": key "port" appears 2 times; names must be unique/);
+    const dupTomlKey = ['[server]', 'port = 1', 'port = 2'].join('\n');
+    assert.throws(() => extractTomlRegion(dupTomlKey, 'server/port'),
+        /"server\/port": key "port" appears 2 times; names must be unique/);
+
+    // A document with no duplicate is untouched by any of this.
+    assert.equal(extractYamlRegion(['a: 1', 'b: 2'].join('\n'), 'b'), 'b: 2');
+});
+
 test('extractTomlRegion renders a key with its table, continuation lines included', () => {
     assert.equal(extractTomlRegion(TOML_DOC, 'server/port'), '[server]\nport = 8080');
     assert.equal(extractTomlRegion(TOML_DOC, 'server/hosts'),
@@ -2111,7 +2145,7 @@ test('updateDocument leaves an already-matching CRLF block byte-for-byte alone',
 test('extractCssRuleRegion reads a style rule by its rightmost simple selector', () => {
     assert.throws(() => extractCssRuleRegion(CSS_DOC, '.card'), /matches 2 blocks/,
         'two top-level rules answer to `.card`, so the bare name is ambiguous');
-    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[data-variant=compact]-'), 'gap: 2px;',
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[data-variant=compact]/-'), 'gap: 2px;',
         '`-` is the declarations, exactly as it is a body for code');
     assert.equal(extractCssRuleRegion(CSS_DOC, ':root'), ':root {\n  --brand: #1f6feb;\n}',
         ':root is a name of its own, not a pseudo on an empty selector');
@@ -2139,7 +2173,7 @@ test('extractCssRuleRegion reads an at-rule, and descends into it', () => {
     assert.equal(extractCssRuleRegion(CSS_DOC, '@font-face'), '@font-face {\n  font-family: Cart;\n}');
     // The nesting is the path: a rule inside the at-rule is a child of it.
     assert.equal(extractCssRuleRegion(CSS_DOC, '@media/.card'), '  .card {\n    gap: 2px;\n  }');
-    assert.equal(extractCssRuleRegion(CSS_DOC, '@media/.card-'), 'gap: 2px;');
+    assert.equal(extractCssRuleRegion(CSS_DOC, '@media/.card/-'), 'gap: 2px;');
     assert.throws(() => extractCssRuleRegion(CSS_DOC, '@media:print'),
         /no "@media" block whose parameter contains "print"/);
     assert.throws(() => extractCssRuleRegion(CSS_DOC, '@supports'), /no "@supports" block/);
@@ -2155,7 +2189,7 @@ test('a CSS predicate picks between blocks that share a name', () => {
     assert.equal(extractCssRuleRegion(CSS_DOC, '.card[sel=compact]'),
         '.card[data-variant="compact"] {\n  gap: 2px;\n}',
         '[sel=…] is the escape hatch for selector text');
-    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[data-variant=compact]-'), 'gap: 2px;',
+    assert.equal(extractCssRuleRegion(CSS_DOC, '.card[data-variant=compact]/-'), 'gap: 2px;',
         'a modifier may follow the predicate it applies to');
     assert.throws(() => extractCssRuleRegion(CSS_DOC, '.card[data-variant=wide]'),
         /no rule "\.card"/, 'a predicate that matches nothing is a miss, not a fallback');
@@ -3283,7 +3317,6 @@ test('the documentation stays in sync with the files it shows', () => {
     for (const entry of result.results) {
         assert.equal(entry.skipped, false);
         assert.equal(entry.failure, undefined);
-        assert.ok(entry.warning === null, `doc/usage.md:${entry.marker.index + 1}: unexpected section warning`);
         assert.ok(existsSync(resolve(join(root, 'doc'), entry.marker.path)), `marker target exists: ${entry.marker.path}`);
     }
     assert.ok(markers.length >= 15, 'the document still shows its files, regions and declarations');
@@ -3374,7 +3407,6 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
     assert.equal(synced.changed, false, 'docs/demo.md must match docs/samples/Inventory.java');
     for (const entry of synced.results) {
         assert.equal(entry.skipped, false, `${entry.marker.raw} must resolve`);
-        assert.ok(entry.warning === null, `${entry.marker.raw}: unexpected section warning`);
     }
 
     const { html, model } = buildDemo({ root });
@@ -3750,20 +3782,14 @@ test('section vectors match a live implementation call', () => {
         // and the rows that are not that are the errors it reports.
         try { ref = parseSelectors(c.reference); } catch (e) { parseErr = e; }
 
-        // Warnings are the parser's own; compare the projected fields.
-        const liveWarning = ref && ref.warning
-            ? { kind: ref.warning.kind, kept: ref.warning.kept, dropped: ref.warning.dropped }
-            : null;
-        assert.deepEqual(c.warning, liveWarning, `${c.name}: warning`);
-
         if (parseErr) {
             assert.equal(c.text, null, `${c.name}: a grammar error has no text`);
             assert.ok(c.error !== null, `${c.name}: a grammar error records its message`);
             assert.equal(c.error, parseErr.message, `${c.name}: grammar error message`);
             continue;
         }
-        // Parse-success vectors carry a resolution result (text or error) or
-        // are parse-only probes (both null) whose value is the parsed warning.
+        // Parse-success vectors carry a resolution result (text or error) or are
+        // parse-only probes (both null) whose value is the canonical spelling.
         if (c.text !== null) {
             assert.equal(c.error, null, `${c.name}: exactly one of text/error`);
             const plan = planSection(readFileSync(join(root, c.input), 'utf8'), c.reference, lexerFor(c.input));
@@ -3874,12 +3900,10 @@ test('RFC §5.3: the Plan exposes exactly the documented fields', () => {
 test('RFC §5.3: the Reference exposes exactly the documented fields', () => {
     const { reference } = planSection(JAVA, 'Line', lexerFor('Example.java'));
     assert.deepEqual(Object.keys(reference).sort(),
-        ['canonical', 'raw', 'scope', 'segments', 'selectors', 'warning']);
-    // The warning belongs to the reference, not the plan: it is a property of
-    // what was asked for rather than of what was found.
-    assert.equal(reference.warning, null);
-    const warned = parseSelectors('getUsers++-').warning;
-    assert.deepEqual([warned.kind, warned.kept, warned.dropped], ['contradiction', '++', '-']);
+        ['canonical', 'raw', 'scope', 'segments', 'selectors']);
+    // There is no warning anywhere in this grammar: a reference either resolves
+    // or fails, so there is no third answer to carry.
+    assert.throws(() => parseSelectors('getUsers/++/-'), /may only modify the last path segment/);
 });
 
 test('RFC §5.3: a Selector is a path or a line range, and each carries its own detail', () => {

@@ -39,7 +39,6 @@ const lexical = read(LEXICAL);
 const parseRows = section.filter((row) => row.input === null);
 const resolveRows = section.filter((row) => row.input !== null);
 const errorRows = section.filter((row) => row.error !== null);
-const warnRows = section.filter((row) => row.warning !== null);
 
 const manifest = {
     $comment: [
@@ -97,7 +96,7 @@ const manifest = {
             file: SECTION,
             rows: resolveRows.length,
             selector: 'rows with input !== null (they name a fixture)',
-            asserts: ['text', 'startLine', 'endLine', 'ranges', 'kind', 'error', 'warning'],
+            asserts: ['text', 'startLine', 'endLine', 'ranges', 'kind', 'error'],
             needs: ['layers 1-4'],
         },
         {
@@ -135,14 +134,12 @@ const manifest = {
                 ranges: '[[from, to], ...] — the spread of text as 1-based inclusive line pairs',
                 kind: 'region | declaration | property | condition | anchor | lines | multiple; null for a parse row',
                 error: 'the exact thrown message, or null',
-                warning: 'null, or { kind, kept, dropped } for a contradictory-modifier warning',
             },
             counts: {
                 total: section.length,
                 parse: parseRows.length,
                 resolution: resolveRows.length,
                 errors: errorRows.length,
-                warnings: warnRows.length,
                 by_kind: tally(resolveRows, 'kind'),
             },
             // A port that asserts fewer rows than this is skipping; the number is

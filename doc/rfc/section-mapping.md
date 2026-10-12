@@ -18,9 +18,9 @@
 exact lines of one source file it names:
 
 ```text
-Cart/Line/render-          the body of the method `render` inside `Line` inside `Cart`
+Cart/Line/render/-         the body of the method `render` inside `Line` inside `Cart`
 L40:12-L44:3               lines 40 to 44, from column 12 to column 3
-++toString,render          a documented method, then another method, of the same file
+toString/++,render         a documented method, then another method, of the same file
 server/port                a key path in a config file
 ```
 
@@ -28,7 +28,7 @@ Each line above is a *different* reference — a reference names one file, and t
 file is the path in the link. The reference rides in the fragment:
 
 ```markdown
-[the renderer](src/Cart.java#Cart/Line/render-)
+[the renderer](src/Cart.java#Cart/Line/render/-)
 [the port](app.yaml#server/port)
 ```
 
@@ -116,7 +116,7 @@ block, or several in a written order, injected into a fenced code block.
 - The text must be *exact* — it is pasted, not linked. An off-by-one is a bug
   someone will copy.
 - **Several selections must compose in the order written**, because prose
-  narrates an order (`++toString,config.port`) that need not be source order.
+  narrates an order (`toString/++,config.port`) that need not be source order.
 - It must work for files that are **not code** — YAML, TOML, INI, JSON — where
   "declaration" has no meaning and the answer is a key, a value or a verbatim
   line range.
@@ -210,7 +210,7 @@ scan is not involved at all.
 | completion of a reference (after `#`, after `/`, after `,`) | `parseSelectors`/`parseReference` | a pure, context-free parse that reads no file, so it is safe to call on every keystroke |
 | a preview of a completion item | `parseSelectors` | the structured `Reference`: `segments`, `scope`, `selectors[]`, and the canonical spelling |
 | go-to-definition, and document highlight | `planSection`, or the host's AST | `startLine`/`endLine`, and one range per selector so each piece is highlighted separately |
-| a diagnostic for a broken fragment | `planSection` | a specific message that names the selector at fault, and `warning` as a finding rather than a failure |
+| a diagnostic for a broken fragment | `planSection` | a specific message that names the selector at fault; a reference either resolves or fails, so there is nothing halfway to report |
 | semantic tokens, folding, "find all references to this section" | `planSection`, or the host's AST | `reference.selectors[]` and `ranges` |
 
 **Two properties make this work, and both are already in the interface.**
@@ -257,10 +257,10 @@ specification.
 What 1.0 does to keep that door open, cheaply:
 
 1. **The grammar stays machine-rewritable.** A reference is a `,`-separated list
-   of `/`-separated paths with a trailing modifier; there is no syntax whose
-   meaning depends on context outside the fragment. A writer can regenerate a
-   fragment from a parsed `Reference` without asking anything else — which is
-   already true, because `Reference.canonical` exists.
+   of `/`-separated paths whose last segment may be a modifier (`render/++`);
+   there is no syntax whose meaning depends on context outside the fragment. A
+   writer can regenerate a fragment from a parsed `Reference` without asking
+   anything else — which is already true, because `Reference.canonical` exists.
 2. **A fragment is locatable.** References live in link fragments
    (`path#reference`) and are found by the document layer, not by guessing at
    prose. A rewriter needs to find them reliably; it does not need to understand
@@ -347,9 +347,8 @@ Reference := {
   raw:       string,                     // the reference as written
   canonical: string,                     // its canonical spelling
   selectors: Selector[],                 // one per selector, in order
-  segments:  string[],                   // the last path selector's segments
-  scope:     'declaration' | 'body' | 'annotated' | 'documented',
-  warning:   null | { kind: 'contradiction', kept: '++' | '+', dropped: '-' }
+  segments:  string[],                   // the last path selector's name segments
+  scope:     'declaration' | 'body' | 'annotated' | 'documented'
 }
 
 Selector := { kind: 'path',  raw: string, segments: string[], scope: Scope }
@@ -366,8 +365,8 @@ Selector := { kind: 'path',  raw: string, segments: string[], scope: Scope }
   selector carries its own `kind` (`path` or `lines`), its own `scope`, and its
   own segments. `kind` on the plan is the *summary*: the one matcher that found a
   single selector, or `multiple` when the reference named several.
-- The `warning` belongs to the reference, not the plan, because it is a property
-  of what was asked for rather than of what was found.
+- A modifier (`++`, `+`, `-`) is the **last segment** of a path, so `segments`
+  holds names only; it is reported as the selector's `scope`.
 - Every selector must resolve. A list is **not** a fallback: the first missing
   selector fails the whole reference, naming it.
 - **Never a clamp.** Anything the file does not have is an error, because a range
@@ -395,12 +394,15 @@ suite asserts them — and they always quote the reference or selector at fault:
 | reversed | `"#L44-L40" ends before it starts` |
 | past the end | `"#L31": the file has 30 line(s)` |
 | too deep | `"#a/b/c/d/e/f/g/h/i" is deeper than 8 sections` |
+| a modifier that is not the last segment | `"++" may only modify the last path segment of "#a/++/b"` |
+| the old suffix or prefix spelling | `"++" is a path segment now; write "#a/++"` |
 | not found | `no section named "render" in "Cart"` |
 
-Two things are **warnings, not errors**, and they belong to the answer, not the
-failure path: a modifier written twice with different meanings
-(`getUsers++-` → keeps `++`, drops `-`), and a modifier on a `#region` or a line
-range, where it is ignored.
+**Nothing in this grammar is a warning.** A reference either resolves or fails, so
+there is no third answer to carry: a modifier written twice on one path is
+malformed (`a/++/-`) rather than two readings to choose between, and a modifier on
+a `#region` or a line range is ignored because neither is a path that could carry
+one.
 
 ---
 
@@ -478,18 +480,17 @@ bug in the *port* by definition.
 
 | Corpus | Rows | Asserts | Read by |
 | --- | --- | --- | --- |
-| `test/vectors/section-vectors.json` | 186 | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error, warning | JS, Zig, Java, Rust |
-| — of which grammar-only (`input: null`) | 54 | canonical spelling and the thrown message; no file, no lexer | do. |
-| — of which resolution | 132 | text and ranges against a fixture | do. |
-| — of which expect an **error** | 52 | the failure path: a missing name, a malformed selector, a range past the end, a second `#` | do. |
-| — of which expect a **warning** | 4 | a contradictory modifier resolved to the dominant reading | do. |
-| `test/vectors/lexical-vectors.json` → `masks` | 45 | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust |
+| `test/vectors/section-vectors.json` | 195 | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust |
+| — of which grammar-only (`input: null`) | 58 | canonical spelling and the thrown message; no file, no lexer | do. |
+| — of which resolution | 137 | text and ranges against a fixture | do. |
+| — of which expect an **error** | 65 | the failure path: a missing name, an ambiguous name, a malformed selector, a range past the end, a second `#`, a misplaced modifier | do. |
+| `test/vectors/lexical-vectors.json` → `masks` | 46 | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust |
 | `test/vectors/lexical-vectors.json` → `shapes` | 43 | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line` | JS, Zig, Java, Rust |
 | `test/vectors/manifest.json` | — | the machine-readable map of the above (see §7.3) | tooling, humans |
 
 The `kind` a resolution row reports, as a census of the suite:
-`declaration` 69, `property` 10, `anchor` 9, `lines` 6, `region` 5,
-`multiple` 5, `condition` 2, and `null` 26 (the error rows and the rows whose
+`declaration` 68, `property` 10, `anchor` 9, `lines` 6, `region` 5,
+`multiple` 5, `condition` 2, and `null` 90 (the error rows and the rows whose
 answer is a whole-file or body-less selection).
 
 A fourth suite is not in the corpus but is equally required: the **differential
@@ -502,15 +503,15 @@ hand-written vector had covered.
 
 ```jsonc
 // section-vectors.json — a grammar-only row: no fixture, nothing to resolve
-{ "name": "grammar:add-,render++", "input": null, "reference": "add-,render++",
+{ "name": "grammar:add/-,render/++", "input": null, "reference": "add/-,render/++",
   "text": null, "startLine": null, "endLine": null,
-  "ranges": null, "kind": null, "error": null, "warning": null }
+  "ranges": null, "kind": null, "error": null }
 
 // section-vectors.json — a resolution row
 { "name": "wrapped-method", "input": "test/fixtures/Wrapped.java",
   "reference": "render", "text": "    public String render(\n…",
   "startLine": 6, "endLine": 10, "ranges": [[6, 10]], "kind": "declaration",
-  "error": null, "warning": null }
+  "error": null }
 ```
 
 The two kinds are told apart by `input`: a grammar-only row consults no file, so
@@ -777,6 +778,27 @@ A's whole latitude — but the search, the ranking and the "close enough" judgem
 belong to the host, never to the mapper. Writing this down converts the boundary
 of [§3.3](#33-the-boundary-stated-once) from an explanation into an obligation.
 
+**A tie is an error, not a tie-break.** This is the same rule seen from the other
+side, and it is the one place where a lenient reading of the mapper is tempting:
+when two blocks at one level both answer to the name a reference selected, the
+mapper fails with `"<name>" is declared <n> times; names must be unique` rather
+than returning the first in walk order. Two reasons:
+
+1. **The document use case cannot tolerate it.** An injected block is copied into
+   a document and read as fact, so choosing one of two `add` methods produces a
+   lie no reader can detect — and CI, which is the only thing that could have
+   caught it, saw a clean resolve.
+2. **The best-effort belongs to the caller.** A notebook navigator that wants
+   *some* answer is a host with its own ranking, and this section already gives it
+   that: it catches the error and applies its policy, exactly as it does for a
+   name that matched nothing. What it cannot do is make the mapper guess on its
+   behalf, because the mapper has no way to know which host is asking.
+
+Qualifying the name with its holder (`Cart/add`) is the fix, and it is what a
+path is for. The key formats answer the same way, with a message that names the
+format's own thing: `"server": key "server" appears 2 times; names must be
+unique`.
+
 ### 9.6 No version negotiation
 
 A reference does not declare the version of the syntax it was written against,
@@ -828,8 +850,26 @@ through the fragment.
   the grammar, the error messages and the `Plan`/`Reference` field names stop
   changing incompatibly. New languages, lexer entries, conformance rows, `kind`
   members and fields are **minor**; a removal, a rename, a changed message or a
-  changed resolution is **major**.
-- **Change log.**
+  changed resolution is **major**.- **Change log.**
+  - `0.9-rc` (this revision) — **an ambiguous name is an error.** When two blocks
+    at one level both answer to the name a reference selected, the mapper fails
+    (`"add" is declared 2 times; names must be unique`) instead of returning the
+    first in walk order, which it did until now: the document use case cannot
+    tolerate a silent choice, and a host that wants one has its own ranking
+    ([§9.5](#95-no-fallback-in-the-mapper)). The key formats follow the same rule
+    for a duplicated key, table or section.
+  - `0.9-rc` (previous revision) — **the modifier is a path segment.** The grammar now
+    reads `selector := path | line-range` and `path := segment ('/' segment)*`,
+    where a segment is a name or one of `++`, `+`, `-`, and a modifier is legal
+    **only as the last segment**: `toString/++`, `Cart/Line/render/-`,
+    `getUsers/+`. There is no trailing or leading modifier any more, so
+    `toString++` is an error whose message names the new spelling, and a `-`
+    inside a name is a name (`item-list`, a CSS custom property's `--brand`).
+    This is breaking for every document that used a suffix or prefix. The
+    **contradiction warning is removed** with it, because two modifiers can no
+    longer land on one selector: `a/++/-` is malformed rather than two readings
+    to choose between. The `Reference` shape loses its `warning` field, and the
+    corpus rows lose it too.
   - `0.9-rc` — the eight open questions settled ([§9](#9-decisions)), and two
     errors corrected: the answer shape in §5.3 named a `selections` field that
     does not exist (the per-selection detail is `reference.selectors[]`, and

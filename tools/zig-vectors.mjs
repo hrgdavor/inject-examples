@@ -74,11 +74,6 @@ function zigString(value) {
     return zigLiteral(value);
 }
 
-function zigWarning(warning) {
-    if (!warning) return 'null';
-    return `.{ .kind = .contradiction, .kept = ${zigString(warning.kept)}, .dropped = ${zigString(warning.dropped)} }`;
-}
-
 const fixtures = inputs.map((path) => {
     return `/// \`${path}\`\npub const ${fixtureName(path)} =\n    ${zigLiteral(sources.get(path))};\n`;
 });
@@ -113,7 +108,6 @@ const cases = vectors.map((c) => {
         `        .ranges = ${zigRanges(c.ranges)},`,
         `        .kind = ${zigKind(c.kind)},`,
         `        .error_message = ${zigString(c.error)},`,
-        `        .warning = ${zigWarning(c.warning)},`,
     ];
     return `    .{\n${parts.join('\n')}\n    },`;
 });
@@ -162,12 +156,6 @@ const rendered = `//! The conformance corpora, generated from the JavaScript imp
 
 const std = @import("std");
 
-pub const Warning = struct {
-    kind: enum { contradiction },
-    kept: []const u8,
-    dropped: []const u8,
-};
-
 /// The matcher that found a single selector, or \`multiple\` for several.
 pub const PlanKind = enum { region, declaration, property, condition, anchor, lines, multiple };
 
@@ -185,7 +173,6 @@ pub const Case = struct {
     /// The matcher that found it, or null for a parse-only probe.
     kind: ?PlanKind,
     error_message: ?[]const u8,
-    warning: ?Warning,
 };
 
 /// A 1-based inclusive line range.

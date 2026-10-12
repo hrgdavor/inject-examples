@@ -290,15 +290,15 @@ closing brace — or, in an indentation language such as Python, through the las
 line of its indented block. Nothing has to be added to the code first: the
 declaration *is* the region.
 
-A `-`, `+` or `++` in front of the name selects how much of that declaration
-comes with it:
+A `-`, `+` or `++` **segment** after the path selects how much of that
+declaration comes with it:
 
 | Reference | Injected text |
 | --- | --- |
 | `#add` | the declaration: signature through closing brace |
-| `#-add` | the body only, without the signature |
-| `#+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
-| `#++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
+| `#add/-` | the body only, without the signature |
+| `#add/+` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| `#add/++` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
 
 All four, against `test/fixtures/Example.java` — first the declaration itself:
 
@@ -312,7 +312,7 @@ All four, against `test/fixtures/Example.java` — first the declaration itself:
 
 then its body alone:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#-toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#toString/-)
 
 ```java
         return String.join(",", items);
@@ -320,7 +320,7 @@ then its body alone:
 
 then the declaration with its annotation:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#+toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#toString/+)
 
 ```java
     @Override
@@ -331,7 +331,7 @@ then the declaration with its annotation:
 
 then annotation and doc comment together:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#++toString)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#toString/++)
 
 ```java
     /** Add one item to this cart. */
@@ -410,10 +410,10 @@ statement whose header carries the name as a double-quoted string is a
         }
 ```
 
-The trailing modifier selects how much of the match comes along; here the
+The `-` modifier selects how much of the match comes along; here the
 condition's body alone, without the `if (...) {` header or its closing brace:
 
-[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#dispatch/getUsers-)
+[../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#dispatch/getUsers/-)
 
 ```java
             System.out.println("users");
@@ -430,15 +430,20 @@ instead. This reaches the `handler` block by the `//getUsers` that opens it:
     }
 ```
 
-The modifier is written **after** the segment (`render-`); the older **leading**
-spelling (`-render`) still works and is canonicalised, which is what the
-modifier table above shows. Asking for two readings at once — a `+` against a
-`-`, as in `getUsers++-` — resolves to the wider one, and the tool warns and
-exits `1` rather than silently guessing:
+The modifier is a **segment of its own**, written after the `/` that delimits the
+path: `render/-` is the body of `render`, `render/+` the declaration with its
+annotations, `render/++` with its doc comment. It is legal only as the last
+segment — `Cart/Line/-/render` is an error, because a modifier describes the
+selection and nothing is selected until the path ends — and `+` never occurs
+inside a name, so a `render-` is a name no file declares, and the message for it
+says what to write instead:
 
 ```text
-inject-examples: warn: doc/usage.md:320: [../test/fixtures/Anchors.java](../test/fixtures/Anchors.java#dispatch/getUsers++-): "++" contradicts "-"; using "#dispatch/getUsers++"
+inject-examples: [a.java](./a.java#render++): "++" is a path segment now; write "#render/++"
 ```
+
+A name may contain `-` (`item-list`, `update-document-test`) and a CSS custom
+property may begin with `--`; only a whole segment is ever a modifier.
 
 The full grammar is in [section-matching.md](./section-matching.md), and the
 matcher is one dependency-free module, [lib/section.mjs](../lib/section.mjs)
@@ -480,9 +485,10 @@ Because the comma is the contract every rule shares, one reference may name
 several pieces and they are injected in the order written — a name and a range
 mix freely. The annotated `toString`, then the inner `Line` class:
 
-[../test/fixtures/Example.java](../test/fixtures/Example.java#+toString,L16-L20)
+[../test/fixtures/Example.java](../test/fixtures/Example.java#toString/+,L16-L20)
 
 ```java
+    @Override
     public String toString() {
         return String.join(",", items);
     }
@@ -584,7 +590,7 @@ query overrides:
 }
 ```
 
-[../docs/samples/site.css](../docs/samples/site.css#@media/.card-)
+[../docs/samples/site.css](../docs/samples/site.css#@media/.card/-)
 
 ```css
 grid-template-columns: 1fr 1fr;

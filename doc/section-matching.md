@@ -37,13 +37,11 @@ authoritative: a port that disagrees with it is wrong by definition.
 ## At a glance
 
 A section reference is a `,`-separated list of **selectors**, and every selector
-is one of two things: a `/`-separated path of names, or a **line range**
-(`L40:12-L44:3`). A `+`, `++` or `-` applies to the **last** selector only — a
-modifier written on an earlier selector belongs to that selector, and one written
-in front of the whole reference is the reference's own — and the canonical
-spelling puts the reference's modifier at the very end. A leading spelling is
-accepted in two cases only, and they are not symmetric: see
-[Where a modifier may appear](#where-a-modifier-may-appear). Four questions fully
+is one of two things: a `/`-separated path, or a **line range**
+(`L40:12-L44:3`). A path's segments are **names**, except that its **last**
+segment may be a modifier — `+`, `++` or `-` — which says how much of the match
+comes along; a modifier anywhere else is an error, and there is nothing to
+normalise because it is written where it means something. Four questions fully
 specify it, and this document keeps each in its own section so they do not blur
 into one another:
 
@@ -52,7 +50,7 @@ into one another:
 | How do several selectors combine? | A reference is a list; each selector contributes its own text, and the pieces are joined with a newline in the order written. | [Selectors](#selectors) |
 | How does a path with one or more `/` resolve? | Every name except the last **narrows the scope** to the block it finds; only the **last** name selects content; a single name searches the whole file. | [Paths and scopes](#paths-and-scopes) |
 | How is one name found inside a scope? | Inside that scope — the whole file, or a block a parent narrowed it to — the six matchers run in order against the scope's own members; the first match wins, and a shallower sibling always beats a deeper block. | [Searching one element in a scope](#searching-one-element-in-a-scope) |
-| Where do `+`, `++` and `-` apply, and what do they do? | A modifier binds to the **last** selector, wherever it was written; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
+| Where do `+`, `++` and `-` apply, and what do they do? | A modifier is the **last segment of a path**, so it belongs to the selector that path carries; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
 
 [Grammar](#grammar) gives the syntax, [Selectors](#selectors) the composition and
 the line range, and [The six rules](#the-six-rules) the compact normative
@@ -76,7 +74,7 @@ detail.
   - [Where a modifier may appear](#where-a-modifier-may-appear)
   - [Canonicalisation](#canonicalisation)
   - [Modifiers](#modifiers)
-  - [Contradictory modifiers are a warning](#contradictory-modifiers-are-a-warning)
+  - [Two modifiers on one path is an error](#two-modifiers-on-one-path-is-an-error)
 - [Errors](#errors)
 - [Worked examples](#worked-examples)
 - [Not a parser](#not-a-parser)
@@ -87,22 +85,27 @@ detail.
 
 ```text
 section-reference := selector ( ',' selector )*     ; at most 8 path segments per selector
-selector          := path [ modifier ]
+selector          := path
                    | line-range
-modifier          := '++' | '+' | '-'               ; longest match first; those three only
 path              := segment ( '/' segment )*
-segment           := token
-token             := /[A-Za-z_$][\w$]*/ | 'new'
+segment           := name | modifier
+name              := token
+modifier          := '++' | '+' | '-'               ; only as the last segment of a path
+token             := /[A-Za-z_$][\w$-]*/ | 'new'    ; `-` is a name character, `+` never is
 line-range        := point [ '-' point ]
 point             := 'L' digits [ ':' digits ]      ; lines and columns from 1
 ```
 
-A `token` contains no `/`, `+`, `-`, `,` or whitespace. A name may be dotted
-(`Foo.Bar` is one token, because dotted names occur in JS/TS code); dots are
-never path separators. A selector that opens `L<digit>` is a line range or a
-typo, never a name — which is what reserves the `L<digit>` spelling — while `Lx`
-is an ordinary name. The syntax alone says nothing about resolution — the rules
-below do, and each is expanded in its own topic.
+A `token` contains no `/`, `+`, `,` or whitespace. A name may contain `-`
+(`item-list`, `update-document-test`, and a CSS custom property's `--brand`) and
+may be dotted (`Foo.Bar` is one token, because dotted names occur in JS/TS code);
+dots are never path separators. The three **modifier** spellings are segments of
+their own, not suffixes: `render/-` is a path of two segments whose last one is a
+modifier, which is why `+` can be excluded from every name. A selector that opens
+`L<digit>` is a line range or a typo, never a name — which is what reserves the
+`L<digit>` spelling — while `Lx` is an ordinary name. The syntax alone says
+nothing about resolution — the rules below do, and each is expanded in its own
+topic.
 
 ## Selectors
 
@@ -142,22 +145,21 @@ for. Anything the file does not have is an error, never a clamp — `L31` in a
 its line is `line 13 has 39 character(s)`. A range that silently became a
 different range is the drift a line reference is written to avoid.
 
-A line range has no modifier of its own: there is nothing about a verbatim slice
-of lines for `+` to widen, and its `-` is already spoken for by the range. So a
-modifier spelled **on** a range — `L40+`, `L40-L44-` — is not a range at all
-(`is not a line range`), while a modifier in front of the **whole reference**
-(`+L40-L44`) is the reference's own, lands on the last selector, and is ignored
-when that selector is a range, exactly as a `#region` ignores one.
+A line range has no modifier at all: there is nothing about a verbatim slice of
+lines for `+` to widen, and `-` belongs to the range's own spelling. A path does
+not open a range, so a modifier written after one — `L40/+`, `L40-L44/-` — is not
+a range at all (`is not a line range`), and a range cannot be the subject of one
+either.
 
 ### Several selectors
 
-Each selector carries its own modifier, wherever that modifier is written: the
-reference's own run (leading the whole reference, or trailing its last selector)
-applies to the **last** selector only, and a modifier written on a selector's
-path is that selector's. So `add-,render++` is two selectors that each say what
-they mean, and only two readings landing on the *same* selector — `getUsers++-`,
-`-getUsers+` — contradict (see
-[Contradictory modifiers](#contradictory-modifiers-are-a-warning)).
+Each selector carries its own modifier, because the modifier is part of that
+selector's path and there is no path outside one: `add/-,render/++` is two
+selectors that each say what they mean, and neither can contradict the other.
+Two modifiers on *one* path is a different thing — an error, not a reading to
+choose between — because the modifier describes the selection and only the last
+segment is where a selection ends (see
+[Where a modifier may appear](#where-a-modifier-may-appear)).
 
 ## The six rules
 
@@ -169,17 +171,14 @@ The grammar, as six rules. Each violated below is an error (see
 2. Only the last segment selects content to inject. Earlier segments are
    **scopes**: each must resolve, and each later segment is looked up only
    inside the block the previous segment found.
-3. The modifier is **trailing** and applies to the final segment, but two leading
-   spellings are normalised to it before parsing and a third case is collected
-   from wherever it was written. Precisely: a prefix of the **whole reference**
-   (`+a/b`, `++a/b`, `-a/b`, `-add` → `a/b+`, `a/b++`, `a/b-`, `add-`) and a
-   single `-` leading the **last segment** (`a/-b` → `a/b-`, `Cart/-Line` →
-   `Cart/Line-`) are accepted; a `+` or `++` leading a *segment* is an error even
-   when that segment is last (`a/+b`); and a trailing run written on a segment
-   that is not the last is collected and applied to the last segment
-   (`a++/b` → `a/b++`). The two leading forms are **not** symmetric, which is the
-   one thing ports get wrong — see
-   [Where a modifier may appear](#where-a-modifier-may-appear).
+3. The modifier is a **segment of its own** and may be only the **last** one of a
+   path: `render/++`, `Cart/Line/-`, `getUsers/+`. It is never a suffix and never
+   a prefix, so `render-` is the name `render-` (which no file declares) and
+   `+render` is the old prefix form, rejected with a message naming the spelling
+   that works. A modifier written anywhere but the end — `a/++/b`, `a/++/-` — is
+   the `may only modify the last path segment` error, and a segment that is
+   nothing but modifiers (`a/+++`) is
+   [more than one modifier](#two-modifiers-on-one-path-is-an-error).
 4. A bare name is a path of one segment: it searches the whole file, at any
    depth.
 5. First match wins, walking **sibling first**: every scope at one depth is
@@ -187,7 +186,7 @@ The grammar, as six rules. Each violated below is an error (see
    contain. A declaration in a scope is therefore never shadowed by a same-named
    block nested inside an earlier sibling — `doSomeAction` resolves to the
    method, not to an `if ("doSomeAction"…)` inside a method that comes sooner in
-   the file. A trailing modifier never changes which match is found.
+   the file. A modifier never changes which match is found.
 6. The reference `add` matches a `#region add` directive, a `void add()` method,
    a `String add` property, a `class add`, a `//add` anchor, or an
    `if ("add".equals(...))` block — whichever the walk finds first, the
@@ -227,21 +226,48 @@ container` error ([Errors](#errors)); a scope segment that matches nothing is
 
 ### When a name is declared more than once
 
-One name may be declared several times at the same level, and the path **retries
-them**: each candidate is tried in walk order, and the first one that can hold the
-rest of the path wins. The retry is what makes members that live *outside* their
-type addressable — a Rust `struct Cart` and its `impl Cart` blocks all answer to
-`Cart`, so `Cart/add` passes over the struct (which holds `items`) and reaches
-the method, and `Cart/remove` passes over the first impl to reach the second one.
-Likewise two `impl` blocks for one type split a type's methods across siblings
-without either becoming unaddressable.
+One name may be declared several times at the same level, and a path with more
+segments **retries them**: each candidate is tried in walk order, and the one
+that can hold the rest of the path wins. The retry is what makes members that
+live *outside* their type addressable — a Rust `struct Cart` and its `impl Cart`
+blocks all answer to `Cart`, so `Cart/add` passes over the struct (which holds
+`items`) and reaches the method, and `Cart/remove` passes over the first impl to
+reach the second one. Likewise two `impl` blocks for one type split a type's
+methods across siblings without either becoming unaddressable.
 
-The **last** segment is not retried: its first match in walk order is the
-selection, exactly as [Sibling-first descent](#sibling-first-descent) says, so a
-path is ambiguous only when the *scopes* disagree. When no candidate can hold the
-rest of the path, the error is the one the first candidate produced, and a single
-candidate — a `#region` named mid-path, say — still reports `"…" is not a
-container`.
+**A name that several blocks answer to is ambiguous, and ambiguity is an error,
+never a guess.** The selection is the *last* segment, and nothing follows it to
+say which candidate was meant, so
+
+```
+"add" is declared 2 times; names must be unique
+"Cart" is declared 3 times; names must be unique
+```
+
+is the answer rather than the first match in walk order. The reason is the whole
+point of the tool: an injected block is copied into a document, so a silent
+choice between two `add` methods ships a lie that no reader can see. The
+heuristics may be approximate about *what* a block is; they may not be
+approximate about *which* block a reference named.
+
+Two cases are not ambiguity:
+
+- **A deeper path**, which does the choosing: `Cart/add` names the holder, and
+  only one candidate holds `add`. That is why the retry exists, and it is the
+  fix for the error above.
+- **Descents that all succeed.** If two candidates can both hold the rest of the
+  path, the path does not distinguish them and the reference fails the same way,
+  one level down.
+
+When no candidate can hold the rest of the path, the error is the one the first
+candidate produced, and a single candidate — a `#region` named mid-path, say —
+still reports `"…" is not a container`.
+
+The same rule binds every key format: a duplicated YAML key, TOML table or INI
+section is an error naming the key and the count (`"server": key "server" appears
+2 times; names must be unique`), because those rules select a key the same way.
+JSON is the one exception, and it is the parser's: `JSON.parse` silently keeps the
+last of two identical keys, so the duplicate is gone before a rule can see it.
 
 ### Narrowing the scope
 
@@ -270,6 +296,11 @@ is therefore shorthand for "the shallowest thing in this file with this name",
 and it is the form that rule 5's shadowing guarantee protects: a method named
 `doSomeAction` wins over an `if ("doSomeAction"…)` buried in an earlier method.
 
+"The shallowest" is a depth, not a tie-break: two candidates at the *same* depth
+both answer to the name, and the reference then has no answer
+([When a name is declared more than once](#when-a-name-is-declared-more-than-once)).
+A path spells which one.
+
 ## Searching one element in a scope
 
 *How a single path element is found once you are inside one scope. Rule 5, and
@@ -288,6 +319,8 @@ Within one scope the lookup has two parts:
    scope — matchers 5 and 6 never sweep deeper blocks. The first matcher that
    hits ends the search for this scope. Among equal-depth candidates the matcher
    order decides, and within one matcher the left-to-right source order does.
+   Two candidates at one depth that *the same* matcher finds are not a tie to
+   break but an ambiguity to report, at the depth where they are found.
 2. **Descent, one level at a time.** If no member of this scope matches, the walk
    descends exactly one level — into every block this scope contains, left to
    right — and retries the *same* element there, with the same precedence. It
@@ -357,126 +390,98 @@ depth. The [Worked examples](#worked-examples) pin both readings on
 
 *How and where `+`, `++` and `-` apply. Rule 3.*
 
-A modifier is one of `+`, `++`, `-`. It says **how much** of the matched block to
-inject — the whole declaration, the body alone, the declaration with its
-annotations, or with its doc comment too. Two facts govern where it may sit:
+A modifier is one of `+`, `++`, `-`, and it is a **segment of a path**. It says
+**how much** of the matched block to inject — the whole declaration, the body
+alone, the declaration with its annotations, or with its doc comment too. Two
+facts govern it:
 
-- It is **trailing**: it attaches to the very end of the whole reference.
-- It binds to the **last selector** only. A selector that is not the last may
-  carry its own modifier — that one is its own and means what it says — but the
-  reference's own run (leading or trailing the whole thing) reaches only the last
-  one. A scope segment inside a path may not carry one at all:
-  `Cart/-Line/render` is an error, because `-` would modify the scope `Line`
-  rather than the selected `render`.
+- It is the **last segment** of the path. Nothing follows it: `render/++` is a
+  path of two segments, the second of which is the modifier, and `a/++/b` is the
+  `may only modify the last path segment` error.
+- A modifier applies to the **selector whose path carries it**. Each selector of
+  a list has its own path, so `add/-,render/++` is two selectors that each say
+  what they mean, and two modifiers on *one* path (`a/++/-`) is an error rather
+  than a reading to choose between.
 
 And one fact governs what it does: a modifier never changes **which** block is
 matched. Precedence and the sibling-first walk ([Searching one element in a
-scope](#searching-one-element-in-a-scope)) run on the bare name; the modifier is
-applied to the result. `getUsers` and `getUsers-` find the same block and differ
+scope](#searching-one-element-in-a-scope)) run on the names; the modifier is
+applied to the result. `getUsers` and `getUsers/-` find the same block and differ
 only in how much of it is taken.
 
-A **line-range** selector takes no modifier at all, and one written on it is not
-a modifier but a malformed range (`L40+`, `L40-L44-`); a modifier in front of the
-whole reference still lands on the last selector, and a range ignores it.
+A **line-range** selector takes no modifier at all: `L40` is a whole selector, so
+`L40/+` is not a range (it is the `is not a line range` error) and a range cannot
+follow a modifier either. There is nothing about a verbatim slice of lines for a
+scope to widen.
 
 ### Where a modifier may appear
 
-The canonical spelling is trailing: the modifier sits at the very end of the whole
-reference. Four other positions are easy to mistake for one another, and a port
-that conflates them will disagree with `lib/section.mjs` on `a/+b` or on `a++/b`:
+Nowhere but the end of a path, and as a whole segment. The spellings that make
+that visible:
 
-| Written | Where it is | Result |
+| Written | Read as | Result |
 | --- | --- | --- |
-| `add+`, `Cart/Line/render-` | trailing, at the very end | the reference's modifier, applied to the last selector |
-| `+add`, `++a/b`, `-a/b` | a prefix of the **whole reference** | moved to the end: `add+`, `a/b++`, `a/b-` |
-| `a/-b`, `Cart/Line/-render` | a single `-` leading the **last segment** | moved to the end: `a/b-`, `Cart/Line/render-` |
-| `Cart/-Line` | a single `-` leading the second of **two** segments | moved to the end: `Cart/Line-` |
-| `a/+b`, `a/++b` | a `+` or `++` leading a **segment** — any segment, the last included | **error** |
-| `a++/b`, `a-/b` | a trailing run on a segment that is **not** the last | collected, then applied to the last segment: `a/b++`, `a/b-` |
-| `x/y+z`, `Cart/-Line/render` | anywhere else: a `+` inside a name, or a `-` on a segment that is neither the last nor the second of two | **error** |
-| `add-,render++` | the trailing run of a **selector that is not the last** | that selector's own modifier; no contradiction, no warning |
-| `getUsers++-` | the reference's trailing run after a selector that already carries one | **contradiction**: `++` wins, warned |
+| `add`, `Cart/Line`, `Cart/Line/render` | paths of names | the declaration itself |
+| `add/-`, `Cart/Line/-`, `Cart/Line/render/-` | a modifier as the last segment | that block's body |
+| `add/+`, `add/++` | a modifier as the last segment | the declaration with its annotations, then with its doc comment |
+| `add/-,render/++` | two selectors, each with its own path | two pieces, each taking its own scope |
+| `add-`, `render-` | **names** — a `-` between name characters is one | `no section named "add-"` |
+| `add++`, `render+` | a `+` inside a name | error: `"++" is a path segment now; write "#add/++"` |
+| `+add`, `++add`, `-add` | a modifier as the *first* segment | error: it follows the path, not leads it |
+| `a/++/b`, `a/-/b` | a modifier mid-path | error: `may only modify the last path segment` |
+| `a/++/-`, `a/-/++` | two modifiers on one path | error, naming the first as misplaced |
+| `a/+++`, `a/---` | a segment that is nothing but modifiers | error: `carries more than one modifier` |
+| `a/--`, `--brand` | names, in every segment | a CSS custom property is a name |
+| `L40`, `L40-L44` | a line range | unchanged; `L40/+` and `L40-L44/-` are not ranges |
 
-**The two leading forms are not symmetric.** A single `-` may lead a segment when
-that segment is the last one, or the second of two; `+` and `++` may appear in
-front only as the detached prefix of the whole reference. So `a/-b` is legal and
-`a/+b` is not, and neither is `a/++b`. The message for the rejected case is
-`"+" may only modify the last path segment of "#a/+b"`, which reads oddly about a
-segment that *is* last — hence the explicit note: the last-segment position is
-checked for `-` only, and a `+` or `++` leading a segment is rejected outright.
+**A `+` is never part of a name.** That is the one character the grammar spends
+to keep names and modifiers unmistakable: a `-` may sit inside a name, a `+` may
+not, so `add++` can only ever have meant a modifier and its message says which
+spelling to write. A reference whose modifier was written the old way is
+therefore an **error** with guidance, never a silent miss:
 
-**A modifier written mid-path is collected, not rejected.** `a++/b` parses and
-means `a/b++`, because the parser gathers every modifier run it finds and applies
-the collected one to the last segment. That is laxer than the canonical form and
-is **not** pinned by `test/vectors/section-vectors.json`: a port that rejects
-`a++/b` will still pass the vectors, but it will disagree with `lib/section.mjs`,
-which is authoritative.
+```text
+"++" is a path segment now; write "#add/++"
+"+" is a path segment now; it follows the path, as "#<path>/+"
+```
 
 ### Canonicalisation
 
-The canonical form is **trailing**, so the parser normalises before it parses:
+There is nothing to canonicalise: the modifier is written where it means
+something, so the canonical spelling of a reference is its parsed path with its
+modifier segment re-joined:
 
-1. If the reference begins with `++`, `+` or `-`, detach that prefix: it is the
-   **reference's own** modifier.
-2. Read the last selector. Its trailing run — and, further up its path, the
-   trailing run of its last segment — is the reference's own modifier too, so
-   `-a/b` is `a/b-` and `a++/b` is `a/b++`. Two runs on that one selector
-   (`-a-`, `-getUsers+`) are the `carries more than one modifier` error.
-3. Every *other* selector keeps the spelling it was written with — its own
-   modifier included, wherever on its path it was written — because that
-   modifier belongs to that selector. So `add-,render++` is two selectors that
-   each say what they mean.
-4. The reference's own run is combined: a `++`/`+` together with a `-`
-   contradict and warn, and the positive one wins; the same modifier twice is an
-   error (see
-   [Contradictory modifiers](#contradictory-modifiers-are-a-warning)). A run on
-   one selector is not combined with another selector's: only the reference's
-   own run is one run.
-5. The result is the selectors joined with `,` — the last one spelled from its
-   parsed path — followed by the reference's modifier, or nothing when there was
-   none.
-
-| Accepted | Notes |
+| Written | Canonical |
 | --- | --- |
-| `add`, `-add`, `+add`, `++add` | canonicalise to `add`, `add-`, `add+`, `add++` |
-| `Cart/Line`, `Cart/Line-`, `Cart/-Line` | canonicalise to `Cart/Line`, `Cart/Line-`, `Cart/Line-` |
-| `toString++`, `++toString` | same result |
-| `Cart/Line/render-`, `Cart/Line/-render` | same result |
-| `+a/b`, `++a/b`, `-a/b` | canonicalise to `a/b+`, `a/b++`, `a/b-` — the prefix belongs to the whole reference, not to the first segment |
-| `a/-b` | canonicalises to `a/b-` |
-| `a++/b`, `a-/b` | canonicalise to `a/b++`, `a/b-` (collected; see above) |
-| `add-,render++` | unchanged: each selector keeps its own modifier |
-| `+add,render` | `add,render+` — the reference's modifier lands on the last selector |
-| `L40-L44`, `L40:12-L44:3`, `+L40-L44` | unchanged (a range takes no modifier; a leading one is ignored) |
+| `add`, `add/-`, `add/+`, `add/++` | unchanged |
+| `Cart/Line`, `Cart/Line/-`, `Cart/Line/++` | unchanged |
+| ` a , b ` | `a,b` (the whitespace around a selector is not part of it) |
+| `L40-L44`, `L40:12-L44:3` | unchanged (a range has no modifier to move) |
 
 | Rejected (errors) | Message |
 | --- | --- |
-| `a/+b`, `a/++b`, `x/y+z` — a `+` or `++` leading a segment, or a `+` inside a name | `"+" may only modify the last path segment of "#<the reference as written>"` |
-| `Cart/-Line/render` — a `-` leading a segment that is neither last nor the second of two | `"-" may only modify the last path segment of "#<the reference as written>"` |
+| `a/++/b`, `a/+/b`, `a/-/b` — a modifier that is not the last segment | `"<the modifier>" may only modify the last path segment of "#<the reference as written>"` |
+| `add++`, `add+`, `+add`, `a/b++` — the old suffix or prefix spelling | `"<the modifier>" is a path segment now; write "#<path>/<the modifier>"` |
+| `a/+++`, `a/---` — more than one modifier on one segment | `"#<the reference as written>" carries more than one modifier` |
 | `a//b`, `a/`, `/a` — an empty path segment | `"#<the reference as written>" has an empty path segment` |
-| `a+++`, `a---`, `a--` — more than one modifier | `"#<the reference as written>" carries more than one modifier` |
-| `L40-`, `L40:x`, `L40-L44+` — a range that is not one, or one carrying a modifier | `"#<the reference as written>" is not a line range; write L<line> or L<line>:<column>` |
+| `L40-`, `L40:x`, `L40-L44/+` — a range that is not one | `"#<the reference as written>" is not a line range; write L<line> or L<line>:<column>` |
 | `L0`, `L1:0` — a line or column below 1 | `"#<the reference as written>" counts lines and columns from 1` |
 | `L44-L40` — a range that ends before it starts | `"#<the reference as written>" ends before it starts` |
 | `add,`, `,add`, `add,,render` — an empty selector | `"#<the reference as written>" has an empty selector` |
 
-| Warned (see [Contradictory modifiers](#contradictory-modifiers-are-a-warning)) |
-| --- |
-| `a/b++-`, `a-/b++`, `a+-`, `getUsers++-` |
-
 ### Modifiers
 
-A trailing `++`, `+` or `-` selects how much of the match comes with it:
+The modifier segment selects how much of the match comes with it:
 
 | Reference | Injection |
 | --- | --- |
 | `Cart/Line` | the whole inner class declaration |
-| `Cart/Line-` | `Line`'s body only (no class line, no closing brace) |
-| `Cart/toString+` | `toString`'s declaration including the annotations above it |
-| `Cart/toString++` | declaration, its annotations, and the doc comment above them |
-| `getUsers-` | the body inside the brace pair |
-| `getUsers+` / `getUsers++` | the header line, plus a leading doc/annotation block for `++` |
-| `count-` (property) | the initialiser expression, or the declaration when there is none |
+| `Cart/Line/-` | `Line`'s body only (no class line, no closing brace) |
+| `Cart/toString/+` | `toString`'s declaration including the annotations above it |
+| `Cart/toString/++` | declaration, its annotations, and the doc comment above them |
+| `getUsers/-` | the body inside the brace pair |
+| `getUsers/+` / `getUsers/++` | the header line, plus a leading doc/annotation block for `++` |
+| `count/-` (property) | the initialiser expression, or the declaration when there is none |
 
 Modifier semantics per match kind:
 
@@ -488,7 +493,7 @@ Modifier semantics per match kind:
   [Tokenizers](#tokenizers)): an `@Decorator` or `#[attribute]` by default, a
   Haskell `name ::` type signature when that lexer supplies the test.
 - **Region directive** — a region is already exactly its body, so the modifier is
-  **ignored**: `add+` and `add` inject the same lines.
+  **ignored**: `add/+` and `add` inject the same lines.
 - **Condition literal, comment anchor** — the block is the unit. No modifier (or
   `+`) selects the block from its first line through its closing brace, where
   that first line is the anchor comment (for a comment anchor) or the statement
@@ -496,50 +501,39 @@ Modifier semantics per match kind:
   braces. `++` on a comment anchor behaves like `+` (there is nothing to
   document).
 
-### Contradictory modifiers are a warning
+### Two modifiers on one path is an error
 
-`++` and `-` contradict each other: `++` asks for the declaration *with* its
-annotations and doc comment, `-` asks for the *body alone*. No single section is
-both, so the reference is meaningless — but it is exactly what a human types
-while refactoring, so it must not hold a whole document hostage.
+A path has one modifier, because a modifier describes the selection and a
+selection ends where the path does:
 
 | Case | Kind | Behaviour |
 | --- | --- | --- |
-| `++` with `-` (`a++-`, `a-++`, `a-/b++`) | Warning | The **`++` reading wins**; the `-` is dropped. Reported once as `inject-examples: warn: <doc>:<line>: "<marker>": "++" contradicts "-"; using "#<ref-without-the-minus>"`. The run continues, every block is written, and the run **exits 1** |
-| `+` with `-` (`a+-`, `a-+`) | Warning | Same shape: contradictory, `+` wins |
-| One modifier named twice (`a+++`, `a---`) | Error | Malformed, not contradictory — see [Errors](#errors) |
-| A modifier anywhere but the end | Error | See [Canonicalisation](#canonicalisation) |
-| Two selectors that each carry one (`add-,render++`) | Neither | Each modifier is its own selector's; two selectors are not one reference saying two things |
+| A modifier before the last segment (`a/++/b`, `a/-/b`) | Error | `"<the modifier>" may only modify the last path segment of "#a/++/b"` |
+| Two modifiers where one is last (`a/++/-`, `a/-/++`) | Error | The first is misplaced, and the message names it |
+| A segment that is nothing but modifiers (`a/+++`, `a/---`) | Error | `"#a/+++" carries more than one modifier` |
+| A modifier on each of two selectors (`add/-,render/++`) | Neither | Each path carries its own; two selectors are not one path |
 
-Three consequences it is easy to miss:
-
-- **Warnings are not gated on `--lenient`.** `--lenient` tolerates *broken
-  includes*; a contradictory modifier is not broken, it is merely contradictory.
-  It warns in every mode.
-- **Exit code is 1 whenever a warning was emitted**, even though every block was
-  written, and the summary counts it (`1 warning`). This is a deliberate
-  exception to "0 means up to date": the run did succeed at injecting, but the
-  document still says something nonsense.
-- **It is idempotent.** The second pass warns again with no change to the text —
-  the warning is about the document, not about the state of the block.
+There is no **warning** anywhere in this grammar: a reference either resolves or
+fails, and the run never exits 1 with every block written. Nothing is guessed,
+so nothing has to be reported as a guess.
 
 ## Errors
 
 Every message quotes the reference **exactly as the user wrote it** (call it
-`<raw>`, `/`-separated, before normalisation) — `Cart/-Line` therefore appears
-as written even though it normalises to `Cart/Line-`. Where the message names a
+`<raw>`, `/`-separated, never normalised — there is nothing to normalise, since
+the modifier is written where it means something). Where the message names a
 selector, it is that selector as written (`L40-`), not the whole reference:
 
 | Condition | Message shape |
 | --- | --- |
 | empty reference | `"#" names nothing` |
 | empty segment, leading/trailing `/`, `//` | `"#<raw>" has an empty path segment` |
-| `+`/`-` not at the end, after normalisation | `"<char>" may only modify the last path segment of "#<raw>"` |
-| the same modifier twice or thrice (`a+++`, `a---`) | `"#<raw>" carries more than one modifier` |
-| a detached leading modifier and a trailing one (`-a-`) | `"#<raw>" carries more than one modifier` |
+| a modifier that is not the last segment (`a/++/b`, `a/-/b`) | `"<the modifier>" may only modify the last path segment of "#<raw>"` |
+| the old suffix or prefix spelling (`add++`, `+add`) | `"<the modifier>" is a path segment now; write "#<path>/<the modifier>"` |
+| more than one modifier on one segment (`a/+++`, `a/---`) | `"#<raw>" carries more than one modifier` |
 | more than 8 segments | `"#<raw>" is deeper than 8 sections` |
 | an empty selector (`a,`, `,a`, `a,,b`) | `"#<raw>" has an empty selector` |
-| a range that is not one, or one carrying a modifier (`L40-`, `L40:x`, `L40-L44+`) | `"#<selector>" is not a line range; write L<line> or L<line>:<column>` |
+| a range that is not one, or one carrying a modifier (`L40-`, `L40:x`, `L40-L44/+`) | `"#<selector>" is not a line range; write L<line> or L<line>:<column>` |
 | a line or column below 1 (`L0`, `L1:0`) | `"#<selector>" counts lines and columns from 1` |
 | a range that ends before it starts (`L44-L40`) | `"#<selector>" ends before it starts` |
 | a line the file does not have (`L31` in a 30-line file) | `"#<selector>": the file has <n> line(s)` |
@@ -548,10 +542,19 @@ selector, it is that selector as written (`L40-`), not the whole reference:
 | a segment matches nothing anywhere | `no "#region <name>" found, and no section named "<name>"` |
 | a class/block is matched but path remains | `"<name>" is not a container` |
 | a mid-path scope does not exist | `no section named "<name>" in "<previous>"` |
+| two blocks at one level answer to the selection's name | `"<name>" is declared <n> times; names must be unique` |
+| a key, table or section appears twice (YAML, TOML, INI) | `"<path>": key "<key>" appears <n> times; names must be unique` (the `describe` names the format's own thing: `key`, `table "[a]"`, `section "[a]"`) |
+| two CSS rules at one level answer to one selector | `"<selector>" matches <n> blocks; the name must be unique` |
 
 A missing, duplicate or unclosed `#region`/`#endregion` directive is reported by
 the region directive itself (see `extractRegion`) and is not part of this
 catalogue.
+
+There are **no warnings** in this grammar. Every message above is an error, and a
+reference either resolves or fails; a scope modifier written twice on one path is
+malformed rather than two readings to choose between, and a modifier on a
+`#region` or a line range is simply ignored, because neither is a path that could
+carry one.
 
 **One message shape is load-bearing.** Consumers match the single-segment "found
 nothing" error against `/no "#region <name>" found/`, so that pattern must keep
@@ -569,26 +572,26 @@ documented `toString()` and an inner `Line` with a `render()`:
 | Reference | Result |
 | --- | --- |
 | `toString` | `public String toString() { … }`, signature line through closing brace |
-| `toString-` (or `-toString`) | `        return String.join(",", items);` |
-| `toString+` (or `+toString`) | the declaration plus the `@Override` above it |
-| `toString++` (or `++toString`) | that plus the `/** Add one item to this cart. */` doc comment |
+| `toString/-` | `        return String.join(",", items);` |
+| `toString/+` | the declaration plus the `@Override` above it |
+| `toString/++` | that plus the `/** Add one item to this cart. */` doc comment |
 | `Line` | the `public static class Line { … }` declaration, doc comment excluded |
 | `Cart/Line` | identical to `Line` |
 | `Cart/toString` | identical to `toString` |
 | `Cart/Line/render` | the `render` declaration, line through closing brace |
-| `Cart/Line/render-` (or `Cart/Line/-render`) | `            return name + " x" + quantity;` |
-| `Cart/Line-` | `Line`'s body, without the class line or the closing brace |
+| `Cart/Line/render/-` | `            return name + " x" + quantity;` |
+| `Cart/Line/-` | `Line`'s body, without the class line or the closing brace |
 | `Line/toString` | error: `no section named "toString" in "Line"` |
 | `Cart/Line/render/extra` | error: `render` is not a container |
 | `Cart/Cart` | error: `Cart` is not a container (a class is a scope, not a section) |
 | `L12-L14` | the same three lines as `toString`, byte for byte |
-| `L13` | the same line as `toString-` |
+| `L13` | the same line as `toString/-` |
 | `L13:9` | `        return String.join(",", items);` from its ninth character: `return String.join(",", items);` |
 | `L4:8-L4:21` | `java.util.List` — the import's class, from column to column |
 | `L31` | error: `"#L31": the file has 30 line(s)` |
 | `toString,L1-L3` | `toString`'s three lines, then the first three lines of the file, joined with a newline |
 | `toString,L16-L20` | the `toString` declaration and the opening of the `Line` class — two pieces, two `ranges` entries |
-| `add-,render++` | the body of `add` and the annotated declaration of `render`, each taking the modifier written on it |
+| `add/-,render/++` | the body of `add` and the annotated declaration of `render`, each taking the modifier written on its own path |
 
 A reference of several selectors answers with one `text` — the pieces joined by a
 newline — and a `ranges` list with one entry per selector, so a consumer can
@@ -602,7 +605,7 @@ the anchor comment `{ //getUsers`, and an `other` method whose body opens with
 | Reference | Result |
 | --- | --- |
 | `getUsers` | the `handler` anchor block — `handler` is a member of the class scope, so it is matched before the `if` block nested inside `dispatch`, even though `dispatch` comes sooner |
-| `getUsers-` | `handler`'s body only, the anchor comment excluded |
+| `getUsers/-` | `handler`'s body only, the anchor comment excluded |
 | `getOrders` | the `other` anchor block, for the same reason — it beats the `else if ("getOrders"…)` inside `dispatch` |
 | `dispatch/getUsers` | the `if` block, header line through closing brace, reached explicitly via the method's scope |
 | `dispatch/getOrders` | the `else if` segment, header line through closing brace |
@@ -705,7 +708,7 @@ Names are matched exact-byte and case-sensitive throughout.
 The only language-sensitive work in a match is **lexical**: blanking comments
 and string literals, and locating the comments (for anchors and region
 directives). Everything else — the block tree, matcher precedence, the
-sibling-first walk, the modifier-on-last-segment rule and rendering — is
+sibling-first walk, the modifier-as-last-segment rule and rendering — is
 language-neutral and lives in `lib/section.mjs`, so every engine agrees on it.
 That split is the **lexer seam**: `lib/section.mjs` accepts an optional *lexer*
 that supplies the lexical facts and otherwise uses its own built-in mask.

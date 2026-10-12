@@ -56,8 +56,8 @@ public final class SectionResolver {
     }
 
     /**
-     * What a reference resolved to: the section's text, the parsed reference (so a caller can report a
-     * warning), the <b>1-based inclusive</b> line ranges the text came from, the outermost bounds of
+     * What a reference resolved to: the section's text, the parsed reference, the <b>1-based
+     * inclusive</b> line ranges the text came from, the outermost bounds of
      * the whole selection, and what the reference is.
      *
      * <p>The ranges are what a host that <em>navigates</em> needs — a click lands on a line, not on
@@ -102,8 +102,7 @@ public final class SectionResolver {
     }
 
     /**
-     * Resolve a section reference to text, exposing the reference, its line ranges and any
-     * contradiction warning.
+     * Resolve a section reference to text, exposing the reference and its line ranges.
      *
      * @param text      the target file's content
      * @param reference the {@code #} fragment content
@@ -348,10 +347,17 @@ public final class SectionResolver {
     // ------------------------------------------------------------------
 
     /**
-     * Resolve {@code segments[index..]} starting at {@code scope}, retrying same-named candidates: a
-     * candidate that cannot be a scope, or that does not hold the rest of the path, gives way to the
-     * next one at the same level. The <b>last</b> segment is not retried — its first match in walk
-     * order is the selection — so a path is only ambiguous when the scopes disagree.
+     * Resolve {@code segments[index..]} starting at {@code scope}.
+     *
+     * <p>A name declared more than once at one level is <b>ambiguous</b>, and ambiguity is an error,
+     * never a guess: {@code #add} must not inject the first of two {@code add}s, and {@code #Cart}
+     * must not inject the {@code struct} when an {@code impl Cart} sits beside it.
+     *
+     * <p>What is <i>not</i> ambiguity is a name that several blocks share where the rest of the path
+     * decides: a Rust {@code struct Cart} beside its {@code impl Cart} blocks all answer to
+     * {@code Cart}, and {@code Cart/add} is resolved by retrying them in walk order — the one that
+     * holds {@code add} wins. Only a last segment, or a set of candidates whose descents <i>all</i>
+     * succeed, is ambiguous.
      */
     private static Hit resolvePath(List<String> segments, int index, BlockScanner.Block scope,
                                    boolean descended, String prevName, Ctx ctx) {
@@ -370,7 +376,14 @@ public final class SectionResolver {
                     + (prevName == null ? "" : prevName) + "\"");
         }
 
+        // The selection itself: nothing follows, so a second candidate is a second answer and the
+        // reference does not say which one it wants.
+        if (last && candidates.size() > 1) {
+            throw ambiguous(segment, candidates.size());
+        }
+
         SectionError failure = null;
+        Hit matched = null;
         for (Hit candidate : candidates) {
             if (last) {
                 return candidate;
@@ -381,15 +394,33 @@ public final class SectionResolver {
                 }
                 continue;
             }
+            Hit resolved;
             try {
-                return resolvePath(segments, index + 1, candidate.block(), true, segment, ctx);
+                resolved = resolvePath(segments, index + 1, candidate.block(), true, segment, ctx);
             } catch (SectionError error) {
                 if (failure == null) {
                     failure = error;
                 }
+                continue;
             }
+            // Two candidates both holding the rest of the path is the same ambiguity one level down:
+            // the path does not choose between them. Decided after the catch, because the error
+            // belongs to this frame, not that one.
+            if (matched != null) {
+                throw ambiguous(segment, candidates.size());
+            }
+            matched = resolved;
+        }
+        if (matched != null) {
+            return matched;
         }
         throw failure;
+    }
+
+    /** The error for a name that two blocks at one level answer to. */
+    private static SectionError ambiguous(String segment, int count) {
+        return new SectionError("\"" + segment + "\" is declared " + count
+                + " times; names must be unique");
     }
 
     /**

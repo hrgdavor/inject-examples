@@ -13,7 +13,7 @@
  * implementation example among several.
  *
  * <p>The entry point today is {@link hr.hrg.inject.section.SectionReference#parse(String)}: the
- * reference grammar, canonicalisation, the error text and the contradiction warning. The mask pass,
- * the block scanner and resolution are still to come; see the module README for the current state.
+ * reference grammar, canonicalisation and the error text. The mask pass, the block scanner and
+ * resolution are still to come; see the module README for the current state.
  */
 package hr.hrg.inject.section;

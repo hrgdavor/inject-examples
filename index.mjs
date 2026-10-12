@@ -122,6 +122,9 @@ export function extractRegion(text, name) {
 // ---------------------------------------------------------------------------
 // Region rules by file type
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Region rules by file type
+// ---------------------------------------------------------------------------
 //
 // A marker's `#<reference>` means "the piece of this file called
 // <reference>". What the reference may say, and what comes back, depends on
@@ -129,38 +132,9 @@ export function extractRegion(text, name) {
 // rule that claims the file's extension. `code` is the fallback, so a single
 // rule serves every language no other rule claims.
 
-/**
- * Split a code reference into its scope modifier and the name it applies to.
- *
- * `-`, `+` and `++` select how much of a matched declaration is injected: its
- * body alone, the declaration with the annotations above it, or those with the
- * doc comment above them too. Without a modifier the declaration itself is
- * injected. An explicit region directive is unaffected — a region is already
- * exactly its body.
- *
- * @param {string} reference
- * @returns {{ scope: 'declaration' | 'body' | 'annotated' | 'documented', name: string }}
- */
-/**
- * Superseded: reads only a leading `-`, `+` or `++` and returns
- * `{ scope, name }`. It is **not** the section-reference parser — use
- * `parseSelectors`/`parseReference` from `lib/section.mjs`, which read the whole
- * grammar (several selectors, line ranges, a trailing modifier, contradictions).
- * Kept exported, unchanged, only because its own tests still pin it; a new port
- * must not start here.
- */
-export function codeReference(reference) {
-    const modifier = /^(\+\+|[-+])/.exec(reference);
-    if (!modifier) return { scope: 'declaration', name: reference };
-    const scope = modifier[1] === '-' ? 'body' : modifier[1] === '+' ? 'annotated' : 'documented';
-    return { scope, name: reference.slice(modifier[1].length) };
-}
-
-
 // The code rule and the declaration reader delegate to the single scanner
 // implementation in `lib/section.mjs` (contract §10). Only `index.mjs` reads
-// the disk. `codeReference` above is superseded by `parseReference`; it stays
-// exported only for its own tests, and nothing in the resolution path uses it.
+// the disk.
 
 /**
  * The default rule: code, and every other type no rule claims.
@@ -171,11 +145,14 @@ export function codeReference(reference) {
  * declarations, condition literals and comment anchors. Nothing matching is an
  * error.
  *
+ * A modifier is the path's last segment — `toString/++`, `Cart/render/-` — so
+ * `segments` on the parsed reference holds names only.
+ *
  * When `path` names a type this repository has a sample tokenizer for (see
  * `src/js/scanner/lexers.js`), that language lexer masks the file; for an
  * unknown type `lib/section.mjs`'s built-in default engine applies. The lexer
  * changes only the lexical mask — precedence, the sibling-first walk and the
- * modifier-on-last-segment rule are identical either way.
+ * modifier-as-last-segment rule are identical either way.
  */
 export function extractCodeRegion(text, reference, path) {
     return resolveSection(text, reference, path ? lexerFor(path) : undefined);
@@ -303,15 +280,33 @@ function blankOrComment(line, markers) {
 
 // --- YAML ------------------------------------------------------------------
 
-/** The line of `key` at exactly `indent` in `from..to`, or -1. */
-function yamlKeyAt(lines, key, from, to, indent) {
+/**
+ * The single element of `hits`, or a thrown error.
+ *
+ * A selection rule may not guess: when a name belongs to two blocks at one
+ * level, `#server` does not say which `server` was meant, and injecting the
+ * first one into a document ships a silent lie. So the rule says what it found
+ * rather than picking — the same "names must be unique" contract the code rule
+ * and the CSS rule follow.
+ */
+function onlyHit(hits, describe) {
+    if (hits.length === 0) return null;
+    if (hits.length > 1) {
+        throw new Error(`${describe} appears ${hits.length} times; names must be unique`);
+    }
+    return hits[0];
+}
+
+/** The lines of `key` at exactly `indent` in `from..to`. */
+function yamlKeysAt(lines, key, from, to, indent) {
+    const found = [];
     for (let i = from; i <= to && i < lines.length; i++) {
         const line = lines[i];
         if (blankOrComment(line, ['#']) || indentOf(line) !== indent) continue;
         const match = /^\s*("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^\s#][^:]*?)\s*:(?:\s|$)/.exec(line);
-        if (match && unquote(match[1].trim()) === key) return i;
+        if (match && unquote(match[1].trim()) === key) found.push(i);
     }
-    return -1;
+    return found;
 }
 
 /** The last line of the block `key` opens: blank lines and deeper indentation. */
@@ -337,8 +332,8 @@ function yamlRootIndent(lines) {
 
 function yamlSelection(lines, segments, path, from, to, indent, level, out) {
     const key = segments[0];
-    const at = yamlKeyAt(lines, key, from, to, indent);
-    if (at === -1) throw new Error(`"${path}": no key "${key}"`);
+    const at = onlyHit(yamlKeysAt(lines, key, from, to, indent), `"${path}": key "${key}"`);
+    if (at === null) throw new Error(`"${path}": no key "${key}"`);
     const pad = '  '.repeat(level);
     const end = yamlBlockEnd(lines, at, indent);
 
@@ -378,13 +373,14 @@ export function extractYamlRegion(text, reference) {
 
 const TOML_HEADER = /^\s*\[([^\]]+)\]\s*$/;
 
-/** The index of the `[name]` header line, or -1. */
-function tomlHeaderAt(lines, name) {
+/** The indices of the `[name]` header lines. */
+function tomlHeadersAt(lines, name) {
+    const found = [];
     for (let i = 0; i < lines.length; i++) {
         const match = TOML_HEADER.exec(lines[i]);
-        if (match && match[1].split('.').map((s) => unquote(s.trim())).join('/') === name) return i;
+        if (match && match[1].split('.').map((s) => unquote(s.trim())).join('/') === name) found.push(i);
     }
-    return -1;
+    return found;
 }
 
 /** The index of the first `[name]` header at all, or -1. */
@@ -403,15 +399,16 @@ function tomlTableEnd(lines, header) {
     return end;
 }
 
-/** The line of `key = …` in `from..to`, or -1. */
-function tomlKeyAt(lines, key, from, to) {
+/** The lines of `key = …` in `from..to`. */
+function tomlKeysAt(lines, key, from, to) {
+    const found = [];
     for (let i = from; i <= to && i < lines.length; i++) {
         const line = lines[i];
         if (blankOrComment(line, ['#'])) continue;
         const match = /^\s*("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[A-Za-z0-9_-]+)\s*=/.exec(line);
-        if (match && unquote(match[1]) === key) return i;
+        if (match && unquote(match[1]) === key) found.push(i);
     }
-    return -1;
+    return found;
 }
 
 /** The key's line plus the continuation lines of a multi-line array or table. */
@@ -462,10 +459,11 @@ export function extractTomlRegion(text, reference) {
 
         // 1 — a key of the table the earlier segments name.
         if (table.length > 0) {
-            const header = tomlHeaderAt(lines, table.join('/'));
-            if (header !== -1) {
-                const at = tomlKeyAt(lines, key, header + 1, tomlTableEnd(lines, header) - 1);
-                if (at !== -1) {
+            const header = onlyHit(tomlHeadersAt(lines, table.join('/')), `"${path}": table "[${table.join('.')}]"`);
+            if (header !== null) {
+                const at = onlyHit(tomlKeysAt(lines, key, header + 1, tomlTableEnd(lines, header) - 1),
+                    `"${path}": key "${key}"`);
+                if (at !== null) {
                     out.push(`[${table.join('.')}]`);
                     out.push(...tomlValueLines(lines, at));
                     continue;
@@ -474,8 +472,8 @@ export function extractTomlRegion(text, reference) {
         }
 
         // 2 — the whole path is a table of its own.
-        const own = tomlHeaderAt(lines, segments.join('/'));
-        if (own !== -1) {
+        const own = onlyHit(tomlHeadersAt(lines, segments.join('/')), `"${path}": table "[${dotted}]"`);
+        if (own !== null) {
             out.push(...lines.slice(own, tomlTableEnd(lines, own)));
             continue;
         }
@@ -483,8 +481,9 @@ export function extractTomlRegion(text, reference) {
         // 3 — a key that sits above every table.
         if (table.length === 0) {
             const first = firstTomlHeader(lines);
-            const at = tomlKeyAt(lines, key, 0, (first === -1 ? lines.length : first) - 1);
-            if (at !== -1) {
+            const at = onlyHit(tomlKeysAt(lines, key, 0, (first === -1 ? lines.length : first) - 1),
+                `"${path}": key "${key}"`);
+            if (at !== null) {
                 out.push(...tomlValueLines(lines, at));
                 continue;
             }
@@ -497,13 +496,14 @@ export function extractTomlRegion(text, reference) {
 
 // --- INI -------------------------------------------------------------------
 
-/** The index of the `[name]` line, or -1. */
-function iniSectionAt(lines, name) {
+/** The indices of the `[name]` lines. */
+function iniSectionsAt(lines, name) {
+    const found = [];
     for (let i = 0; i < lines.length; i++) {
         const match = /^\s*\[([^\]]+)\]\s*$/.exec(lines[i]);
-        if (match && unquote(match[1].trim()) === name) return i;
+        if (match && unquote(match[1].trim()) === name) found.push(i);
     }
-    return -1;
+    return found;
 }
 
 /** The end of the section at `header`: the next section line, or the end. */
@@ -516,15 +516,16 @@ function iniSectionEnd(lines, header) {
     return end;
 }
 
-/** The line of `key = value` (or `key: value`) in `from..to`, or -1. */
-function iniKeyAt(lines, key, from, to) {
+/** The lines of `key = value` (or `key: value`) in `from..to`. */
+function iniKeysAt(lines, key, from, to) {
+    const found = [];
     for (let i = from; i <= to && i < lines.length; i++) {
         const line = lines[i];
         if (blankOrComment(line, [';', '#'])) continue;
         const match = /^\s*([^=:#\s][^=:]*?)\s*[=:]/.exec(line);
-        if (match && match[1].trim() === key) return i;
+        if (match && match[1].trim() === key) found.push(i);
     }
-    return -1;
+    return found;
 }
 
 /**
@@ -542,22 +543,22 @@ export function extractIniRegion(text, reference) {
 
         if (segments.length === 2) {
             const [sectionName, key] = segments;
-            const section = iniSectionAt(lines, sectionName);
-            if (section === -1) throw new Error(`"${path}": no section "[${sectionName}]"`);
+            const section = onlyHit(iniSectionsAt(lines, sectionName), `"${path}": section "[${sectionName}]"`);
+            if (section === null) throw new Error(`"${path}": no section "[${sectionName}]"`);
             const end = iniSectionEnd(lines, section);
-            const at = iniKeyAt(lines, key, section + 1, end - 1);
-            if (at === -1) throw new Error(`"${path}": no key "${key}" in [${sectionName}]`);
+            const at = onlyHit(iniKeysAt(lines, key, section + 1, end - 1), `"${path}": key "${key}"`);
+            if (at === null) throw new Error(`"${path}": no key "${key}" in [${sectionName}]`);
             out.push(lines[section].trim(), lines[at].trim());
             continue;
         }
 
-        const section = iniSectionAt(lines, segments[0]);
-        if (section !== -1) {
+        const section = onlyHit(iniSectionsAt(lines, segments[0]), `"${path}": section "[${segments[0]}]"`);
+        if (section !== null) {
             for (let i = section; i < iniSectionEnd(lines, section); i++) out.push(lines[i]);
             continue;
         }
-        const at = iniKeyAt(lines, segments[0], 0, lines.length - 1);
-        if (at === -1) throw new Error(`"${path}": no section "[${segments[0]}]" and no key "${segments[0]}"`);
+        const at = onlyHit(iniKeysAt(lines, segments[0], 0, lines.length - 1), `"${path}": key "${segments[0]}"`);
+        if (at === null) throw new Error(`"${path}": no section "[${segments[0]}]" and no key "${segments[0]}"`);
         out.push(lines[at].trim());
     }
     return out.join('\n');
@@ -584,9 +585,9 @@ export function extractIniRegion(text, reference) {
  * text. A key that names two different blocks in one scope is an error — the
  * rule `#region` already follows — and the predicate is the way to say which.
  *
- * The `-` of a trailing modifier is read here rather than by
- * `lib/section.mjs`, because CSS's own names contain hyphens (`.item-list`) and
- * the grammar's `-` is a modifier everywhere else.
+ * The modifier is the path's last segment (`.card/-`), the same spelling every
+ * other rule reads; what a segment *names* is CSS's, and a hyphen inside a name
+ * (`.item-list`) is a name character.
  */
 export function extractCssRuleRegion(text, reference) {
     try {
@@ -816,38 +817,34 @@ export function resolveMarker(marker, read, rule = ruleFor(marker.path)) {
 }
 
 /**
- * The text a marker stands for, plus the section warning when the built-in
- * code rule resolved a contradictory modifier (contract §11). A pure rule
- * interface returns a string, so the warning rides alongside it here rather
- * than through `resolveMarker`, which stays string-only for its tests.
+ * The text a marker stands for, plus the line span of each selector the
+ * reference named.
  *
- * `ranges` is the line span of each selector the reference named, for the code
- * rule — the same answer `planSection` gives, so a host that highlights or
- * navigates does not have to find the text again. A rule that *renders* its
- * selection (JSON, YAML, TOML, INI) answers `null`: its selection is not a byte
- * slice of the file.
+ * `ranges` is for the code rule and the CSS rule — the same answer
+ * `planSection` gives, so a host that highlights or navigates does not have to
+ * find the text again. A rule that *renders* its selection (JSON, YAML, TOML,
+ * INI) answers `null`: its selection is not a byte slice of the file.
  *
  * @param {{ path: string, reference: string | null }} marker
  * @param {(relativePath: string) => string} read resolves a path to its text
  * @param {{ name: string, resolve: (text: string, reference: string, path: string) => string }} [rule]
- * @returns {{ text: string, warning: object | null,
- *            ranges: Array<{ from: number, to: number }> | null }}
+ * @returns {{ text: string, ranges: Array<{ from: number, to: number }> | null }}
  */
 export function planMarker(marker, read, rule = ruleFor(marker.path)) {
     const text = read(marker.path);
-    if (marker.reference === null) return { text: normalize(text), warning: null, ranges: null };
+    if (marker.reference === null) return { text: normalize(text), ranges: null };
     if (rule === CODE_RULE) {
         const plan = planSection(text, marker.reference, lexerFor(marker.path));
-        return { text: plan.text, warning: plan.reference.warning, ranges: plan.ranges };
+        return { text: plan.text, ranges: plan.ranges };
     }
     if (rule === CSS_RULE) {
         // CSS selects a byte slice of the file, so it can answer with the lines
         // it came from even though its names are not declaration names.
         const source = normalize(text);
-        return { text: extractCssRuleRegion(text, marker.reference), warning: null, ranges: planCssMarker(source, marker.reference) };
+        return { text: extractCssRuleRegion(text, marker.reference), ranges: planCssMarker(source, marker.reference) };
     }
     rejectLineRange(marker.reference, rule);
-    return { text: rule.resolve(text, marker.reference, marker.path), warning: null, ranges: null };
+    return { text: rule.resolve(text, marker.reference, marker.path), ranges: null };
 }
 
 /**
@@ -1264,19 +1261,17 @@ export function updateDocument(text, options = {}) {
         seen.add(marker.raw);
 
         if (isIgnored && isIgnored(marker.path)) {
-            results.push({ marker, content: null, changed: false, skipped: true, warning: null });
+            results.push({ marker, content: null, changed: false, skipped: true });
             continue;
         }
 
         let content;
-        let warning = null;
         try {
             const plan = planMarker(marker, read, ruleFor(marker.path, rules));
             content = plan.text;
-            warning = plan.warning;
         } catch (err) {
             if (!lenient) throw new Error(`${marker.raw}: ${err.message}`);
-            results.push({ marker, content: null, changed: false, skipped: true, failure: err.message, warning: null });
+            results.push({ marker, content: null, changed: false, skipped: true, failure: err.message });
             continue;
         }
 
@@ -1285,7 +1280,7 @@ export function updateDocument(text, options = {}) {
             injected = injectInto(lines, marker.raw, content, marker.index, fileLanguage(marker.path));
         } catch (err) {
             if (!lenient || !(err instanceof IncludeError)) throw err;
-            results.push({ marker, content: null, changed: false, skipped: true, failure: err.message, warning });
+            results.push({ marker, content: null, changed: false, skipped: true, failure: err.message });
             continue;
         }
 
@@ -1294,7 +1289,7 @@ export function updateDocument(text, options = {}) {
         // would rewrite a CRLF document's body without changing what it says —
         // and would keep reporting a change the reader cannot see.
         if (injected.changed) lines = injected.lines;
-        results.push({ marker, content, changed: injected.changed, skipped: false, warning });
+        results.push({ marker, content, changed: injected.changed, skipped: false });
     }
 
     results.reverse();

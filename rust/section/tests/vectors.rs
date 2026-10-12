@@ -8,8 +8,8 @@
 //! and a file that cannot drift is better than one that can.
 //!
 //! Every vector is asserted: **grammar** and **grammar-error** through
-//! `parse_selectors` (exact error text, and the `+`/`++` versus `-` contradiction
-//! warning), and **resolution** through `plan_section` — comparing the text, the
+//! `parse_selectors` (exact error text), and **resolution** through
+//! `plan_section` — comparing the text, the
 //! 1-based inclusive line ranges, their outermost bounds and the matcher `kind`
 //! (`lines` for a line range, `multiple` for several selectors), or the error text
 //! for the rows whose expected answer is an error. A vector that is neither
@@ -70,7 +70,7 @@ fn reference_grammar_matches_the_vectors() {
         // input resolves a section through the mask, scanner and matcher layers.
         let Some(input) = vector["input"].as_str() else {
             asserted += 1;
-            assert_grammar_vector(vector, name, reference, expected_error, &mut failures);
+            assert_grammar_vector(name, reference, expected_error, &mut failures);
             continue;
         };
 
@@ -127,7 +127,6 @@ fn reference_grammar_matches_the_vectors() {
                         "{name}: ranges {got_ranges:?}, want {want_ranges:?}"
                     ));
                 }
-                assert_warning(vector, name, plan.reference.warning.as_ref(), &mut failures);
             }
             (Ok(plan), Some(expected)) => failures.push(format!(
                 "{name}: resolved to {:?}, want error {expected:?}",
@@ -159,13 +158,12 @@ fn reference_grammar_matches_the_vectors() {
     );
 }
 
-/// The grammar, the error text and the contradiction warning — no resolution.
+/// The grammar and the error text — no resolution.
 ///
 /// The entry point is `parse_selectors`, not `parse_reference`: the corpus holds
 /// comma-separated lists and line ranges, which one path selector reads as the errors
 /// they are.
 fn assert_grammar_vector(
-    vector: &Value,
     name: &str,
     reference: &str,
     expected_error: Option<&str>,
@@ -177,53 +175,12 @@ fn assert_grammar_vector(
                 failures.push(format!("{name}: got {error:?}, want {expected:?}"));
             }
         }
-        (Ok(parsed), None) => {
-            assert_warning(vector, name, parsed.warning.as_ref(), failures);
-        }
+        (Ok(_), None) => {}
         (Ok(parsed), Some(expected)) => failures.push(format!(
             "{name}: parsed to {:?}, want error {expected:?}",
             parsed.canonical
         )),
         (Err(error), None) => failures.push(format!("{name}: failed with {error:?}, want success")),
-    }
-}
-
-/// The contradiction warning a row expects, against the one the reference carries.
-fn assert_warning(
-    vector: &Value,
-    name: &str,
-    warning: Option<&inject_sections::Warning>,
-    failures: &mut Vec<String>,
-) {
-    let expected = &vector["warning"];
-    match (warning, expected.is_null()) {
-        (Some(warning), false) => {
-            let mismatches = [
-                ("kind", expected["kind"].as_str(), warning.kind),
-                ("kept", expected["kept"].as_str(), warning.kept),
-                ("dropped", expected["dropped"].as_str(), warning.dropped),
-            ]
-            .into_iter()
-            .filter(|(_, want, got)| *want != Some(*got))
-            .map(|(field, want, got)| format!("{field}: got {got}, want {want:?}"))
-            .collect::<Vec<_>>();
-            if !mismatches.is_empty() {
-                failures.push(format!("{name}: {}", mismatches.join(", ")));
-            }
-            if !warning.message.contains("contradicts") {
-                failures.push(format!(
-                    "{name}: warning message {:?} says nothing about the contradiction",
-                    warning.message
-                ));
-            }
-        }
-        (Some(warning), true) => {
-            failures.push(format!("{name}: warned {warning:?}, want no warning"));
-        }
-        (None, false) => {
-            failures.push(format!("{name}: no warning, want {expected}"));
-        }
-        (None, true) => {}
     }
 }
 
@@ -298,9 +255,9 @@ fn a_wrapped_parameter_list_is_still_a_declaration() {
 
     // The body alone: the signature (wrapped across lines) is dropped whole, and
     // the span still starts after the `{` of the closing line.
-    let body = resolve_section(&source, "render-", &*lexer).expect("the body");
+    let body = resolve_section(&source, "render/-", &*lexer).expect("the body");
     assert_eq!("        return name + \" x\" + quantity;", body);
-    let plan = plan_section(&source, "render-", &*lexer).expect("a plan");
+    let plan = plan_section(&source, "render/-", &*lexer).expect("a plan");
     assert_eq!(vec![(9, 9)], line_ranges(&plan));
 
     // A wrapped signature with a generic method's type parameters, and the same
@@ -318,7 +275,7 @@ fn a_wrapped_parameter_list_is_still_a_declaration() {
     assert!(widest.contains("left.compareTo(right)"));
 
     // The `+` scope reaches the annotation above a header that wraps.
-    let annotated = resolve_section(&source, "toString+", &*lexer).expect("the annotation");
+    let annotated = resolve_section(&source, "toString/+", &*lexer).expect("the annotation");
     assert!(
         annotated.starts_with("    @Override\n    public String toString("),
         "{annotated:?}"
@@ -342,7 +299,7 @@ fn a_wrapped_throws_clause_is_part_of_the_header() {
 
     assert_eq!(
         "        this.name = name;",
-        resolve_section(&source, "store-", &*lexer).expect("its body")
+        resolve_section(&source, "store/-", &*lexer).expect("its body")
     );
 
     // The class line wraps too: the type parameters, the `extends` and the

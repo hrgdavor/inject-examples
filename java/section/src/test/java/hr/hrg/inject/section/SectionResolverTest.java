@@ -1,7 +1,6 @@
 package hr.hrg.inject.section;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -32,8 +31,8 @@ class SectionResolverTest {
         assertTrue(declaration.startsWith("    void add() {"), declaration);
         assertTrue(declaration.endsWith("}"), declaration);
 
-        // `-` asks for the body alone.
-        assertEquals("count++;", SectionResolver.resolveSection(JAVA, "add-").trim());
+        // `-` asks for the body alone, and it is a whole segment after the path.
+        assertEquals("count++;", SectionResolver.resolveSection(JAVA, "add/-").trim());
 
         // A path descends: `Cart` narrows the scope, `add` selects inside it.
         assertEquals(declaration, SectionResolver.resolveSection(JAVA, "Cart/add"));
@@ -66,16 +65,15 @@ class SectionResolverTest {
         assertThrows(SectionReferenceException.class,
                 () -> SectionResolver.resolveSection(JAVA, "a//b"));
         assertThrows(SectionReferenceException.class,
-                () -> SectionResolver.resolveSection(JAVA, "a/+b"));
+                () -> SectionResolver.resolveSection(JAVA, "add++"));
     }
 
-    /** The plan exposes the parsed reference, so a host can surface the contradiction warning. */
+    /** The plan exposes the parsed reference, which is the whole of what a reference can say. */
     @Test
-    void thePlanCarriesTheReferenceAndItsWarning() {
-        SectionResolver.Plan plan = SectionResolver.planSection(JAVA, "add++-", BlockScanner.DEFAULT);
-        assertEquals("add++", plan.reference().canonical());
-        assertTrue(plan.reference().warningIfAny().isPresent());
-        assertEquals(Warning.KIND_CONTRADICTION, plan.reference().warning().kind());
+    void thePlanCarriesTheParsedReference() {
+        SectionResolver.Plan plan = SectionResolver.planSection(JAVA, "add/++", BlockScanner.DEFAULT);
+        assertEquals("add/++", plan.reference().canonical());
+        assertEquals(Scope.DOCUMENTED, plan.reference().scope());
     }
 
     // ------------------------------------------------------------------
@@ -102,34 +100,30 @@ class SectionResolverTest {
     }
 
     /**
-     * The reference's own modifier reaches the <b>last</b> selector and nobody else, so
-     * {@code add-,add} is a body and then a whole declaration — the difference between "one selector
-     * with two modifiers" and "two selectors that each say what they mean".
+     * A modifier belongs to the selector whose path carries it, so {@code add/-,render/++} is two
+     * selectors that each say what they mean — the difference between "one selector with two
+     * modifiers" (which is an error) and "two selectors that each say what they mean".
      */
     @Test
-    void theReferenceModifierReachesOnlyTheLastSelector() {
-        SectionResolver.Plan plan = SectionResolver.planSection(JAVA, "add-,add", BlockScanner.DEFAULT);
+    void aModifierBelongsToTheSelectorWhosePathCarriesIt() {
+        SectionResolver.Plan plan = SectionResolver.planSection(JAVA, "add/-,add", BlockScanner.DEFAULT);
 
         assertEquals(2, plan.reference().selectors().size());
         assertEquals(Scope.BODY, plan.reference().selectors().get(0).scope());
         assertEquals(Scope.DECLARATION, plan.reference().selectors().get(1).scope());
         assertEquals("        count++;\n    void add() {\n        count++;\n    }", plan.text());
 
-        // A leading modifier of the whole reference is the reference's own too, and spells to the end,
-        // exactly as {@code -add} is {@code add-}: it does not stay on the selector it was written in
-        // front of. The vectors pin the same reading (`-toString,Line` renders as `toString,Line-`).
-        assertEquals("add-,add-", SectionReference.parse("-add-,add").canonical());
-        assertEquals("add-,add-", SectionReference.parse("add-,add-").canonical());
+        // Each selector canonicalises on its own, and the pieces join with `,`.
+        assertEquals("add/-,add", SectionReference.parse("add/-,add").canonical());
+        assertEquals("add/-,render/++", SectionReference.parse("add/-,render/++").canonical());
     }
 
-    /** Each selector keeps the spelling it was written with, and only the last is respelled. */
+    /** Each selector keeps its own path and its own modifier, so none is respelled. */
     @Test
-    void theCanonicalFormKeepsEverySelectorButTheLast() {
-        // `add-` and `render++` are each selector's own spelling and survive verbatim; `remove+` is the
-        // last selector, so it is respelled from its path with the reference's modifier left where it
-        // is written.
-        SectionReference parsed = SectionReference.parse("add-,render++,remove+");
-        assertEquals("add-,render++,remove+", parsed.canonical());
+    void eachSelectorCanonicalisesOnItsOwn() {
+        // `add/-`, `render/++` and `remove/+` are each selector's own spelling and survive verbatim.
+        SectionReference parsed = SectionReference.parse("add/-,render/++,remove/+");
+        assertEquals("add/-,render/++,remove/+", parsed.canonical());
         assertEquals(List.of(Scope.BODY, Scope.DOCUMENTED, Scope.ANNOTATED),
                 List.of(parsed.selectors().get(0).scope(), parsed.selectors().get(1).scope(),
                         parsed.selectors().get(2).scope()));
@@ -138,22 +132,19 @@ class SectionResolverTest {
                 parsed.selectors().get(1).segments().get(0),
                 parsed.selectors().get(2).segments().get(0)));
 
-        // A leading run is the reference's own even mid-list, so it moves to the last selector.
-        assertEquals("add-,Cart,add", SectionReference.parse("add-,Cart,+add").canonical());
-        assertEquals("Cart/Line/render-,Cart",
-                SectionReference.parse("Cart/Line/render-,Cart").canonical());
+        assertEquals("Cart/Line/render/-,Cart",
+                SectionReference.parse("Cart/Line/render/-,Cart").canonical());
         assertEquals("add,Cart", SectionReference.parse(" add , Cart ").canonical());
     }
 
     /** A reference of one path selector keeps every field the single-reference grammar had. */
     @Test
     void aSinglePathSelectorStillReportsItsSegmentsAndScope() {
-        SectionReference parsed = SectionReference.parse("Cart/Line/render-");
+        SectionReference parsed = SectionReference.parse("Cart/Line/render/-");
         assertEquals(List.of("Cart", "Line", "render"), parsed.segments());
         assertEquals("render", parsed.finalSegment());
         assertEquals(Scope.BODY, parsed.scope());
         assertEquals(1, parsed.selectors().size());
-        assertNull(parsed.warning());
     }
 
     // ------------------------------------------------------------------
@@ -199,16 +190,18 @@ class SectionResolverTest {
                 referenceError("L2-"));
         assertEquals("\"#L2:0\" counts lines and columns from 1", referenceError("L2:0"));
         assertEquals("\"#L3-L2\" ends before it starts", referenceError("L3-L2"));
-        // A line range takes no modifier of its own.
+        // A line range takes no modifier of its own, and a whole-segment modifier is not part of a
+        // range either.
         assertEquals("\"#L2-L3+\" is not a line range; write L<line> or L<line>:<column>",
                 referenceError("L2-L3+"));
+        assertEquals("\"#L2/+\" is not a line range; write L<line> or L<line>:<column>",
+                referenceError("L2/+"));
+        assertEquals("\"#L2-L3/-\" is not a line range; write L<line> or L<line>:<column>",
+                referenceError("L2-L3/-"));
 
-        // A leading modifier of the whole reference is the reference's own, and a range ignores it.
-        SectionReference parsed = SectionReference.parse("+L2-L3");
-        assertEquals("L2-L3+", parsed.canonical());
-        assertTrue(parsed.isLineRange());
-        assertEquals("    void add() {\n        count++;",
-                SectionResolver.resolveSection(JAVA, "+L2-L3"));
+        // There is no detached leading modifier any more: `+` opens no name, so it says what to write.
+        assertEquals("\"+\" is a path segment now; it follows the path, as \"#<path>/+\"",
+                referenceError("+L2-L3"));
     }
 
     /** {@code Lx} opens no digit, so it is a name — and an ordinary one, which matches nothing here. */
@@ -237,12 +230,18 @@ class SectionResolverTest {
                 referenceError(() -> SectionReference.parseReference("L2-L3")));
     }
 
-    /** The same modifier twice is malformed, wherever the two runs were written. */
+    /** A segment of nothing but modifiers is two of them; a hyphen inside a name is a name. */
     @Test
-    void theSameModifierTwiceIsAnError() {
-        assertEquals("\"#a+++\" carries more than one modifier", referenceError("a+++"));
-        assertEquals("\"#a---\" carries more than one modifier", referenceError("a---"));
-        assertEquals("\"#-a-\" carries more than one modifier", referenceError("-a-"));
+    void aRunOfModifierCharactersIsAnErrorAsAWholeSegment() {
+        assertEquals("\"#a/+++\" carries more than one modifier", referenceError("a/+++"));
+        assertEquals("\"#a/---\" carries more than one modifier", referenceError("a/---"));
+
+        // `+` never occurs in a name, so a run of them inside one says where the segment belongs.
+        assertEquals("\"+++\" is a path segment now; write \"#a/+++\"", referenceError("a+++"));
+
+        // `-` is a name character, so these are one name each — not two modifiers.
+        assertEquals("a---", SectionReference.parse("a---").canonical());
+        assertEquals("-a-", SectionReference.parse("-a-").canonical());
     }
 
     private static String referenceError(String raw) {

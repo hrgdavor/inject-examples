@@ -81,8 +81,7 @@ pub const Error = error{ Failed, Grammar } || Allocator.Error;
 // Part A — the reference grammar
 // ===========================================================================
 
-/// A parsed reference, plus the contradiction warning a `+` against a `-`
-/// raises (§11: it resolves to the wider reading, and the CLI reports it).
+/// A parsed reference.
 ///
 /// A reference is one or more selectors. A reference of one `path` selector
 /// keeps every field the single-reference grammar ever had — `segments` and
@@ -97,18 +96,7 @@ pub const Reference = struct {
     selectors: ?[]const Selector = null,
     segments: []Str,
     scope: Scope,
-    warning: ?Warning = null,
-
-    pub const Warning = struct {
-        kind: WarningKind = .contradiction,
-        kept: Str,
-        dropped: Str,
-        canonical: Str,
-        message: Str,
-    };
 };
-
-pub const WarningKind = enum { contradiction };
 
 fn scopeFromModifier(modifier: ?Str) Scope {
     const text = modifier orelse return .declaration;
@@ -117,127 +105,92 @@ fn scopeFromModifier(modifier: ?Str) Scope {
     return .documented;
 }
 
-const LeadingModifier = struct { modifier: ?Str, name: Str };
+/// `segmentModifier`: the modifier a path **segment** is, or null when the
+/// segment is a name.
+///
+/// A modifier is a segment of its own, written after the `/` that delimits it —
+/// `toString/++`, `getUsers/-` — and it is legal only as the last segment of a
+/// path. `-` is a modifier only as the whole segment, which is what keeps a CSS
+/// custom property (`--brand`) and a hyphenated identifier addressable.
+fn segmentModifier(segment: Str) ?Str {
+    if (js.eql(segment, MOD_DOUBLE)) return MOD_DOUBLE;
+    if (js.eql(segment, MOD_SINGLE)) return MOD_SINGLE;
+    if (js.eql(segment, MOD_NONE)) return MOD_NONE;
+    return null;
+}
 
-/// `extractLeadingModifier`: a leading `-`, `+` or `++` only modifies the last
-/// segment; anywhere else it is an error.
-fn extractLeadingModifier(
+/// `NAME`: a name character — a `-` is one, a `+` never is, and a `.` may be.
+fn isNameSegment(segment: Str) bool {
+    if (segment.len == 0) return false;
+    for (segment) |unit| {
+        if (!js.isAsciiWord(unit) and unit != '.' and unit != '$' and unit != '-') return false;
+    }
+    return true;
+}
+
+/// `/^[-+]{2,}$/` — a segment that is nothing but modifier characters.
+fn isModifierRun(segment: Str) bool {
+    if (segment.len < 2) return false;
+    for (segment) |unit| {
+        if (unit != '-' and unit != '+') return false;
+    }
+    return true;
+}
+
+/// `assertName`: reject a name this grammar cannot carry, with the message that
+/// says why. `+` has no meaning inside a name at all, and the only thing a user
+/// means by it is a modifier — so the message names the spelling that works.
+fn assertName(
     alloc: Allocator,
-    seg: Str,
-    is_last: bool,
+    segment: Str,
     raw: Str,
     failure: *Failure,
-) Error!LeadingModifier {
-    if (seg.len <= 1) return .{ .modifier = null, .name = seg };
+) Error!void {
+    if (isNameSegment(segment)) return;
 
-    if (seg[0] == '-') {
-        if (seg[1] == '-' or seg[1] == '+') return .{ .modifier = null, .name = seg };
-        if (is_last) return .{ .modifier = seg[0..1], .name = seg[1..] };
+    if (js.indexOfUnit(segment, '+')) |plus_at| {
+        const run_len = plusRunLen(segment[plus_at..]);
+        const plus = segment[plus_at .. plus_at + run_len];
+        const before = segment[0..plus_at];
+        if (before.len == 0) {
+            return failure.grammarMessage(try js.format(
+                alloc,
+                "\"{s}\" is a path segment now; it follows the path, as \"#<path>/{s}\"",
+                .{ @as(Str, plus), @as(Str, plus) },
+            ));
+        }
         return failure.grammarMessage(try js.format(
             alloc,
-            "\"-\" may only modify the last path segment of \"#{s}\"",
-            .{@as(Str, raw)},
+            "\"{s}\" is a path segment now; write \"#{s}/{s}\"",
+            .{ @as(Str, plus), @as(Str, before), @as(Str, plus) },
         ));
     }
 
-    if (js.startsWith(seg, MOD_DOUBLE)) {
-        if (seg.len > 2 and (seg[2] == '+' or seg[2] == '-')) return .{ .modifier = null, .name = seg };
-        return failure.grammarMessage(try js.format(
-            alloc,
-            "\"++\" may only modify the last path segment of \"#{s}\"",
-            .{@as(Str, raw)},
-        ));
-    }
-
-    if (seg[0] == '+') {
-        if (seg.len > 1 and (seg[1] == '+' or seg[1] == '-')) return .{ .modifier = null, .name = seg };
-        return failure.grammarMessage(try js.format(
-            alloc,
-            "\"+\" may only modify the last path segment of \"#{s}\"",
-            .{@as(Str, raw)},
-        ));
-    }
-
-    return .{ .modifier = null, .name = seg };
+    return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
 }
 
-const Trailing = struct { name: Str, tokens: []Str };
-
-/// `tokenizeModifierRun`: a run of `+`/`-`, read left to right, so `++` is one
-/// modifier and `a++-` is the two tokens `++ -`.
-fn tokenizeModifierRun(alloc: Allocator, run: Str) ![]Str {
-    var tokens = std.ArrayList(Str).empty;
-    var at: usize = 0;
-    while (at < run.len) {
-        if (at + 1 < run.len and run[at] == '+' and run[at + 1] == '+') {
-            try tokens.append(alloc, run[at .. at + 2]);
-            at += 2;
-        } else if (run[at] == '+' or run[at] == '-') {
-            try tokens.append(alloc, run[at .. at + 1]);
-            at += 1;
-        } else break;
-    }
-    return tokens.toOwnedSlice(alloc);
+/// The length of the `+` run at the start of `text`.
+fn plusRunLen(text: Str) usize {
+    var len: usize = 0;
+    while (len < text.len and text[len] == '+') len += 1;
+    return len;
 }
 
-/// `extractTrailingModifier`: a run of `+`/`-` at the end of a name, tokenised
-/// so `++` counts as one modifier and `-` as another.
-fn extractTrailingModifier(alloc: Allocator, name: Str) !Trailing {
-    var i = name.len;
-    while (i > 0 and (name[i - 1] == '+' or name[i - 1] == '-')) i -= 1;
-    if (i == name.len) return .{ .name = name, .tokens = &.{} };
-    return .{ .name = name[0..i], .tokens = try tokenizeModifierRun(alloc, name[i..]) };
-}
-
-const Detached = struct { modifier: ?Str, remainder: Str };
-
-/// `detachLeadingModifier`: the longest prefix of `raw` that is a modifier run.
-fn detachLeadingModifier(raw: Str) Detached {
-    if (js.startsWith(raw, MOD_DOUBLE)) return .{ .modifier = MOD_DOUBLE, .remainder = raw[2..] };
-    if (js.startsWith(raw, MOD_SINGLE)) return .{ .modifier = MOD_SINGLE, .remainder = raw[1..] };
-    if (js.startsWith(raw, MOD_NONE)) return .{ .modifier = MOD_NONE, .remainder = raw[1..] };
-    return .{ .modifier = null, .remainder = raw };
-}
-
-/// `modifierSpelling`: the spelling a merged modifier takes at the end of a
-/// canonical reference. A contradiction keeps the reading that won, which is
-/// already the `modifier` this port stores.
-fn modifierSpelling(modifier: ?Str) Str {
-    return modifier orelse &.{};
-}
-
-const Merged = struct { modifier: ?Str = null, contradicted: bool = false };
-
-/// `mergeModifiers`: combine the modifier tokens one selector carries into the
-/// single modifier it has, or fail when they cannot be combined.
-///
-/// `+` against `-` is the one contradiction: the annotation reading wins, and
-/// the caller reports it once. The same modifier twice is malformed.
+/// `mergeModifiers`: a path has one modifier. Two is malformed rather than
+/// contradictory — there is no section that is two scopes at once.
 fn mergeModifiers(
     alloc: Allocator,
     modifiers: []const Str,
     raw: Str,
     failure: *Failure,
-) Error!Merged {
-    if (modifiers.len == 0) return .{};
-    if (modifiers.len == 1) return .{ .modifier = modifiers[0] };
-
-    var positives: usize = 0;
-    var negatives: usize = 0;
-    for (modifiers) |entry| {
-        if (entry[0] == '+') positives += 1 else negatives += 1;
-    }
-    if (positives > 1 or negatives > 1) {
-        return failure.grammarMessage(try js.format(
-            alloc,
-            "\"#{s}\" carries more than one modifier",
-            .{@as(Str, raw)},
-        ));
-    }
-    for (modifiers) |entry| {
-        if (js.eql(entry, MOD_DOUBLE)) return .{ .modifier = MOD_DOUBLE, .contradicted = true };
-    }
-    return .{ .modifier = MOD_SINGLE, .contradicted = true };
+) Error!?Str {
+    if (modifiers.len == 0) return null;
+    if (modifiers.len == 1) return modifiers[0];
+    return failure.grammarMessage(try js.format(
+        alloc,
+        "\"#{s}\" carries more than one modifier",
+        .{@as(Str, raw)},
+    ));
 }
 
 fn isDigitUnit(unit: ?u16) bool {
@@ -333,13 +286,22 @@ fn lineRangeOf(alloc: Allocator, raw: Str, failure: *Failure) Error!?SelectorRan
     return range;
 }
 
-/// `parseReference`: the grammar of `#<reference>`, its canonical spelling and
-/// the contradiction warning. This is the **single path selector** reader: a
-/// comma and a line range are not a path, and are reported as such.
+/// `parseReference`: the grammar of one **path** selector. A comma (that is
+/// `parseSelectors`) and a line range are not a path, and are reported as such.
 pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Reference {
     if (raw.len == 0) return failure.grammarMessage(try js.format(alloc, "\"#\" names nothing", .{}));
     if (js.indexOfUnit(raw, ',') != null) {
         return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty selector", .{raw}));
+    }
+    // A reference names a section of **one** file, and the file is the path the
+    // marker's link already carries: a second `#` is a link written into the
+    // fragment by mistake, never a nested reference (RFC 1 §9.8).
+    if (js.indexOfUnit(raw, '#') != null) {
+        return failure.grammarMessage(try js.format(
+            alloc,
+            "\"#{s}\" has a second \"#\"; a reference names one file",
+            .{raw},
+        ));
     }
     if (isLineRangePrefix(raw)) {
         _ = try lineRangeOf(alloc, raw, failure); // fails when the range is malformed
@@ -350,24 +312,7 @@ pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
         ));
     }
 
-    var detached: ?Str = null;
-    var remainder = raw;
-    if (js.startsWith(raw, MOD_DOUBLE)) {
-        detached = MOD_DOUBLE;
-        remainder = raw[2..];
-    } else if (js.startsWith(raw, MOD_SINGLE)) {
-        detached = MOD_SINGLE;
-        remainder = raw[1..];
-    } else if (js.startsWith(raw, MOD_NONE)) {
-        detached = MOD_NONE;
-        remainder = raw[1..];
-    }
-
-    if (remainder.len == 0) {
-        return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
-    }
-
-    const parts = try splitSlash(alloc, remainder);
+    const parts = try splitSlash(alloc, raw);
     for (parts) |part| {
         if (part.len == 0) {
             return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty path segment", .{raw}));
@@ -377,113 +322,56 @@ pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
         return failure.grammarMessage(try js.format(alloc, "\"#{s}\" is deeper than 8 sections", .{raw}));
     }
 
-    var detached_second: ?Str = null;
-    if (detached == null and parts.len == 2) {
-        const second = parts[1];
-        if (second.len > 1 and second[0] == '-' and second[1] != '-' and second[1] != '+') {
-            detached_second = MOD_NONE;
-            parts[1] = second[1..];
-        }
-    }
+    var modifiers = std.ArrayList(Str).empty;
+    var names = std.ArrayList(Str).empty;
 
-    var all_modifiers = std.ArrayList(Str).empty;
-    var clean = std.ArrayList(Str).empty;
-
-    for (parts, 0..) |seg, index| {
-        const is_last = index == parts.len - 1;
-        const leading = try extractLeadingModifier(alloc, seg, is_last, raw, failure);
-        if (leading.modifier) |modifier| try all_modifiers.append(alloc, modifier);
-
-        const trailing = try extractTrailingModifier(alloc, leading.name);
-        for (trailing.tokens) |token| try all_modifiers.append(alloc, token);
-
-        const name = trailing.name;
-        if (js.indexOfUnit(name, '+') != null or js.indexOfUnit(name, '-') != null) {
-            // A bare name (one segment, nothing detached) keeps the legacy
-            // meaning: a `#region` name may contain `-`. Any `+`, or a hyphen
-            // inside a multi-segment path, is structure, never part of a name.
-            const legacy = parts.len == 1 and detached == null and detached_second == null and
-                js.indexOfUnit(name, '+') == null;
-            if (!legacy) {
-                const ch = if (js.indexOfUnit(name, '+') != null) MOD_SINGLE else MOD_NONE;
+    for (parts, 0..) |segment, index| {
+        if (segmentModifier(segment)) |modifier| {
+            if (index != parts.len - 1) {
                 return failure.grammarMessage(try js.format(
                     alloc,
                     "\"{s}\" may only modify the last path segment of \"#{s}\"",
-                    .{ @as(Str, ch), @as(Str, raw) },
+                    .{ modifier, raw },
                 ));
             }
+            try modifiers.append(alloc, modifier);
+            continue;
         }
-        try clean.append(alloc, name);
+        // A segment of nothing but modifiers (`+++`, `---`) is two of them on one
+        // segment. `--` and `--brand` are names: a CSS custom property is one.
+        if (isModifierRun(segment) and !(segment.len == 2 and segment[0] == '-' and segment[1] == '-')) {
+            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" carries more than one modifier", .{raw}));
+        }
+        try assertName(alloc, segment, raw, failure);
+        try names.append(alloc, segment);
     }
 
-    for (clean.items) |name| {
-        if (name.len == 0) {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty path segment", .{raw}));
+    if (names.items.len == 0) {
+        // A path of modifiers has no subject: `-` is the old body scope, and
+        // `++`/`+` name nothing at all.
+        if (segmentModifier(raw) == null) {
+            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" carries more than one modifier", .{raw}));
         }
+        return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
     }
 
-    // The detached modifiers lead; the trailing run follows.
-    var ordered = std.ArrayList(Str).empty;
-    if (detached_second) |modifier| try ordered.append(alloc, modifier);
-    if (detached) |modifier| try ordered.append(alloc, modifier);
-    for (all_modifiers.items) |modifier| try ordered.append(alloc, modifier);
-
-    var modifier: ?Str = null;
-    var warning: ?Reference.Warning = null;
-
-    if (ordered.items.len == 1) {
-        modifier = ordered.items[0];
-    } else if (ordered.items.len > 1) {
-        var positives: usize = 0;
-        var negatives: usize = 0;
-        for (ordered.items) |entry| {
-            if (entry[0] == '+') positives += 1 else negatives += 1;
-        }
-        if (positives > 1 or negatives > 1) {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" carries more than one modifier", .{@as(Str, raw)}));
-        }
-        var has_double = false;
-        var has_single = false;
-        for (ordered.items) |entry| {
-            if (js.eql(entry, MOD_DOUBLE)) has_double = true;
-            if (js.eql(entry, MOD_SINGLE)) has_single = true;
-        }
-        // The modifiers are named constants, not `&lit(…)` pointers, so they
-        // live as long as the reference they are stored in.
-        if (has_double) {
-            modifier = MOD_DOUBLE;
-            warning = .{ .kept = MOD_DOUBLE, .dropped = MOD_NONE, .canonical = &.{}, .message = &.{} };
-        } else if (has_single) {
-            modifier = MOD_SINGLE;
-            warning = .{ .kept = MOD_SINGLE, .dropped = MOD_NONE, .canonical = &.{}, .message = &.{} };
-        } else {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" carries more than one modifier", .{@as(Str, raw)}));
-        }
-    }
+    const modifier = try mergeModifiers(alloc, modifiers.items, raw, failure);
 
     var canonical = std.ArrayList(u16).empty;
-    for (clean.items, 0..) |name, index| {
+    for (names.items, 0..) |name, index| {
         if (index > 0) try canonical.append(alloc, '/');
         try canonical.appendSlice(alloc, name);
     }
-    if (modifier) |text| try canonical.appendSlice(alloc, text);
-    const canonical_owned = try canonical.toOwnedSlice(alloc);
-
-    if (warning) |*w| {
-        w.canonical = canonical_owned;
-        w.message = try js.format(
-            alloc,
-            "\"{s}\" contradicts \"{s}\"; using \"#{s}\"",
-            .{ w.kept, w.dropped, canonical_owned },
-        );
+    if (modifier) |text| {
+        try canonical.append(alloc, '/');
+        try canonical.appendSlice(alloc, text);
     }
 
     return .{
         .raw = raw,
-        .canonical = canonical_owned,
-        .segments = try clean.toOwnedSlice(alloc),
+        .canonical = try canonical.toOwnedSlice(alloc),
+        .segments = try names.toOwnedSlice(alloc),
         .scope = scopeFromModifier(modifier),
-        .warning = warning,
     };
 }
 
@@ -526,83 +414,39 @@ fn canOpenSelector(text: Str) bool {
     return js.isAsciiWord(unit) or unit == '$' or unit == '/' or unit == '+' or unit == '-';
 }
 
-/// The length of `segments.join('/')`, the part of a canonical spelling the
-/// segments account for; the rest is the modifier run.
-fn joinedSegmentsLen(segments: []const Str) usize {
-    var total: usize = 0;
-    for (segments, 0..) |segment, index| {
-        if (index > 0) total += 1;
-        total += segment.len;
-    }
-    return total;
-}
-
 /// `parseSelectors`: read a whole reference as its selectors, or fail.
 ///
 /// A reference is one or more selectors separated by `,`: each is either a
-/// semantic path (`Cart/Line/render-`) or a line range (`L40:12-L44:3`). A
+/// semantic path (`Cart/Line/render/++`) or a line range (`L40:12-L44:3`). A
 /// single path selector is the degenerate case and keeps the canonical spelling,
 /// the segments and the scope `parseReference` always gave it.
 ///
-/// A leading or trailing modifier of the whole reference belongs to the **last**
-/// selector, exactly as it belonged to the last path segment before; a modifier
-/// written on a selector's own path is that selector's and nobody else's. A line
-/// range has no modifier of its own and takes none.
+/// A modifier belongs to the selector whose path carries it, so
+/// `add/-,render/++` is two selectors that each say what they mean and nothing
+/// is ambiguous between them. A line range carries no modifier at all.
 pub fn parseSelectors(alloc: Allocator, raw: Str, failure: *Failure) Error!Reference {
     if (raw.len == 0) return failure.grammarMessage(try js.format(alloc, "\"#\" names nothing", .{}));
 
-    const leading = detachLeadingModifier(raw);
-    if (leading.remainder.len == 0) {
-        return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
-    }
-
-    const parts = try splitComma(alloc, leading.remainder);
+    const parts = try splitComma(alloc, raw);
     for (parts) |part| {
         if (js.trim(part).len == 0) {
             return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty selector", .{raw}));
         }
     }
-    const last_index = parts.len - 1;
-
-    // The reference's own modifier: the leading one, the trailing one, or both.
-    // It is collected separately from a selector's own run because only it can
-    // reach the last selector's path (`-a/b` is `a/b-`).
-    var reference_modifiers = std.ArrayList(Str).empty;
-    if (leading.modifier) |modifier| try reference_modifiers.append(alloc, modifier);
-
-    // The trailing run of the last selector is the reference's own. For a path
-    // the run is taken both from the selector as written *and* from the path it
-    // parses to, so a run written further up the path (`a-/b++`) is still part
-    // of the reference's modifier and still contradicts a leading one. A line
-    // range is read first and on its own: `lineRangeOf` rejects the ranges that
-    // only look like one, and a range takes no modifier at all.
-    const last_text = js.trim(parts[last_index]);
-    if (try lineRangeOf(alloc, last_text, failure) == null) {
-        const written = try extractTrailingModifier(alloc, last_text);
-        const parsed_last: ?Reference = if (canOpenName(written.name))
-            try parseReference(alloc, written.name, failure)
-        else
-            null;
-        const suffix: Str = if (parsed_last != null and parsed_last.?.segments.len > 0)
-            parsed_last.?.canonical[joinedSegmentsLen(parsed_last.?.segments)..]
-        else
-            &.{};
-        for (written.tokens) |token| try reference_modifiers.append(alloc, token);
-        for (try tokenizeModifierRun(alloc, suffix)) |token| try reference_modifiers.append(alloc, token);
-    }
-
-    const merged = try mergeModifiers(alloc, reference_modifiers.items, raw, failure);
-    const modifier = merged.modifier;
 
     var selectors = std.ArrayList(Selector).empty;
+    var canonical = std.ArrayList(u16).empty;
+
     for (parts, 0..) |part, index| {
         const trimmed = js.trim(part);
 
-        // A selector that opens `L<digit>` is a line range, and is read as one
-        // before anything is stripped from it: a range takes no modifier at all.
-        if (index == last_index or isLineRangePrefix(trimmed)) {
-            const text = if (index == last_index) last_text else trimmed;
-            if (try lineRangeOf(alloc, text, failure)) |range| {
+        // A selector that opens `L<digit>` is a line range or a typo, never a
+        // name — read as a range before anything else, so `L40-` reports the
+        // range rather than a path about a name nobody meant.
+        if (isLineRangePrefix(trimmed)) {
+            if (try lineRangeOf(alloc, trimmed, failure)) |range| {
+                if (index > 0) try canonical.append(alloc, ',');
+                try canonical.appendSlice(alloc, trimmed);
                 try selectors.append(alloc, .{ .lines = .{
                     .raw = trimmed,
                     .from = range.from,
@@ -612,93 +456,41 @@ pub fn parseSelectors(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
             }
         }
 
-        // The last selector is read without the runs that are the reference's
-        // own, so the reference's modifier and the selector's are compared
-        // rather than counted twice.
-        const text = if (index == last_index)
-            (try extractTrailingModifier(alloc, trimmed)).name
-        else
-            trimmed;
-
         // A path is a name. What cannot even open a name — `@x` — names nothing;
         // anything else is read by the single-selector grammar, whose own errors
-        // (`/a` has an empty path segment, `a/+b` is a misplaced modifier) quote
-        // the selector and are the ones a user needs to see.
-        if (!canOpenSelector(text)) {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{text}));
+        // are the ones a user needs to see.
+        if (!canOpenSelector(trimmed)) {
+            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{trimmed}));
         }
-        const parsed = try parseReference(alloc, text, failure);
-        // The reference's own modifier applies to the last selector, as it has
-        // always applied to the last path segment; every earlier selector keeps
-        // the scope its own spelling gave it.
-        const scope: Scope = if (index == last_index and modifier != null)
-            scopeFromModifier(modifier)
-        else
-            parsed.scope;
+        const parsed = try parseReference(alloc, trimmed, failure);
+        if (index > 0) try canonical.append(alloc, ',');
+        try canonical.appendSlice(alloc, parsed.canonical);
         try selectors.append(alloc, .{ .path = .{
-            .raw = text,
+            .raw = trimmed,
             .segments = parsed.segments,
-            .scope = scope,
+            .scope = parsed.scope,
         } });
     }
 
-    // Every selector but the last keeps the spelling it was written with — its
-    // modifier included, since that modifier belongs to that selector. The last
-    // one is spelled from its parsed path, with the reference's own modifier
-    // appended, which is where a modifier has always been canonicalised to.
-    var canonical = std.ArrayList(u16).empty;
-    for (selectors.items, 0..) |selector, index| {
-        if (index > 0) try canonical.append(alloc, ',');
-        switch (selector) {
-            .lines => |line| try canonical.appendSlice(alloc, line.raw),
-            .path => |path| {
-                if (index == selectors.items.len - 1) {
-                    for (path.segments, 0..) |segment, at| {
-                        if (at > 0) try canonical.append(alloc, '/');
-                        try canonical.appendSlice(alloc, segment);
-                    }
-                } else try canonical.appendSlice(alloc, path.raw);
-            },
-        }
-    }
-    try canonical.appendSlice(alloc, modifierSpelling(modifier));
-    const canonical_owned = try canonical.toOwnedSlice(alloc);
-
-    // A reference of one path selector carries a scope the resolver applies; in
-    // a mixed reference the reference's modifier belongs to the last path
-    // selector, and a line range has no scope at all.
+    // A reference of one path selector carries a scope the resolver applies; a
+    // line range has none, and a mixed reference resolves each selector with its
+    // own.
     var segments: []Str = &.{};
     var scope: Scope = .declaration;
     if (selectors.items.len == 1) switch (selectors.items[0]) {
         .path => |path| {
             segments = path.segments;
-            scope = if (modifier != null) scopeFromModifier(modifier) else path.scope;
+            scope = path.scope;
         },
         .lines => {},
     };
 
-    var warning: ?Reference.Warning = null;
-    if (merged.contradicted) {
-        warning = .{
-            .kept = modifier.?,
-            .dropped = MOD_NONE,
-            .canonical = canonical_owned,
-            .message = &.{},
-        };
-        warning.?.message = try js.format(
-            alloc,
-            "\"{s}\" contradicts \"{s}\"; using \"#{s}\"",
-            .{ modifier.?, MOD_NONE, canonical_owned },
-        );
-    }
-
     return .{
         .raw = raw,
-        .canonical = canonical_owned,
+        .canonical = try canonical.toOwnedSlice(alloc),
         .selectors = try selectors.toOwnedSlice(alloc),
         .segments = segments,
         .scope = scope,
-        .warning = warning,
     };
 }
 
@@ -2902,11 +2694,17 @@ fn searchSegments(
     return &.{};
 }
 
-/// Resolve `segments[index..]` starting at `scope`, retrying same-named
-/// candidates: a candidate that cannot be a scope, or that does not hold the
-/// rest of the path, gives way to the next one at the same level. The **last**
-/// segment is not retried — its first match in walk order is the selection — so
-/// a path is only ambiguous when the *scopes* disagree.
+/// Resolve `segments[index..]` starting at `scope`.
+///
+/// A name declared more than once at one level is **ambiguous**, and ambiguity is
+/// an error, never a guess: `#add` must not inject the first of two `add`s, and
+/// `#Cart` must not inject the `struct` when an `impl Cart` sits beside it.
+///
+/// What is *not* ambiguity is a name that several blocks share where the rest of
+/// the path decides: a Rust `struct Cart` beside its `impl Cart` blocks all answer
+/// to `Cart`, and `Cart/add` is resolved by retrying them in walk order — the one
+/// that holds `add` wins. Only a last segment, or a set of candidates whose
+/// descents *all* succeed, is ambiguous.
 fn resolvePath(
     alloc: Allocator,
     segments: []const Str,
@@ -2935,19 +2733,45 @@ fn resolvePath(
         ));
     }
 
+    // The selection itself: nothing follows, so a second candidate is a second
+    // answer and the reference does not say which one it wants.
+    if (last and candidates.len > 1) {
+        return failure.set(try js.format(
+            alloc,
+            "\"{s}\" is declared {d} times; names must be unique",
+            .{ segment, candidates.len },
+        ));
+    }
+
+    var failure_message: ?Str = null;
+    var matched: ?SegmentHit = null;
     for (candidates) |found| {
         if (last) return found;
         if (found.region != null or !isContainer(found.block.?)) {
-            if (failure.message.len == 0) {
-                failure.message = try js.format(alloc, "\"{s}\" is not a container", .{segment});
+            if (failure_message == null) {
+                failure_message = try js.format(alloc, "\"{s}\" is not a container", .{segment});
             }
             continue;
         }
-        return resolvePath(alloc, segments, index + 1, found.block.?, true, segment, failure) catch |err| {
+        const resolved = resolvePath(alloc, segments, index + 1, found.block.?, true, segment, failure) catch |err| {
             if (err != error.Failed) return err;
+            if (failure_message == null) failure_message = failure.message;
             continue;
         };
+        // Two candidates both holding the rest of the path is the same ambiguity
+        // one level down: the path does not choose between them. Decided after
+        // the catch, because the error belongs to this frame, not that one.
+        if (matched != null) {
+            return failure.set(try js.format(
+                alloc,
+                "\"{s}\" is declared {d} times; names must be unique",
+                .{ segment, candidates.len },
+            ));
+        }
+        matched = resolved;
     }
+    if (matched) |found| return found;
+    if (failure_message) |message| failure.message = message;
     return error.Failed;
 }
 
@@ -3442,8 +3266,8 @@ fn lineRangeSpan(
     };
 }
 
-/// Resolve a section reference to text, exposing the reference and any
-/// contradiction warning. `resolveSection` is `planSection(...).text`.
+/// Resolve a section reference to text, exposing the reference.
+/// `resolveSection` is `planSection(...).text`.
 ///
 /// A reference is one or more selectors (`add,L40-L44`): each contributes its
 /// own text, and the texts are joined with a newline in the order the selectors
@@ -3603,16 +3427,17 @@ test "parseReference reads the modifiers and canonicalises them" {
 
     const cases = [_]struct { raw: []const u8, canonical: []const u8, scope: Scope }{
         .{ .raw = "add", .canonical = "add", .scope = .declaration },
-        .{ .raw = "add-", .canonical = "add-", .scope = .body },
-        .{ .raw = "add+", .canonical = "add+", .scope = .annotated },
-        .{ .raw = "add++", .canonical = "add++", .scope = .documented },
-        .{ .raw = "-add", .canonical = "add-", .scope = .body },
-        .{ .raw = "+add", .canonical = "add+", .scope = .annotated },
-        .{ .raw = "++add", .canonical = "add++", .scope = .documented },
+        .{ .raw = "add/-", .canonical = "add/-", .scope = .body },
+        .{ .raw = "add/+", .canonical = "add/+", .scope = .annotated },
+        .{ .raw = "add/++", .canonical = "add/++", .scope = .documented },
+        // A name may contain a hyphen: only a whole segment is a modifier.
+        .{ .raw = "add-", .canonical = "add-", .scope = .declaration },
+        .{ .raw = "-add", .canonical = "-add", .scope = .declaration },
+        .{ .raw = "--brand", .canonical = "--brand", .scope = .declaration },
         .{ .raw = "Cart/Line/render", .canonical = "Cart/Line/render", .scope = .declaration },
-        .{ .raw = "Cart/Line-", .canonical = "Cart/Line-", .scope = .body },
-        .{ .raw = "Cart/-Line", .canonical = "Cart/Line-", .scope = .body },
-        .{ .raw = "Cart/Line/-render", .canonical = "Cart/Line/render-", .scope = .body },
+        .{ .raw = "Cart/Line/-", .canonical = "Cart/Line/-", .scope = .body },
+        .{ .raw = "Cart/Line/++", .canonical = "Cart/Line/++", .scope = .documented },
+        .{ .raw = "Cart/Line/render/-", .canonical = "Cart/Line/render/-", .scope = .body },
         .{ .raw = "a/b/c/d/e/f/g/h", .canonical = "a/b/c/d/e/f/g/h", .scope = .declaration },
     };
     for (cases) |case| {
@@ -3634,11 +3459,19 @@ test "parseReference rejects the malformed shapes" {
         .{ .raw = "a/", .message = "\"#a/\" has an empty path segment" },
         .{ .raw = "/a", .message = "\"#/a\" has an empty path segment" },
         .{ .raw = "a//b", .message = "\"#a//b\" has an empty path segment" },
-        .{ .raw = "a/+b", .message = "\"+\" may only modify the last path segment of \"#a/+b\"" },
-        .{ .raw = "Cart/-Line/render", .message = "\"-\" may only modify the last path segment of \"#Cart/-Line/render\"" },
-        .{ .raw = "a+++", .message = "\"#a+++\" carries more than one modifier" },
-        .{ .raw = "a---", .message = "\"#a---\" carries more than one modifier" },
-        .{ .raw = "a--", .message = "\"#a--\" carries more than one modifier" },
+        // A modifier is the last segment of a path, and nothing may follow it.
+        .{ .raw = "a/+/b", .message = "\"+\" may only modify the last path segment of \"#a/+/b\"" },
+        .{ .raw = "a/-/b", .message = "\"-\" may only modify the last path segment of \"#a/-/b\"" },
+        .{ .raw = "Cart/Line/-/render", .message = "\"-\" may only modify the last path segment of \"#Cart/Line/-/render\"" },
+        .{ .raw = "a/+++", .message = "\"#a/+++\" carries more than one modifier" },
+        .{ .raw = "a/---", .message = "\"#a/---\" carries more than one modifier" },
+        .{ .raw = "+++", .message = "\"#+++\" carries more than one modifier" },
+        // The old spellings: `+` never occurs inside a name, so it can only
+        // have meant a modifier, and the message names the spelling that works.
+        .{ .raw = "add++", .message = "\"++\" is a path segment now; write \"#add/++\"" },
+        .{ .raw = "add+", .message = "\"+\" is a path segment now; write \"#add/+\"" },
+        .{ .raw = "a/b++", .message = "\"++\" is a path segment now; write \"#b/++\"" },
+        .{ .raw = "++add", .message = "\"++\" is a path segment now; it follows the path, as \"#<path>/++\"" },
         .{ .raw = "a/b/c/d/e/f/g/h/i", .message = "\"#a/b/c/d/e/f/g/h/i\" is deeper than 8 sections" },
     };
     for (cases) |case| {
@@ -3647,27 +3480,6 @@ test "parseReference rejects the malformed shapes" {
         try testing.expectError(error.Failed, parseReference(alloc, raw, &failure));
         try testing.expect(failure.grammar);
         try expectUnits(alloc, case.message, failure.message);
-    }
-}
-
-test "parseReference warns when a + contradicts a -" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-
-    const cases = [_]struct { raw: []const u8, canonical: []const u8, message: []const u8 }{
-        .{ .raw = "a++-", .canonical = "a++", .message = "\"++\" contradicts \"-\"; using \"#a++\"" },
-        .{ .raw = "a-++", .canonical = "a++", .message = "\"++\" contradicts \"-\"; using \"#a++\"" },
-        .{ .raw = "a+-", .canonical = "a+", .message = "\"+\" contradicts \"-\"; using \"#a+\"" },
-        .{ .raw = "a-+", .canonical = "a+", .message = "\"+\" contradicts \"-\"; using \"#a+\"" },
-    };
-    for (cases) |case| {
-        const raw = try js.utf8Decode(alloc, case.raw);
-        var failure = Failure{};
-        const reference = try parseReference(alloc, raw, &failure);
-        try expectUnits(alloc, case.canonical, reference.canonical);
-        const warning = reference.warning orelse return error.ExpectedAWarning;
-        try expectUnits(alloc, case.message, warning.message);
     }
 }
 
@@ -3682,46 +3494,47 @@ test "parseSelectors reads a reference as a comma-separated list of selectors" {
         .{ .raw = "L40-L44", .canonical = "L40-L44", .scope = .declaration },
         .{ .raw = "L40:12-L44:3", .canonical = "L40:12-L44:3", .scope = .declaration },
         .{ .raw = "add,render", .canonical = "add,render", .scope = .declaration },
-        // Each selector's own modifier is that selector's; two selectors that
-        // each say what they mean do not contradict one another.
-        .{ .raw = "add-,render++", .canonical = "add-,render++", .scope = .declaration },
+        // Each selector's own modifier is that selector's, and a `-` inside a
+        // name is a name.
+        .{ .raw = "add/-,render/++", .canonical = "add/-,render/++", .scope = .declaration },
         .{ .raw = "add,L40-L44", .canonical = "add,L40-L44", .scope = .declaration },
-        .{ .raw = "L40-L44,add-", .canonical = "L40-L44,add-", .scope = .declaration },
+        .{ .raw = "L40-L44,add/-", .canonical = "L40-L44,add/-", .scope = .declaration },
         .{ .raw = "L40,L50-L52", .canonical = "L40,L50-L52", .scope = .declaration },
         // A comma between selectors is structure, not part of a name.
         .{ .raw = "L40, L50", .canonical = "L40,L50", .scope = .declaration },
     };
     for (cases) |case| {
         const raw = try js.utf8Decode(alloc, case.raw);
-        var failure = Failure{};
-        const reference = try parseSelectors(alloc, raw, &failure);
+        var local = Failure{};
+        const reference = parseSelectors(alloc, raw, &local) catch |err| {
+            std.debug.print("parseSelectors({s}): {any}\n", .{ case.raw, local.message });
+            return err;
+        };
         try expectUnits(alloc, case.canonical, reference.canonical);
         try testing.expectEqual(case.scope, reference.scope);
-        try testing.expect(reference.warning == null);
     }
 
-    // The reference's own modifier — leading or trailing the whole thing —
-    // binds to the last selector: `+add,render` is `add,render+`.
+    // A modifier belongs to the selector whose path carries it, and to no other.
     {
-        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "+add,render"), &scratch_failure);
-        try expectUnits(alloc, "add,render+", reference.canonical);
+        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "add/-,render"), &scratch_failure);
+        try expectUnits(alloc, "add/-,render", reference.canonical);
         try testing.expectEqual(Scope.declaration, reference.scope);
-        try testing.expectEqual(@as(usize, 2), reference.selectors.?.len);
-        try testing.expectEqual(Scope.declaration, reference.selectors.?[0].path.scope);
-        try testing.expectEqual(Scope.annotated, reference.selectors.?[1].path.scope);
+        try testing.expectEqual(Scope.body, reference.selectors.?[0].path.scope);
+        try testing.expectEqual(Scope.declaration, reference.selectors.?[1].path.scope);
+    }
+    {
+        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "add,render/++"), &scratch_failure);
+        try testing.expectEqual(Scope.documented, reference.selectors.?[1].path.scope);
+        try testing.expectEqual(Scope.declaration, reference.scope);
     }
     try testing.expectEqual(
-        Scope.annotated,
-        (try parseSelectors(alloc, try js.utf8Decode(alloc, "+add"), &scratch_failure)).scope,
-    );
-    try testing.expectEqual(
-        Scope.declaration,
-        (try parseSelectors(alloc, try js.utf8Decode(alloc, "add,render+"), &scratch_failure)).scope,
+        Scope.documented,
+        (try parseSelectors(alloc, try js.utf8Decode(alloc, "add/++"), &scratch_failure)).scope,
     );
 
     // A single path selector keeps every field the single-reference grammar had.
     {
-        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "Cart/Line/render-"), &scratch_failure);
+        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "Cart/Line/render/-"), &scratch_failure);
         try testing.expectEqual(@as(usize, 3), reference.segments.len);
         try expectUnits(alloc, "Cart", reference.segments[0]);
         try expectUnits(alloc, "render", reference.segments[2]);
@@ -3748,12 +3561,14 @@ test "parseSelectors reads a reference as a comma-separated list of selectors" {
         (try parseSelectors(alloc, try js.utf8Decode(alloc, "L40"), &scratch_failure)).selectors.?[0].lines.to == null,
     );
 
-    // A modifier in front of the whole reference is the reference's own, and a
-    // line range ignores it.
+    // A modifier after a range is not a range at all.
     {
-        const reference = try parseSelectors(alloc, try js.utf8Decode(alloc, "+L40"), &scratch_failure);
-        try expectUnits(alloc, "L40+", reference.canonical);
-        try testing.expect(reference.selectors.?[0] == .lines);
+        var failure = Failure{};
+        try testing.expectError(
+            error.Failed,
+            parseSelectors(alloc, try js.utf8Decode(alloc, "L40/+"), &failure),
+        );
+        try expectUnits(alloc, "\"#L40/+\" is not a line range; write L<line> or L<line>:<column>", failure.message);
     }
 
     // `Lx` never claimed to be a range (no digit), so it stays a name.
@@ -3774,11 +3589,11 @@ test "parseSelectors rejects the malformed ranges and empty selectors" {
         .{ .raw = "L40:x", .message = "\"#L40:x\" is not a line range; write L<line> or L<line>:<column>" },
         .{ .raw = "L40:x-L44", .message = "\"#L40:x-L44\" is not a line range; write L<line> or L<line>:<column>" },
         .{ .raw = "L40-L44:", .message = "\"#L40-L44:\" is not a line range; write L<line> or L<line>:<column>" },
-        // A range has nothing for a modifier to select, and its own `-` is
-        // already spoken for, so a modifier written *on* the range is not one.
-        .{ .raw = "L40-L44+", .message = "\"#L40-L44+\" is not a line range; write L<line> or L<line>:<column>" },
-        .{ .raw = "L40-L44-", .message = "\"#L40-L44-\" is not a line range; write L<line> or L<line>:<column>" },
-        .{ .raw = "L40+", .message = "\"#L40+\" is not a line range; write L<line> or L<line>:<column>" },
+        // A range has nothing for a modifier to select, and `/` is the path
+        // separator rather than part of a range.
+        .{ .raw = "L40-L44/+", .message = "\"#L40-L44/+\" is not a line range; write L<line> or L<line>:<column>" },
+        .{ .raw = "L40-L44/-", .message = "\"#L40-L44/-\" is not a line range; write L<line> or L<line>:<column>" },
+        .{ .raw = "L40/+", .message = "\"#L40/+\" is not a line range; write L<line> or L<line>:<column>" },
         .{ .raw = "L0", .message = "\"#L0\" counts lines and columns from 1" },
         .{ .raw = "L40:0", .message = "\"#L40:0\" counts lines and columns from 1" },
         .{ .raw = "L1:0", .message = "\"#L1:0\" counts lines and columns from 1" },
@@ -3886,7 +3701,7 @@ test "line ranges select the lines they name, byte for byte" {
     );
     try testing.expectEqualSlices(
         u16,
-        (try planFor(alloc, example, "toString-", "x.java")).text,
+        (try planFor(alloc, example, "toString/-", "x.java")).text,
         (try planFor(alloc, example, "L13", "x.java")).text,
     );
     try expectPlanText(
@@ -3982,38 +3797,31 @@ test "several selectors inject in order, each from its own lines" {
         try planFailure(alloc, example, "toString,missing", "x.java"),
     );
 
-    // A modifier belongs to the last selector when it is the reference's own —
-    // leading or trailing the whole reference — and to its own selector when it
-    // is written on that selector's path, which is where it was written.
-    const line_body = (try planFor(alloc, example, "Line-", "x.java")).text;
+    // A modifier belongs to the selector whose path carries it, and to no other.
+    const line_body = (try planFor(alloc, example, "Line/-", "x.java")).text;
     const line_plain = (try planFor(alloc, example, "Line", "x.java")).text;
-    const line_annotated = (try planFor(alloc, example, "Line+", "x.java")).text;
-    const to_string_annotated = (try planFor(alloc, example, "toString+", "x.java")).text;
+    const line_annotated = (try planFor(alloc, example, "Line/+", "x.java")).text;
+    const to_string_annotated = (try planFor(alloc, example, "toString/+", "x.java")).text;
 
     try testing.expectEqualSlices(
         u16,
-        try js.concat(alloc, &.{ method, try js.utf8Decode(alloc, "\n"), line_annotated }),
-        (try planFor(alloc, example, "+toString,Line", "x.java")).text,
-    );
-    try testing.expectEqualSlices(
-        u16,
-        try js.concat(alloc, &.{ method, try js.utf8Decode(alloc, "\n"), line_body }),
-        (try planFor(alloc, example, "-toString,Line", "x.java")).text,
-    );
-    try testing.expectEqualSlices(
-        u16,
-        try js.concat(alloc, &.{ method, try js.utf8Decode(alloc, "\n"), line_body }),
-        (try planFor(alloc, example, "toString,Line-", "x.java")).text,
-    );
-    try testing.expectEqualSlices(
-        u16,
         try js.concat(alloc, &.{ to_string_annotated, try js.utf8Decode(alloc, "\n"), line_plain }),
-        (try planFor(alloc, example, "toString+,Line", "x.java")).text,
+        (try planFor(alloc, example, "toString/+,Line", "x.java")).text,
+    );
+    try testing.expectEqualSlices(
+        u16,
+        try js.concat(alloc, &.{ method, try js.utf8Decode(alloc, "\n"), line_body }),
+        (try planFor(alloc, example, "toString,Line/-", "x.java")).text,
+    );
+    try testing.expectEqualSlices(
+        u16,
+        try js.concat(alloc, &.{ method, try js.utf8Decode(alloc, "\n"), line_annotated }),
+        (try planFor(alloc, example, "toString,Line/+", "x.java")).text,
     );
 
     // The scope of a mixed reference is only meaningful per selector.
     {
-        const plan = try planFor(alloc, example, "+toString,Line", "x.java");
+        const plan = try planFor(alloc, example, "toString/+,Line", "x.java");
         try testing.expectEqual(Scope.declaration, plan.reference.scope);
         try testing.expectEqual(@as(usize, 0), plan.reference.segments.len);
     }
@@ -4104,21 +3912,12 @@ test "the golden section vectors" {
         const reference = try js.utf8Decode(alloc, case.reference);
 
         if (case.input == null) {
-            // A parse-only probe: the grammar, and the warning it carries. The
-            // reference grammar is `parseSelectors` — one path selector,
-            // several, or a line range; `parseReference` reads one path only.
-            if (parseSelectors(alloc, reference, &failure)) |parsed| {
-                if (case.warning) |expected| {
-                    const warning = parsed.warning orelse {
-                        std.debug.print("{s}: expected a warning\n", .{case.name});
-                        return error.MissingWarning;
-                    };
-                    try expectUnits(alloc, expected.kept, warning.kept);
-                    try expectUnits(alloc, expected.dropped, warning.dropped);
-                } else if (parsed.warning != null) {
-                    std.debug.print("{s}: unexpected warning\n", .{case.name});
-                    return error.UnexpectedWarning;
-                }
+            // A parse-only probe: the grammar. The reference grammar is
+            // `parseSelectors` — one path selector, several, or a line range;
+            // `parseReference` reads one path only.
+            if (parseSelectors(alloc, reference, &failure)) |_| {
+                // The answer is the canonical spelling and the thrown message,
+                // and the corpus asserts the message on the error branch only.
             } else |_| {
                 const expected = case.error_message orelse {
                     std.debug.print("{s}: unexpected grammar error: {any}\n", .{ case.name, failure.message });
@@ -4149,14 +3948,6 @@ test "the golden section vectors" {
                     plan.text,
                 });
                 return error.TextMismatch;
-            }
-            if (case.warning) |expected_warning| {
-                const warning = plan.reference.warning orelse {
-                    std.debug.print("{s}: expected a warning\n", .{case.name});
-                    return error.MissingWarning;
-                };
-                try expectUnits(alloc, expected_warning.kept, warning.kept);
-                try expectUnits(alloc, expected_warning.dropped, warning.dropped);
             }
 
             // The span, the pieces and the kind are part of the answer, not

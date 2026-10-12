@@ -2,7 +2,6 @@ package hr.hrg.inject.section;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * A parsed section reference: the text after the {@code #} in a marker's fragment.
@@ -12,46 +11,36 @@ import java.util.Optional;
  * meant to be read side by side; the field names are the JavaScript ones.
  *
  * <p>A reference is <b>one or more selectors separated by {@code ,}</b>, each of which is either a
- * semantic path ({@code Cart/Line/render-}) or a line range ({@code L40:12-L44:3}). The selectors are
- * kept in the order they were written, each with the scope its own spelling gives it and the
+ * semantic path ({@code Cart/Line/render/++}) or a line range ({@code L40:12-L44:3}). The selectors
+ * are kept in the order they were written, each with the scope its own spelling gives it and the
  * <em>text</em> it was written with, which is what the canonical spelling preserves. A reference of
  * one path selector is the degenerate case of that list, and every field the single-reference
  * grammar ever had still holds for it: {@link #segments()} and {@link #scope()}.
  *
- * <p>Parsing normalises before it parses, because the canonical spelling is trailing: a prefix of the
- * whole reference ({@code +add}, {@code ++a/b}, {@code -a/b}) and a single {@code -} leading the last
- * segment ({@code a/-b}, or {@code Cart/-Line}) are moved to the end. Two things about that are easy
- * to get wrong, and the vectors pin both:
+ * <p>A modifier is a <b>whole segment</b>, written where the path ends and legal only there:
+ * {@code toString/++} is the documented method, {@code add/-} its body, {@code getUsers/+} the method
+ * with its annotations. It is never a prefix or a suffix. A name may contain {@code -}
+ * ({@code item-list}, {@code update-document-test}, and even a leading or trailing one, since
+ * {@code add-} and {@code -a-} are names) but never {@code +}: a {@code -} is a modifier only as the
+ * whole segment, and a {@code +} is only ever one. So {@code add++} is an error that names the
+ * spelling that works, and {@code --} is a name — a CSS custom property, one segment of
+ * {@code Cart/--brand}.
  *
- * <ul>
- *   <li>The two leading forms are <b>not symmetric</b>. {@code -} may lead a segment when that
- *       segment is the last one, or the second of two; {@code +} and {@code ++} may appear in front
- *       only as the detached prefix of the whole reference, so {@code a/-b} is legal and
- *       {@code a/+b} is an error even though that segment <em>is</em> last.</li>
- *   <li>A modifier written mid-path is <b>collected, not rejected</b>: {@code a++/b} parses and means
- *       {@code a/b++}, because every modifier run the parser finds is applied to the last segment.
- *       That is laxer than the canonical form and the vectors do not cover it — see
- *       {@code doc/section-matching.md}, "Where a modifier may appear".</li>
- * </ul>
- *
- * <p>The reference's own modifier — the leading run of the whole reference and the trailing run of
- * the last selector — applies to the <b>last</b> selector, exactly as it applied to the last path
- * segment before. A modifier written on an earlier selector's own path is that selector's and nobody
- * else's, so {@code add-,render++} is two selectors that each say what they mean but
- * {@code getUsers++-} is two readings on one selector: {@code +}/{@code ++} wins with a
- * contradiction warning (canonical {@code getUsers++}). The same modifier twice ({@code a+++},
- * {@code a---}, {@code -a-}) is an error, "carries more than one modifier".
+ * <p>A modifier belongs to the selector whose path carries it, so {@code add/-,render/++} is two
+ * selectors that each say what they mean and nothing is ambiguous between them. A line range carries
+ * no modifier at all: its own {@code -} is spoken for by the range, and there is nothing about a
+ * verbatim slice of lines for a scope to widen. Nothing here warns: a reference is one spelling of
+ * one thing, and what is not one is an error with the text that says why.
  *
  * @param raw       the text as it was given, without the {@code #}
- * @param canonical the normalised spelling, e.g. {@code Cart/Line/render-} or {@code add,L40-L44}
+ * @param canonical the normalised spelling, e.g. {@code Cart/Line/render/++} or {@code add,L40-L44}
  * @param selectors the selectors, in the order written
  * @param segments  the last path selector's segments, or an empty list when the reference is a line
  *                  range (or a list whose last selector is one)
  * @param scope     the last path selector's scope, {@link Scope#DECLARATION} when there is none
- * @param warning   the contradiction warning, or {@code null}
  */
 public record SectionReference(String raw, String canonical, List<Selector> selectors,
-                               List<String> segments, Scope scope, Warning warning) {
+                               List<String> segments, Scope scope) {
 
     /** The most segments a path selector may have. */
     public static final int MAX_SEGMENTS = 8;
@@ -66,15 +55,14 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
      * sibling-first walk, or an explicit line range, which selects verbatim lines and consults no
      * matcher.
      *
-     * <p>{@code text} is the selector as it was written — the spelling the canonical form keeps for
-     * every selector but the last — and is also the name a line-range error message quotes. A path
-     * selector carries its own {@code segments} and the {@code scope} its spelling asks for (which
-     * includes the reference's own modifier when it is the last selector); a line-range selector
-     * carries its endpoints instead.
+     * <p>{@code text} is the selector as it was written — the spelling the canonical form keeps, and
+     * also the name a line-range error message quotes. A path selector carries its own
+     * {@code segments} and the {@code scope} its own trailing modifier asks for; a line-range
+     * selector carries its endpoints instead.
      *
      * @param kind     {@code path}, or {@code lines} for a line range
      * @param text     the selector as written, trimmed
-     * @param segments the path segments, empty for a line range
+     * @param segments the path's name segments, empty for a line range
      * @param scope    how much of the match the selector asks for; meaningless for a line range
      * @param from     a line range's first endpoint, {@code null} for a path selector
      * @param to       a line range's last endpoint, {@code null} for a path selector or for a range
@@ -127,11 +115,6 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
         return segments.isEmpty() ? "" : segments.get(segments.size() - 1);
     }
 
-    /** The contradiction warning, when the reference carried one. */
-    public Optional<Warning> warningIfAny() {
-        return Optional.ofNullable(warning);
-    }
-
     /** Whether the reference is a single line range, which consults no matcher at all. */
     public boolean isLineRange() {
         return selectors.size() == 1 && selectors.get(0).isLines();
@@ -141,133 +124,67 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
      * Parses a section reference — the text after the {@code #}.
      *
      * <p>This is {@code parseSelectors}: the reference may name several selectors, and a selector may
-     * be a line range. A single path selector parses to the same canonical spelling, the same
-     * segments and the same scope it always has.
+     * be a line range. Each selector canonicalises on its own, and the pieces join with {@code ,}. A
+     * single path selector parses to the same canonical spelling, the same segments and the same
+     * scope it always has.
      *
      * @param raw the reference, without the {@code #}
      * @return the parsed reference
      * @throws SectionReferenceException when the reference is malformed: nothing named, an empty
      *                                   selector, an empty path segment, more than eight segments,
-     *                                   more than one modifier, a modifier where it may not go, or a
-     *                                   malformed line range. The message is part of the contract.
+     *                                   more than one modifier, a modifier where it may not go, a
+     *                                   name carrying {@code +}, or a malformed line range. The
+     *                                   message is part of the contract.
      */
     public static SectionReference parse(String raw) {
         if (raw == null || raw.isEmpty()) {
             throw new SectionReferenceException("\"#\" names nothing");
         }
 
-        Leading leading = detachLeadingModifier(raw);
-        if (leading.name().isEmpty()) {
-            throw new SectionReferenceException("\"#" + raw + "\" names nothing");
-        }
-
-        List<String> parts = split(leading.name(), ',');
+        List<String> parts = split(raw, ',');
         for (String part : parts) {
             if (part.trim().isEmpty()) {
                 throw new SectionReferenceException("\"#" + raw + "\" has an empty selector");
             }
         }
-        int lastPart = parts.size() - 1;
-
-        // The reference's own modifier: the leading one, the trailing one, or both. It is collected
-        // separately from a selector's own run because only it can reach the last selector's path
-        // (`-a/b` is `a/b-`), and a leading run belongs to the reference rather than to the selector it
-        // was written in front of (`-a,b,c` is `a,b,c-`).
-        List<String> referenceModifiers = new ArrayList<>();
-        if (leading.modifier() != null) {
-            referenceModifiers.add(leading.modifier());
-        }
-
-        // The trailing run of the last selector is the reference's own, because a modifier has always
-        // been canonicalised to the very end of the reference. For a path the run is taken both from
-        // the selector as written *and* from the path it parses to, so a run written further up the
-        // path (`a-/b++`) is still part of the reference's modifier. A line range is read first and
-        // on its own: `lineRangeOf` rejects the ranges that only look like one, and a range takes no
-        // modifier at all.
-        String lastText = parts.get(lastPart).trim();
-        if (lineRangeOf(lastText) == null) {
-            Trailing written = extractTrailingModifier(lastText);
-            SectionReference parsedLast = startsLikeAName(written.name())
-                    ? parsePath(written.name()) : null;
-            String suffix = parsedLast != null && !parsedLast.segments().isEmpty()
-                    ? parsedLast.canonical().substring(String.join("/", parsedLast.segments()).length())
-                    : "";
-            referenceModifiers.addAll(written.tokens());
-            referenceModifiers.addAll(tokenizeModifierRun(suffix));
-        }
-
-        Merged modifier = mergeModifiers(referenceModifiers, raw);
 
         List<Selector> selectors = new ArrayList<>();
-        for (int index = 0; index < parts.size(); index++) {
-            String trimmed = parts.get(index).trim();
+        // The canonical spelling of every selector, in the order written.
+        List<String> canonicalParts = new ArrayList<>();
 
-            // A selector that opens `L<digit>` is a line range, and is read as one before anything is
-            // stripped from it: a range takes no modifier at all.
-            if (index == lastPart || LINE_RANGE_PREFIX.matcher(trimmed).find()) {
-                LineRange range = lineRangeOf(index == lastPart ? lastText : trimmed);
-                if (range != null) {
-                    selectors.add(Selector.lines(trimmed, range.from(), range.to()));
-                    continue;
-                }
+        for (String part : parts) {
+            String text = part.trim();
+            // A selector that opens `L<digit>` is a line range or a typo, never a name — read as a
+            // range before anything else, so `L40-` reports the range rather than a path about a name
+            // nobody meant.
+            LineRange range = lineRangeOf(text);
+            if (range != null) {
+                canonicalParts.add(text);
+                selectors.add(Selector.lines(text, range.from(), range.to()));
+                continue;
             }
-
-            // The last selector is read without the runs that are the reference's own, so the
-            // reference's modifier and the selector's are compared rather than counted twice.
-            String text = index == lastPart ? extractTrailingModifier(trimmed).name() : trimmed;
-
-            // A path is a name. What cannot even open a name — `@x` — names nothing; anything else is
-            // read by the single-selector grammar, whose own errors (`/a` has an empty path segment,
-            // `a/+b` is a misplaced modifier) quote the selector and are the ones a user needs to see.
-            if (!startsLikeANamePath(text)) {
+            if (LINE_RANGE_PREFIX.matcher(text).find()) {
+                throw new SectionReferenceException("\"#" + text
+                        + "\" is not a line range; write L<line> or L<line>:<column>");
+            }
+            if (!OPENS_A_NAME.matcher(text).find()) {
                 throw new SectionReferenceException("\"#" + text + "\" names nothing");
             }
-            // A reference names a section of one file, and the file is the path the marker's link
-            // already carries, so `#` never occurs inside a selector either; the single-selector
-            // grammar owns the message, exactly as the reference reader uses it.
+
             SectionReference parsed = parseReference(text);
-            // The reference's own modifier applies to the last selector, as it has always applied to
-            // the last path segment; every earlier selector keeps the scope its own spelling gave it.
-            Scope scope = index == lastPart && modifier.modifier() != null
-                    ? Scope.fromModifier(modifier.spelling())
-                    : parsed.scope();
-            selectors.add(Selector.path(text, parsed.segments(), scope));
+            canonicalParts.add(parsed.canonical());
+            selectors.add(Selector.path(text, parsed.segments(), parsed.scope()));
         }
 
-        // Every selector but the last keeps the spelling it was written with — its modifier included,
-        // since that modifier belongs to that selector. The last one is spelled from its parsed path,
-        // with the reference's own modifier appended, which is where a modifier has always been
-        // canonicalised to.
-        StringBuilder canonical = new StringBuilder();
-        for (int index = 0; index < selectors.size(); index++) {
-            if (index > 0) {
-                canonical.append(',');
-            }
-            Selector selector = selectors.get(index);
-            if (selector.isLines() || index < selectors.size() - 1) {
-                canonical.append(selector.text());
-            } else {
-                canonical.append(String.join("/", selector.segments()));
-            }
-        }
-        canonical.append(modifier.spelling());
+        String canonical = String.join(",", canonicalParts);
 
-        // A reference of one path selector carries a scope the resolver applies; in a mixed reference
-        // the reference's modifier belongs to the last path selector, and a line range has no scope.
+        // A reference of one path selector carries a scope the resolver applies; a line range has none,
+        // and a mixed reference resolves each selector with its own.
         Selector sole = selectors.size() == 1 ? selectors.get(0) : null;
-        Scope scope = sole == null || sole.isLines()
-                ? Scope.DECLARATION
-                : modifier.modifier() != null ? Scope.fromModifier(modifier.spelling()) : sole.scope();
 
-        Warning warning = modifier.warning() == null ? null
-                : new Warning(Warning.KIND_CONTRADICTION, modifier.warning().kept(),
-                        modifier.warning().dropped(), canonical.toString(),
-                        "\"" + modifier.warning().kept() + "\" contradicts \""
-                                + modifier.warning().dropped() + "\"; using \"#"
-                                + canonical + "\"");
-
-        return new SectionReference(raw, canonical.toString(), selectors,
-                sole != null && !sole.isLines() ? sole.segments() : List.of(), scope, warning);
+        return new SectionReference(raw, canonical, selectors,
+                sole != null && !sole.isLines() ? sole.segments() : List.of(),
+                sole != null && !sole.isLines() ? sole.scope() : Scope.DECLARATION);
     }
 
     /**
@@ -277,6 +194,12 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
      * {@link #parse(String)} to the same canonical spelling, the same segments and the same scope, but
      * it refuses what is not one path — a comma, or a line range — with the message the single
      * grammar uses.
+     *
+     * <p>The path is the whole of what a reference names, so the modifier is written where the path
+     * ends. A modifier is legal only as the <b>last</b> segment, and only once — {@code a/++/b} and
+     * {@code a/++/-} are both errors, because a modifier describes the selection, and nothing is
+     * selected until the path ends. A name may contain {@code -} but never {@code +}; that is what
+     * makes the two unmistakable.
      *
      * @param raw the selector, without the {@code #}
      * @return the parsed reference, whose {@link #selectors()} holds exactly one path selector
@@ -289,12 +212,12 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
         if (raw.indexOf(',') >= 0) {
             throw new SectionReferenceException("\"#" + raw + "\" has an empty selector");
         }
-        // A reference names a section of one file, and the file is the path the
-        // marker's link already carries, so `#` never occurs inside a reference: a
-        // second one is a link written into the fragment by mistake.
+        // A reference names a section of one file, and the file is the path the marker's link already
+        // carries, so `#` never occurs inside a reference: a second one is a link written into the
+        // fragment by mistake.
         if (raw.indexOf('#') >= 0) {
             throw new SectionReferenceException(
-                "\"#" + raw + "\" has a second \"#\"; a reference names one file");
+                    "\"#" + raw + "\" has a second \"#\"; a reference names one file");
         }
         if (LINE_RANGE_PREFIX.matcher(raw).find()) {
             lineRangeOf(raw);                   // throws when the spelling is malformed
@@ -309,23 +232,7 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
 
     /** {@code parseReference}'s body: one path, no commas and no line ranges. */
     private static SectionReference parsePath(String raw) {
-        String detached = null;
-        String remainder = raw;
-        if (raw.startsWith("++")) {
-            detached = "++";
-            remainder = raw.substring(2);
-        } else if (raw.startsWith("+")) {
-            detached = "+";
-            remainder = raw.substring(1);
-        } else if (raw.startsWith("-")) {
-            detached = "-";
-            remainder = raw.substring(1);
-        }
-        if (remainder.isEmpty()) {
-            throw new SectionReferenceException("\"#" + raw + "\" names nothing");
-        }
-
-        List<String> parts = split(remainder, '/');
+        List<String> parts = split(raw, '/');
         for (String part : parts) {
             if (part.isEmpty()) {
                 throw new SectionReferenceException("\"#" + raw + "\" has an empty path segment");
@@ -335,212 +242,126 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
             throw new SectionReferenceException("\"#" + raw + "\" is deeper than 8 sections");
         }
 
-        // `Cart/-Line` is the two-segment spelling of `Cart/Line-`: the `-` belongs to the reference,
-        // not to the name. It applies only to a two-segment path, and only when the first segment
-        // carried no detached modifier of its own.
-        String detachedSecond = null;
-        if (detached == null && parts.size() == 2) {
-            String second = parts.get(1);
-            if (second.length() > 1 && second.charAt(0) == '-'
-                    && second.charAt(1) != '-' && second.charAt(1) != '+') {
-                detachedSecond = "-";
-                parts.set(1, second.substring(1));
-            }
-        }
-
         List<String> modifiers = new ArrayList<>();
-        List<String> cleanSegments = new ArrayList<>();
-
-        for (int i = 0; i < parts.size(); i++) {
-            boolean isLast = i == parts.size() - 1;
-
-            Leading leading = extractLeadingModifier(parts.get(i), isLast, raw);
-            if (leading.modifier() != null) {
-                modifiers.add(leading.modifier());
-            }
-            Trailing trailing = extractTrailingModifier(leading.name());
-            modifiers.addAll(trailing.tokens());
-            String name = trailing.name();
-
-            if (name.indexOf('+') >= 0 || name.indexOf('-') >= 0) {
-                // A bare name keeps the legacy meaning: a single-segment name may contain a hyphen
-                // (`update-document-test`), because declaration and anchor names do. Any `+`, or a
-                // hyphen inside a multi-segment path, is structure rather than part of a name.
-                boolean legacyBareName = parts.size() == 1
-                        && detached == null
-                        && detachedSecond == null
-                        && name.indexOf('+') < 0;
-                if (!legacyBareName) {
-                    char character = name.indexOf('+') >= 0 ? '+' : '-';
-                    throw new SectionReferenceException("\"" + character
+        List<String> names = new ArrayList<>();
+        int lastPart = parts.size() - 1;
+        for (int index = 0; index < parts.size(); index++) {
+            String segment = parts.get(index);
+            String modifier = segmentModifier(segment);
+            if (modifier != null) {
+                if (index != lastPart) {
+                    throw new SectionReferenceException("\"" + modifier
                             + "\" may only modify the last path segment of \"#" + raw + "\"");
                 }
+                modifiers.add(modifier);
+                continue;
             }
-
-            cleanSegments.add(name);
-        }
-
-        for (String name : cleanSegments) {
-            if (name.isEmpty()) {
-                throw new SectionReferenceException("\"#" + raw + "\" has an empty path segment");
+            // A segment of nothing but modifier characters (`+++`, `---`) is two of them on one
+            // segment. `--` and `--brand` are names: a CSS custom property is one.
+            if (MODIFIER_RUN.matcher(segment).matches() && !"--".equals(segment)) {
+                throw new SectionReferenceException("\"#" + raw + "\" carries more than one modifier");
             }
+            assertName(segment, raw);
+            names.add(segment);
         }
 
-        if (detached != null) {
-            modifiers.add(0, detached);
-        }
-        if (detachedSecond != null) {
-            modifiers.add(0, detachedSecond);
+        if (names.isEmpty()) {
+            // A path of modifiers has no subject: `-` is the old body scope, and `++`/`+` name nothing
+            // at all. Say that rather than "more than one modifier" about a single one.
+            throw new SectionReferenceException(segmentModifier(raw) == null
+                    ? "\"#" + raw + "\" carries more than one modifier"
+                    : "\"#" + raw + "\" names nothing");
         }
 
-        Merged merged = mergeModifiers(modifiers, raw);
-        String modifier = merged.modifier();
-        String canonical = String.join("/", cleanSegments) + merged.spelling();
-
-        Warning warning = null;
-        if (merged.warning() != null) {
-            warning = new Warning(Warning.KIND_CONTRADICTION, merged.warning().kept(),
-                    merged.warning().dropped(), canonical,
-                    "\"" + merged.warning().kept() + "\" contradicts \""
-                            + merged.warning().dropped() + "\"; using \"#" + canonical + "\"");
-        }
+        String merged = mergeModifiers(modifiers, raw);
+        Scope scope = Scope.fromModifier(merged);
+        String canonical = String.join("/", names) + (merged == null ? "" : "/" + merged);
 
         // `segments` and `scope` are the whole reference's, because a single path selector is the
         // degenerate case of the list: the last path selector's path is the only one there is.
-        List<Selector> selectors = List.of(
-                Selector.path(String.join("/", cleanSegments) + merged.spelling(), cleanSegments,
-                        Scope.fromModifier(modifier)));
-        return new SectionReference(raw, canonical, selectors, cleanSegments,
-                Scope.fromModifier(modifier), warning);
+        List<Selector> selectors = List.of(Selector.path(raw, names, scope));
+        return new SectionReference(raw, canonical, selectors, names, scope);
+    }
+
+    /** The modifier a path <b>segment</b> is, or {@code null} when the segment is a name. */
+    private static String segmentModifier(String segment) {
+        if ("++".equals(segment)) {
+            return "++";
+        }
+        if ("+".equals(segment)) {
+            return "+";
+        }
+        if ("-".equals(segment)) {
+            return "-";
+        }
+        return null;
     }
 
     /**
-     * Reads a modifier written <em>before</em> a segment's name.
+     * Reject a name this grammar cannot carry, with the message that says why.
      *
-     * <p>The asymmetry is the contract's, not an oversight: {@code -} is allowed here only for the
-     * last segment, while {@code +} and {@code ++} are rejected outright — they may appear in front
-     * only as the whole reference's detached prefix. That is why {@code a/+b} is an error and
-     * {@code a/-b} is not.
-     */
-    private static Leading extractLeadingModifier(String segment, boolean isLastSegment, String raw) {
-        if (segment.length() <= 1) {
-            return new Leading(null, segment);
-        }
-
-        char first = segment.charAt(0);
-        if (first == '-') {
-            char second = segment.charAt(1);
-            if (second == '-' || second == '+') {
-                return new Leading(null, segment);
-            }
-            if (isLastSegment) {
-                return new Leading("-", segment.substring(1));
-            }
-            throw new SectionReferenceException(
-                    "\"-\" may only modify the last path segment of \"#" + raw + "\"");
-        }
-
-        if (segment.startsWith("++")) {
-            char third = segment.length() > 2 ? segment.charAt(2) : 0;
-            if (third == '+' || third == '-') {
-                return new Leading(null, segment);
-            }
-            throw new SectionReferenceException(
-                    "\"++\" may only modify the last path segment of \"#" + raw + "\"");
-        }
-
-        if (first == '+') {
-            char second = segment.charAt(1);
-            if (second == '+' || second == '-') {
-                return new Leading(null, segment);
-            }
-            throw new SectionReferenceException(
-                    "\"+\" may only modify the last path segment of \"#" + raw + "\"");
-        }
-
-        return new Leading(null, segment);
-    }
-
-    /** Splits a segment into its name and the modifier run that trails it. */
-    private static Trailing extractTrailingModifier(String name) {
-        int i = name.length();
-        while (i > 0 && (name.charAt(i - 1) == '+' || name.charAt(i - 1) == '-')) {
-            i--;
-        }
-        if (i < name.length()) {
-            return new Trailing(name.substring(0, i), tokenizeModifierRun(name.substring(i)));
-        }
-        return new Trailing(name, List.of());
-    }
-
-    /**
-     * Splits a run of {@code +}/{@code -} into modifiers, longest match first, and stops at anything
-     * else. {@code +++} is {@code ["++", "+"]}, which is two modifiers — and two positive ones is an
-     * error, not a {@code ++} followed by an ignored {@code +}.
-     */
-    private static List<String> tokenizeModifierRun(String run) {
-        List<String> tokens = new ArrayList<>();
-        int i = 0;
-        while (i < run.length()) {
-            if (i + 1 < run.length() && run.charAt(i) == '+' && run.charAt(i + 1) == '+') {
-                tokens.add("++");
-                i += 2;
-            } else if (run.charAt(i) == '+') {
-                tokens.add("+");
-                i += 1;
-            } else if (run.charAt(i) == '-') {
-                tokens.add("-");
-                i += 1;
-            } else {
-                break;
-            }
-        }
-        return tokens;
-    }
-
-    /** The longest prefix of {@code raw} that is a modifier run ({@code +}, {@code ++}, {@code -}). */
-    private static Leading detachLeadingModifier(String raw) {
-        if (raw.startsWith("++")) {
-            return new Leading("++", raw.substring(2));
-        }
-        if (raw.startsWith("+")) {
-            return new Leading("+", raw.substring(1));
-        }
-        if (raw.startsWith("-")) {
-            return new Leading("-", raw.substring(1));
-        }
-        return new Leading(null, raw);
-    }
-
-    /**
-     * Combines the modifier tokens one selector carries into the single modifier it has, or throws
-     * when they cannot be combined.
+     * <p>{@code +} has no meaning inside a name at all, and the only thing a user means by it is a
+     * modifier — so the message names the spelling that works rather than leaving them with "names
+     * nothing". A {@code +} that <em>opens</em> a segment is the old prefix form ({@code +toString}),
+     * whose replacement has the path before it.
      *
-     * <p>{@code +} against {@code -} is the one contradiction: the reference asks for the declaration
-     * <em>with</em> its annotations and for the <em>body</em> alone, and no section is both. That is
-     * worth a warning rather than an error, because it is what a human types while refactoring — the
-     * annotation reading wins, and the caller reports it once. The same modifier twice is malformed.
+     * @param segment a segment already known not to be a whole modifier
+     * @param raw     the reference as written, for the message
+     */
+    private static void assertName(String segment, String raw) {
+        if (NAME.matcher(segment).matches()) {
+            return;
+        }
+        int at = segment.indexOf('+');
+        if (at >= 0) {
+            int end = at;
+            while (end < segment.length() && segment.charAt(end) == '+') {
+                end++;
+            }
+            String run = segment.substring(at, end);
+            String before = segment.substring(0, at);
+            throw new SectionReferenceException(before.isEmpty()
+                    ? "\"" + run + "\" is a path segment now; it follows the path, as \"#<path>/"
+                            + run + "\""
+                    : "\"" + run + "\" is a path segment now; write \"#" + before + "/" + run + "\"");
+        }
+        throw new SectionReferenceException("\"#" + raw + "\" names nothing");
+    }
+
+    /**
+     * The scope name a modifier selects, or {@code null} for none.
+     *
+     * <p>Two modifiers on one path is malformed rather than contradictory: there is no section that is
+     * two scopes at once, and the grammar has no warning to give.
      *
      * @param modifiers the modifiers in the order they were written
      * @param raw       the reference as the user wrote it, for the messages
      */
-    private static Merged mergeModifiers(List<String> modifiers, String raw) {
+    private static String mergeModifiers(List<String> modifiers, String raw) {
         if (modifiers.isEmpty()) {
-            return new Merged(null, null);
+            return null;
         }
         if (modifiers.size() == 1) {
-            return new Merged(modifiers.get(0), null);
+            return modifiers.get(0);
         }
-
-        long positive = modifiers.stream().filter(m -> m.startsWith("+")).count();
-        long negative = modifiers.stream().filter(m -> m.startsWith("-")).count();
-        if (positive > 1 || negative > 1) {
-            throw new SectionReferenceException("\"#" + raw + "\" carries more than one modifier");
-        }
-        // One `+` and one `-`: the positive one wins, and the caller is told.
-        String kept = modifiers.contains("++") ? "++" : "+";
-        return new Merged(kept, new Warning(Warning.KIND_CONTRADICTION, kept, "-", null, null));
+        throw new SectionReferenceException("\"#" + raw + "\" carries more than one modifier");
     }
+
+    // ------------------------------------------------------------------
+    // The grammar's own patterns
+    // ------------------------------------------------------------------
+
+    /** A name character: a letter, a digit, {@code _}, {@code $}, {@code .} or {@code -}. */
+    private static final java.util.regex.Pattern NAME =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9_$.\\-]+$");
+
+    /** A segment that is nothing but modifier characters ({@code --}, {@code ---}, {@code +++}). */
+    private static final java.util.regex.Pattern MODIFIER_RUN =
+            java.util.regex.Pattern.compile("^[-+]{2,}$");
+
+    /** Can this text even open a selector? {@code @x} cannot, and names nothing. */
+    private static final java.util.regex.Pattern OPENS_A_NAME =
+            java.util.regex.Pattern.compile("^[\\w$/+-]");
 
     // ------------------------------------------------------------------
     // The line-range grammar
@@ -549,25 +370,6 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
     /** Does this selector at least begin like a line range ({@code L40})? */
     private static final java.util.regex.Pattern LINE_RANGE_PREFIX =
             java.util.regex.Pattern.compile("^L\\d");
-
-    /** Does this selector at least begin like a name ({@code \w} or {@code $})? */
-    private static boolean startsLikeAName(String text) {
-        if (text.isEmpty()) {
-            return false;
-        }
-        char first = text.charAt(0);
-        return first == '$' || first == '_' || Character.isLetterOrDigit(first);
-    }
-
-    /** Can this text even open a name? {@code @x} cannot, and names nothing. */
-    private static boolean startsLikeANamePath(String text) {
-        if (text.isEmpty()) {
-            return false;
-        }
-        char first = text.charAt(0);
-        return first == '$' || first == '/' || first == '+' || first == '-'
-                || first == '_' || Character.isLetterOrDigit(first);
-    }
 
     /**
      * Read {@code raw} as a line-range selector, or return {@code null} when it is not one.
@@ -694,23 +496,5 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
 
     /** A line range's endpoints. */
     record LineRange(LinePoint from, LinePoint to) {
-    }
-
-    /** A modifier, or the contradiction that stands where one should be. */
-    private record Merged(String modifier, Warning warning) {
-
-        /** The spelling the modifier takes at the end of a canonical reference. */
-        String spelling() {
-            if (modifier != null) {
-                return modifier;
-            }
-            return warning == null ? "" : warning.kept();
-        }
-    }
-
-    private record Leading(String modifier, String name) {
-    }
-
-    private record Trailing(String name, List<String> tokens) {
     }
 }

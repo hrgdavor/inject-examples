@@ -2,7 +2,6 @@ package hr.hrg.inject.section;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -29,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@code tools/zig-vectors.mjs} because it has no JSON reader, while Java has one as a test-only
  * dependency, and a file that cannot drift is better than one that can.
  *
- * <p>Every vector is asserted: the grammar and its exact error text, the contradiction warning, and
+ * <p>Every vector is asserted: the grammar and its exact error text, and
  * resolution against the fixture files the vectors name — each resolved through the language the
  * fixture's extension selects, exactly as a consumer picks one, with the default engine for the types
  * the table does not cover.
@@ -105,7 +104,7 @@ class SectionVectorsTest {
             asserted++;
 
             if (input == null) {
-                checkReferenceGrammar(vector, name, reference, expectedError, failures);
+                checkReferenceGrammar(name, reference, expectedError, failures);
                 continue;
             }
 
@@ -196,8 +195,8 @@ class SectionVectorsTest {
         }
     }
 
-    /** The grammar-only vectors: success, exact error text, or the contradiction warning. */
-    private static void checkReferenceGrammar(JsonNode vector, String name, String reference,
+    /** The grammar-only vectors: success, or the exact error text. */
+    private static void checkReferenceGrammar(String name, String reference,
                                               String expectedError, List<String> failures) {
         if (expectedError != null) {
             try {
@@ -213,53 +212,49 @@ class SectionVectorsTest {
             return;
         }
 
-        SectionReference parsed;
         try {
-            parsed = SectionReference.parse(reference);
+            SectionReference.parse(reference);
         } catch (SectionReferenceException error) {
             failures.add(name + ": failed with " + quote(error.getMessage()) + ", want success");
-            return;
         }
-
-        JsonNode expectedWarning = vector.get("warning");
-        if (expectedWarning == null || expectedWarning.isNull()) {
-            if (parsed.warning() != null) {
-                failures.add(name + ": warned " + parsed.warning() + ", want no warning");
-            }
-            return;
-        }
-        Warning warning = parsed.warning();
-        if (warning == null) {
-            failures.add(name + ": no warning, want " + expectedWarning);
-            return;
-        }
-        assertEquals(text(expectedWarning, "kind"), warning.kind(), name + ": warning kind");
-        assertEquals(text(expectedWarning, "kept"), warning.kept(),
-                name + ": the modifier that should have won");
-        assertEquals(text(expectedWarning, "dropped"), warning.dropped(),
-                name + ": the modifier that should have been dropped");
-        assertTrue(warning.message().contains("contradicts"),
-                name + ": the warning must say what contradicts what: " + warning.message());
     }
 
     /**
-     * The one behaviour the vectors do <em>not</em> cover, pinned here so a port cannot quietly
-     * disagree with {@code lib/section.mjs} about it: a modifier written on a segment that is not the
-     * last is collected and applied to the last segment, rather than rejected.
+     * The behaviours the vectors do not cover, pinned here so a port cannot quietly disagree with
+     * {@code lib/section.mjs} about them: a modifier is a whole segment, it is legal only as the last
+     * one, and a {@code -} that is not the whole segment is part of the name.
      */
     @Test
-    void aModifierWrittenMidPathIsCollectedNotRejected() {
-        assertEquals("a/b++", SectionReference.parse("a++/b").canonical());
-        assertEquals("a/b-", SectionReference.parse("a-/b").canonical());
+    void aModifierIsAWholeSegmentAndOnlyTheLastOne() {
+        // `-` is a name character, so a trailing or leading hyphen is the name, not a modifier.
+        assertEquals("add-", SectionReference.parse("add-").canonical());
+        assertEquals(List.of("add-"), SectionReference.parse("add-").segments());
+        assertEquals("--brand", SectionReference.parse("--brand").canonical());
+        assertEquals(Scope.DECLARATION, SectionReference.parse("add-").scope());
 
-        // The other half of the asymmetry, which the vectors do cover: `-` may lead the last segment,
-        // `+` and `++` may only be the whole reference's prefix.
-        assertEquals("a/b-", SectionReference.parse("a/-b").canonical());
-        assertEquals("a/b+", SectionReference.parse("+a/b").canonical());
-        assertEquals("\"+\" may only modify the last path segment of \"#a/+b\"",
-                assertThrowsReferenceError("a/+b"));
-        assertEquals("\"++\" may only modify the last path segment of \"#a/++b\"",
-                assertThrowsReferenceError("a/++b"));
+        // As a whole segment it is the scope, and the names drop it.
+        assertEquals("a/++", SectionReference.parse("a/++").canonical());
+        assertEquals(List.of("a"), SectionReference.parse("a/++").segments());
+        assertEquals(Scope.DOCUMENTED, SectionReference.parse("a/++").scope());
+        assertEquals(Scope.BODY, SectionReference.parse("a/-").scope());
+
+        // A modifier may not open a path, and may only modify the last segment.
+        assertEquals("\"++\" may only modify the last path segment of \"#a/++/b\"",
+                assertThrowsReferenceError("a/++/b"));
+        assertEquals("\"-\" may only modify the last path segment of \"#a/-/b\"",
+                assertThrowsReferenceError("a/-/b"));
+
+        // `+` never occurs in a name, and the message names the spelling that works.
+        assertEquals("\"++\" is a path segment now; write \"#add/++\"",
+                assertThrowsReferenceError("add++"));
+        assertEquals("\"+\" is a path segment now; write \"#b/+\"",
+                assertThrowsReferenceError("a/b+"));
+        assertEquals("\"+\" is a path segment now; it follows the path, as \"#<path>/+\"",
+                assertThrowsReferenceError("+add"));
+
+        // A run of modifier characters longer than a modifier is malformed, not a name.
+        assertEquals("\"#a/+++\" carries more than one modifier",
+                assertThrowsReferenceError("a/+++"));
     }
 
     private static String assertThrowsReferenceError(String raw) {
@@ -276,10 +271,9 @@ class SectionVectorsTest {
     /** A guard the assertions above rely on: a parsed reference always has at least one segment. */
     @Test
     void everyParsedReferenceHasSegmentsAndAFinalSegment() {
-        SectionReference parsed = SectionReference.parse("Cart/Line/render-");
+        SectionReference parsed = SectionReference.parse("Cart/Line/render/-");
         assertNotNull(parsed.finalSegment());
         assertEquals("render", parsed.finalSegment());
         assertEquals(Scope.BODY, parsed.scope());
-        assertNull(parsed.warning());
     }
 }

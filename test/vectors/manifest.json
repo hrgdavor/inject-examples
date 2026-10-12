@@ -14,7 +14,7 @@
       "layer": 1,
       "name": "grammar",
       "file": "test/vectors/section-vectors.json",
-      "rows": 54,
+      "rows": 58,
       "selector": "rows with input === null (they consult no file)",
       "asserts": [
         "canonical spelling",
@@ -68,7 +68,7 @@
       "layer": 5,
       "name": "resolution",
       "file": "test/vectors/section-vectors.json",
-      "rows": 132,
+      "rows": 137,
       "selector": "rows with input !== null (they name a fixture)",
       "asserts": [
         "text",
@@ -76,8 +76,7 @@
         "endLine",
         "ranges",
         "kind",
-        "error",
-        "warning"
+        "error"
       ],
       "needs": [
         "layers 1-4"
@@ -113,7 +112,7 @@
   "corpora": [
     {
       "path": "test/vectors/section-vectors.json",
-      "rows": 186,
+      "rows": 195,
       "shape": "array",
       "row_fields": {
         "name": "unique; `<category>:<case>` for parse rows, a slug for resolution rows",
@@ -125,22 +124,20 @@
         "endLine": "1-based inclusive last line, or null",
         "ranges": "[[from, to], ...] — the spread of text as 1-based inclusive line pairs",
         "kind": "region | declaration | property | condition | anchor | lines | multiple; null for a parse row",
-        "error": "the exact thrown message, or null",
-        "warning": "null, or { kind, kept, dropped } for a contradictory-modifier warning"
+        "error": "the exact thrown message, or null"
       },
       "counts": {
-        "total": 186,
-        "parse": 54,
-        "resolution": 132,
-        "errors": 52,
-        "warnings": 4,
+        "total": 195,
+        "parse": 58,
+        "resolution": 137,
+        "errors": 65,
         "by_kind": {
           "anchor": 9,
           "condition": 2,
-          "declaration": 69,
+          "declaration": 68,
           "lines": 6,
           "multiple": 5,
-          "null": 26,
+          "null": 32,
           "property": 10,
           "region": 5
         }

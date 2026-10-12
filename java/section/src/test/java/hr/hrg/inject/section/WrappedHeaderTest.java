@@ -71,9 +71,9 @@ class WrappedHeaderTest {
         // The body alone: the signature (wrapped across lines) is dropped whole, and the span still
         // starts after the `{` of the closing line.
         assertEquals("        return name + \" x\" + quantity;",
-                section(source, "Wrapped.java", "render-"));
+                section(source, "Wrapped.java", "render/-"));
         SectionResolver.Plan plan =
-                SectionResolver.planSection(source, "render-", Syntaxes.lexerForPath("Wrapped.java"));
+                SectionResolver.planSection(source, "render/-", Syntaxes.lexerForPath("Wrapped.java"));
         assertEquals(List.of(new SectionResolver.Range(9, 9)), plan.ranges());
 
         // A wrapped signature with a generic method's type parameters, and the same declaration reached
@@ -96,10 +96,10 @@ class WrappedHeaderTest {
         assertTrue(store.contains("\n            int quantity)\n"), "the `)` has a line to itself: " + store);
         assertTrue(store.contains("\n            throws IllegalStateException {\n"), store);
         assertTrue(store.contains("this.name = name;"), store);
-        assertEquals("        this.name = name;", section(source, "Wrapped.java", "store-"));
+        assertEquals("        this.name = name;", section(source, "Wrapped.java", "store/-"));
 
         // The `+` scope reaches the annotation above a header that wraps.
-        assertTrue(section(source, "Wrapped.java", "toString+")
+        assertTrue(section(source, "Wrapped.java", "toString/+")
                         .startsWith("    @Override\n    public String toString("),
                 "the annotation is part of the `+` selection");
     }
@@ -132,7 +132,7 @@ class WrappedHeaderTest {
         assertTrue(render.contains("\n        quantity: Int\n"), render);
         assertTrue(render.contains("\n    ): String {\n"), render);
         assertTrue(render.contains("return \"$name x$quantity\""), render);
-        assertEquals("        return \"$name x$quantity\"", section(kotlin, "Wrapped.kt", "render-"));
+        assertEquals("        return \"$name x$quantity\"", section(kotlin, "Wrapped.kt", "render/-"));
 
         // TypeScript: the class itself resolves, and so do the members whose parameters wrap.
         String typescript = fixture("test/fixtures/Wrapped.ts");

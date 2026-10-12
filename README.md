@@ -185,7 +185,7 @@ function or class-like declaration (`class`, `interface`, `enum`, `record`,
 code needs no region comments added to it:
 
 ````markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#++toString)
+[test/fixtures/Example.java](./test/fixtures/Example.java#toString/++)
 
 ```java
     /** Add one item to this cart. */
@@ -196,21 +196,40 @@ code needs no region comments added to it:
 ```
 ````
 
-A `-`, `+` or `++` before the name selects how much of the declaration comes
-with it:
+A `-`, `+` or `++` **segment** after the path selects how much of the
+declaration comes with it:
 
 | Reference | Injected text |
 | --- | --- |
 | `#add` | the declaration: signature through closing brace |
-| `#-add` | the body only, without the signature |
-| `#+add` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
-| `#++add` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
+| `#add/-` | the body only, without the signature |
+| `#add/+` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| `#add/++` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
+
+The modifier is the last segment of the path and nothing else: `#Cart/Line/-` is
+`Line`'s body, and `#Cart/-/Line` is an error rather than another spelling of it.
+A name may contain `-` (`item-list`, `update-document-test`) — only a whole
+segment is a modifier — and `+` never occurs in a name at all, so an old
+`#toString++` is an error whose message says to write `#toString/++`.
 
 A declaration is injected verbatim, indentation and all. Region names must be
-unique, and so must declaration names — two methods named `add` are an error,
-exactly as two `#region add`s are; wrap one in `#region` comments to pick it.
-A class name beats a same-named constructor, and nothing matching at all is an
-error (`--lenient` reports it and leaves the block as written).
+unique, and so must the name a reference *selects* — two methods named `add` are
+an error (`"add" is declared 2 times; names must be unique`), exactly as two
+`#region add`s are. A path that names the holder is how you say which one:
+`#Cart/add` resolves, because only one `Cart` holds it. The tool never picks the
+first of two: an injected block is copied into a document and read as fact, so a
+silent choice would be a lie no reader could see. A name that is hard to
+disambiguate by path can be wrapped in `#region` comments instead, and nothing
+matching at all is an error too (`--lenient` reports it and leaves the block as
+written).
+
+The same holds for the config formats: a duplicated key, table or section is an
+error rather than the first one to appear.
+
+Two things that look like duplicates are not: a **class** beats a same-named
+constructor (the constructor is inside it, not beside it), and a Rust `struct`
+beside its `impl` blocks is one name three ways — `Cart/add` retries them and
+resolves, because the path names the holder.
 
 A header may span lines: a wrapped parameter list, a wrapped `throws` clause, a
 class's type parameters and `implements` clause on their own lines, and a Java
@@ -284,14 +303,13 @@ just what it declares:
   The block in the fixture opens `public void handler() { //getUsers`, so
   `handler/getUsers` names it by that comment.
 
-The scope modifier is **trailing** (`render-`, `render+`, `render++`); the old
-leading spelling (`-render`, `+render`, `++render`) still works and is
-canonicalised. A reference that asks for two readings at once — a `+` against a
-`-`, as in `getUsers++-` — resolves to the wider reading, but the CLI warns and
-exits 1, because a contradiction is almost always a typo:
+The scope modifier is a **path segment**: `render/-` is the body, `render/+` the
+declaration with its annotations, `render/++` those with the doc comment. It may
+only be the last segment, and a modifier anywhere else is an error rather than
+another reading — `Cart/-/Line` says so, and the message quotes the segment:
 
 ```text
-inject-examples: warn: doc/usage.md:42: [a.java](./a.java#getUsers++-): "++" contradicts "-"; using "#getUsers++"
+inject-examples: [Cart.java](./Cart.java#Cart/-/Line): "-" may only modify the last path segment of "#Cart/-/Line"
 ```
 
 The full grammar — every accepted form, every error and its exact message — is
@@ -333,7 +351,7 @@ in one injection, in the order they were written, and a name and a range mix
 freely:
 
 ```markdown
-[test/fixtures/Example.java](./test/fixtures/Example.java#+toString,L16-L20)
+[test/fixtures/Example.java](./test/fixtures/Example.java#toString/+,L16-L20)
 ```
 
 The pieces are joined with a newline and injected as one block, and a host that
@@ -699,7 +717,7 @@ const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 | `findMarkers(lines)` / `parseMarker(line)` | Discover markers |
 | `fenceRanges(lines)` | The fenced blocks in a document |
 | `resolveMarker(marker, read, rule?)` | The text a marker stands for, resolved by the file's type |
-| `planMarker(marker, read, rule?)` | That text plus the section warning and the `ranges` each selector came from |
+| `planMarker(marker, read, rule?)` | That text plus the `ranges` each selector came from |
 | `extractRegion(text, name)` / `regionDirective(line)` | Region directive parsing |
 | `ruleFor(path, rules?)` | The region rule that resolves a reference in `path` |
 | `REGION_RULES` / `CODE_RULE` / `JSON_RULE` / `YAML_RULE` / `TOML_RULE` / `INI_RULE` / `CSS_RULE` | The built-in rules; `code` is the fallback for every unclaimed type |

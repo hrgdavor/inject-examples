@@ -22,13 +22,17 @@ this works with any of the comment prefixes a language uses.
 
 When the file carries no region directive, the name is looked for as a
 declaration — a method, constructor or class-like block. The declaration *is*
-the region, so the file needs nothing added to it. A leading `-`, `+` or `++`
-selects how far up the text starts:
+the region, so the file needs nothing added to it. A `-`, `+` or `++` **segment**
+after the path selects how far up the text starts:
 
 - `#toString` — the declaration: signature through closing brace.
-- `#-toString` — the body only, without the signature.
-- `#+toString` — the declaration and the annotations above it.
-- `#++toString` — those and the doc comment above them.
+- `#toString/-` — the body only, without the signature.
+- `#toString/+` — the declaration and the annotations above it.
+- `#toString/++` — those and the doc comment above them.
+
+The modifier is the last segment of the path and nothing else, so `#toString-` is
+the name `toString-` and resolves to nothing, and the old spelling says so:
+`"++" is a path segment now; write "#toString/++"`.
 
 The same method, four ways:
 
@@ -40,13 +44,13 @@ The same method, four ways:
     }
 ```
 
-[samples/Inventory.java](./samples/Inventory.java#-toString)
+[samples/Inventory.java](./samples/Inventory.java#toString/-)
 
 ```java
         return items.size() + " item(s)";
 ```
 
-[samples/Inventory.java](./samples/Inventory.java#+toString)
+[samples/Inventory.java](./samples/Inventory.java#toString/+)
 
 ```java
     @Override
@@ -55,7 +59,7 @@ The same method, four ways:
     }
 ```
 
-[samples/Inventory.java](./samples/Inventory.java#++toString)
+[samples/Inventory.java](./samples/Inventory.java#toString/++)
 
 ```java
     /** Summarise the inventory. */
@@ -354,7 +358,7 @@ the string literal out of the structure.
 A binding is `add x y = x + y`, and the `add ::` line above it is its annotation:
 `+add` brings the signature along, and `Cart` is the record declared with `data`.
 
-[samples/Main.hs](./samples/Main.hs#+add)
+[samples/Main.hs](./samples/Main.hs#add/+)
 
 ```haskell
 add :: Int -> Int -> Int
@@ -487,7 +491,7 @@ path:
 }
 ```
 
-[samples/site.css](./samples/site.css#@media/.card-)
+[samples/site.css](./samples/site.css#@media/.card/-)
 
 ```css
 grid-template-columns: 1fr 1fr;
@@ -552,7 +556,7 @@ the order they were written — a semantic name and a line range mix freely. The
 class opening, then the documented `toString` and its body, then the last line of
 the file:
 
-[samples/Inventory.java](./samples/Inventory.java#L7,++toString,L50)
+[samples/Inventory.java](./samples/Inventory.java#L7,toString/++,L50)
 
 ```java
 public class Inventory {

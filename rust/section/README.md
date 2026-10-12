@@ -11,7 +11,7 @@ disagreement here is a bug here.
 
 | Layer | State |
 | --- | --- |
-| Reference parsing, canonicalisation, errors, the contradiction warning | **ported** — pinned by every grammar and warning vector |
+| Reference parsing, canonicalisation, errors | **ported** — pinned by every grammar vector |
 | Mask pass (`masked`, `comments_in`) and the lexer seam | **ported** — pinned by the mask rows of the lexical corpus, over every entry |
 | Per-language tokenizer and table | **ported** — all eighteen entries, and the extension registry |
 | Declaration shapes (`declarations`) | **ported** — pinned by the shape rows of the lexical corpus |
