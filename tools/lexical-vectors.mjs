@@ -172,6 +172,21 @@ const shapeCases = [
     { name: 'vb-keyword-inside-a-longer-word', path: 'a.vb', line: 'Submarine Function Add(x)' },
     { name: 'vb-prefix-word-is-not-a-boundary', path: 'a.vb', line: 'MySub Foo' },
     { name: 'vb-end-is-not-a-declaration', path: 'a.vb', line: 'End Function' },
+
+    // --- Kotlin: `fun name`, its modifiers, and the annotations above it -----
+    { name: 'kotlin-fun-plain', path: 'a.kt', line: '    fun add(item: String) {' },
+    { name: 'kotlin-fun-no-params', path: 'a.kt', line: '    fun render(): String = "x"' },
+    { name: 'kotlin-fun-generic', path: 'a.kt', line: '    fun <T> first(items: List<T>): T' },
+    { name: 'kotlin-fun-receiver', path: 'a.kt', line: '    fun String.shout(): String' },
+    { name: 'kotlin-fun-modifier', path: 'a.kt', line: '    private suspend fun load() {}' },
+    { name: 'kotlin-fun-annotation', path: 'a.kt', line: '    @JvmName("addOne") fun add(item: String) {' },
+    { name: 'kotlin-fun-wrapped-header', path: 'a.kt', line: '    fun label(' },
+    // An annotation's own arguments end in `(` and a word, which the generic
+    // `name(` shape reads as a call; the language's shape answers for the line
+    // itself and for the declaration line below it.
+    { name: 'kotlin-annotation-line-arguments', path: 'a.kt', line: '    @JvmName("addOne")' },
+    { name: 'kotlin-annotation-line-bare', path: 'a.kt', line: '    @Deprecated' },
+    { name: 'kotlin-keyword-is-not-a-fun', path: 'a.kt', line: '    funky.add(x)' },
 ];
 
 // ---------------------------------------------------------------------------

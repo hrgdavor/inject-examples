@@ -36,7 +36,7 @@ const SINGLE_CHAR = {
  */
 /** @type {import('./tokenizer.js').Declaration[]} */
 const RUBY_DECLARATIONS = [
-    { kind: 'method', re: /^\s*def\s+(?:self\.)?([A-Za-z_]\w*[?!=]?)/, body: 'end', end: 'end' },
+    { kind: 'method', re: /^\s*def\s+(?:self\.)?([A-Za-z_]\w*)/, suffix: /[?!=]/, body: 'end', end: 'end' },
 ];
 
 /**
@@ -210,6 +210,21 @@ export const CSHARP_SYNTAX = {
     ],
 };
 
+/**
+ * Kotlin declares a function with `fun` and no `;`. The generic `name(` shape
+ * reads an annotation's own arguments (`@JvmName("addOne")`) as a method named
+ * after the annotation; `fun name` is the shape the language writes.
+ *
+ * The match ends where the language writes the name, which is the contract every
+ * shape has: the resolver follows the header from there to the `{`, `;` or `=`
+ * that ends it, so a wrapped parameter list is spanned and an expression body's
+ * `=` is found. Matching the list here instead cannot count brackets.
+ */
+/** @type {import('./tokenizer.js').Declaration[]} */
+const KOTLIN_DECLARATIONS = [
+    { kind: 'method', re: /^\s*(?:@\w+(?:\([^)]*\))?\s*)*(?:public|private|protected|internal|open|override|suspend|inline|operator|tailrec|abstract|final|external|expect|actual|infix\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+\.)?([A-Za-z_]\w*)/ },
+];
+
 /** @type {import('./tokenizer.js').SyntaxInput} */
 export const KOTLIN_SYNTAX = {
     name: 'kotlin',
@@ -221,6 +236,7 @@ export const KOTLIN_SYNTAX = {
         { open: '"', close: '"', escape: 'backslash' },
         { open: "'", close: "'", escape: 'backslash' },
     ],
+    declarations: KOTLIN_DECLARATIONS,
 };
 
 /** @type {import('./tokenizer.js').SyntaxInput} */

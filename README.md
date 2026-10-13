@@ -7,8 +7,8 @@ documentation: [`doc/usage.md`](./doc/usage.md) is written with inject-examples
 itself, and every file it shows is exercised by the test suite. The
 [demo page](./docs/index.html) goes one step further — it is built from
 [`docs/demo.md`](./docs/demo.md), a Markdown document that this tool keeps in
-sync and a generator turns into a clickable page (see
-[The demo page](#the-demo-page)).
+sync and a generator turns into clickable pages, one per language (see
+[The demo pages](#the-demo-pages)).
 
 A **marker** is a line that is nothing but a link to a real file, labelled with
 that same path. The fenced code block that follows it is replaced — byte for
@@ -645,49 +645,75 @@ npx @hrg/inject-examples --check || {
 }
 ```
 
-## The demo page
+## The demo pages
 
-[`docs/index.html`](./docs/index.html) is a three-column page — the targets, the
-sample files, and the document rendered the way GitHub renders it, code fences
-syntax-highlighted and all. The targets column is itself two stacked sections: the
-numbered `##` sections with their example links and nothing else, and below them
-the description of the selected example. The document's lead — its title and intro
-before the first `##` — is the page banner in both places, so the rendered column
-starts at the first section. Every example link is clickable: clicking one opens
-its description below, switches the middle column to that target's file,
-highlights the lines the reference selects, and marks the matching marker and
-injected block in the rendered Markdown — the link itself grows no snippet. It is
-generated, never hand-written:
+[`docs/index.html`](./docs/index.html) is the **Overview**: the examples that are
+about the tool itself, whatever language the sample is written in. Each of the 18
+languages and config formats has a page of its own under
+[`docs/languages/`](./docs/languages) — Java, JavaScript/TypeScript, Go, Rust,
+Python, C#, Kotlin, PHP, Ruby, Shell, VB, Haskell, Zig, YAML, TOML, INI, JSON and
+CSS — with that language's examples beside the sample they read. A hamburger menu
+in the shared header of every page lists them all and marks the current one, so a
+reader can go straight to the language they came for instead of scrolling past
+everything else; the Overview's last section is the same list as links. The menu
+is a list to scan rather than a paragraph to read: an entry is the page's name and
+its sample, and only the Overview, whose name does not say what it holds,
+describes itself.
+
+The Overview's own sections are **targets like any page's** — click "A condition
+literal" and the columns follow it — so the tool's examples and the index of the
+languages are read the same way the language pages are.
+
+A language page is **grouped by feature**, not one section per example: two or
+three sections, each with a few examples and the prose that explains them. Which
+examples a language gets depends on what it can actually show — a braced language
+anchors a block with a trailing comment where an indented one uses a condition
+literal, Ruby gets its `!` and `?` names, Haskell gets signatures and `if`
+bindings — and where a construct genuinely does not resolve (VB's
+`If x = "y" Then`, Shell's `case` arms, CSS's ambiguous `.card`) the page shows
+the nearest example that does and says why in the prose.
+
+Every page is three columns — the targets, the sample files, and the document
+rendered the way GitHub renders it, code fences syntax-highlighted and all. The
+targets column is itself two stacked sections: the numbered `##` sections with
+their example links and nothing else, and below them the description of the
+selected example. The Overview's lead — its title and intro before the first `##`
+— is the page banner, so its rendered column starts at the first section. Every
+example link is clickable: clicking one opens its description below, switches the
+middle column to that target's file, highlights the lines the reference selects,
+and marks the matching marker and injected block in the rendered Markdown — the
+link itself grows no snippet. The pages are generated, never hand-written:
 
 - [`docs/demo.md`](./docs/demo.md) is the source: an ordinary Markdown document,
   readable on its own, whose markers this tool keeps in sync exactly as it keeps
   `doc/usage.md`. It has a section per [supported language](./doc/languages.md)
-  and per config format — Java, Go, Rust, Python, C#, Kotlin, PHP, Ruby, SQL,
-  Shell, VB, Haskell, Zig, YAML, TOML, INI and JSON.
+  and per config format, and the generator publishes each section on the page
+  that claims it.
 - [`docs/samples/`](./docs/samples) holds one small sample per section, each
   written to show the construct its language needs a lexer for (a nested comment,
   a raw string, a heredoc, a doubled quote) beside a member to select.
 - [`tools/build-demo.mjs`](./tools/build-demo.mjs) reads the document, resolves
-  every marker with the library — so the page cannot highlight a range the tool
+  every marker with the library — so a page cannot highlight a range the tool
   would not inject — renders every sample with the same comment/string spans the
-  resolver's lexer produces, and writes the page. A rule that *renders* its
+  resolver's lexer produces, and writes every page. A rule that *renders* its
   selection (JSON, YAML, TOML, INI) has no byte slice to find, so the page matches
   the rendered lines back to the source by key and highlights where the selected
   keys are written — one range per group of adjacent lines, so two keys far apart
   are two highlights rather than one covering everything between them.
 
 ```bash
-bun tools/build-demo.mjs           # write docs/index.html
-bun tools/build-demo.mjs --check   # exit 1 when it is stale
+bun tools/build-demo.mjs           # write every page
+bun tools/build-demo.mjs --check   # exit 1 when a page is stale
 ```
 
 To add an example: put the sample in `docs/samples/`, write a `##` section with
 its prose and a marker in `docs/demo.md`, run `inject-examples docs/demo.md` to
-fill the block, then run the generator — the page grows a numbered paragraph, a
-clickable target and, when the file is new, a tab in the middle column. `npm test`
-fails when the committed page is not exactly what the generator writes, when the
-document has drifted from a sample, or when a sample's language stops being
-highlighted.
+fill the block, name the section on the page that should own it in `PAGES` in
+`tools/build-demo.mjs`, then run the generator — the page grows a numbered
+paragraph, a clickable target and, when the file is new, a tab in the middle
+column. `npm test` fails when a committed page is not exactly what the generator
+writes, when the document has drifted from a sample, when a section is published
+twice or nowhere, or when a sample's language stops being highlighted.
 
 ## Library
 

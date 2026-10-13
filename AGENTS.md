@@ -22,48 +22,92 @@
   (`#scripts/test`, `#server/port`). A format's own spelling stays in the *output*
   (a TOML header is still `[a.b]`). `.` is never a reference separator.
 
-## Demo page (`docs/index.html`)
+## The demo pages (`docs/index.html`, `docs/languages/*.html`)
 
-- `docs/index.html` is **generated** — never edit it by hand.
-- Three columns: the targets, the source file with the selected line range
-  highlighted, and the document rendered GitHub-style (code fences highlighted)
-  with the marker and its injected block highlighted in place. The first column is
-  two stacked sections: the numbered titles with their example links only, and
-  below them the description of the selected example — the prose written above its
-  marker in `docs/demo.md` — which a click swaps in; the example link grows no
-  snippet of its own. The lead — title and intro before the first `##` — is shown
-  once, as the page banner, and is skipped in both the targets and the rendered
-  column.
+- The pages are **generated** — never edit one by hand.
+- One document, one page per language. `docs/index.html` is the **Overview** —
+  the examples that are about the tool itself, whatever language the sample
+  happens to be written in, closing with an index that links every language page
+  — and `docs/languages/<slug>.html` holds one language's or format's examples,
+  so a reader can go straight to the language they came for. **The overview's own
+  sections are targets like any page's**, not prose: a reader clicks its topics
+  and the middle and right columns follow. A reference is written once in the
+  document and shown on one page, so the Java sample's *direct* names are the
+  overview's examples and its *path and line* forms are Java's page.
+- Every page has the **same header**, and in it the same hamburger menu: a
+  `popover` (opened by the button's `popovertarget`, so light dismiss, Escape and
+  the top layer come from the platform) positioned against the button with CSS
+  anchor positioning (`anchor-name`/`position-anchor`/`position-area`, with a
+  `@supports` fallback for browsers without it). The menu lists every page, marks
+  the current one, and is how a reader crosses from one language to another. A
+  language entry is its name and its sample; **only the Overview describes
+  itself**, because a blurb under every entry turns the menu into a paragraph to
+  read instead of a list to scan.
+- **A target's id is per page** (`<slug>-t<section>-<target>`, and `t…` for the
+  overview), because an id is an element id on one page while two pages may show
+  the same reference.
+- Three columns per page: the targets, the source file with the selected line
+  range highlighted, and the document rendered GitHub-style (code fences
+  highlighted) with the marker and its injected block highlighted in place. The
+  first column is two stacked sections: the numbered titles with their example
+  links only, and below them the description of the selected example — the prose
+  written above its marker in `docs/demo.md` — which a click swaps in; the example
+  link grows no snippet of its own. The lead — title and intro before the first
+  `##` — is the Overview's banner, and is skipped in both the targets and the
+  rendered column.
 - Source: `docs/demo.md`. It is an ordinary Markdown document whose `##`
-  sections become the numbered paragraphs of the page and whose markers become
-  its clickable targets. The markers inject `docs/samples/*` — one small sample
-  per language and config format (Java, Go, Rust, Python, C#, Kotlin, PHP, Ruby,
-  SQL, Shell, VB, Haskell, Zig, YAML, TOML, INI, JSON) — and the middle column
-  gets a tab per file, the active one scrolled into view.
+  sections become the numbered paragraphs of a page and whose markers become its
+  clickable targets. Which page a section is published on is `PAGES` in
+  `tools/build-demo.mjs`, which names the sections each page owns — the record,
+  not the document's order, decides, so adding a section to a page is a one-line
+  change there. **A section title is the key, so titles are globally unique**;
+  each page's titles say what that language shows (`Java: regions and
+  declarations`, `Go: a switch literal and a trailing comment`). The markers
+  inject `docs/samples/*` — one sample per language and config format (Java,
+  JavaScript, Go, Rust, Python, C#, Kotlin, PHP, Ruby, Shell, VB, Haskell, Zig,
+  YAML, TOML, INI, JSON, CSS) — and a page's middle column gets a tab per file its
+  own examples read, the active one scrolled into view.
+- The pages are **grouped by feature**, not one section per example: a language
+  page has two or three sections, and a section's examples share its prose (the
+  description pane falls back to it). Where a language cannot show something —
+  VB's `If x = "y" Then` header, Shell's `case` arms, Haskell's `case`, CSS's
+  ambiguous `.card` — the page shows the nearest example that *does* resolve and
+  says why in the prose; no page carries a fence the generator cannot verify.
 - Generator: `tools/build-demo.mjs`, run with Bun:
-  `bun tools/build-demo.mjs` (or `npm run demo`) writes the page,
-  `bun tools/build-demo.mjs --check` (or `npm run demo:check`) exits 1 when it
-  is stale.
+  `bun tools/build-demo.mjs` (or `npm run demo`) writes every page,
+  `bun tools/build-demo.mjs --check` (or `npm run demo:check`) exits 1 when one
+  of them is stale.
 - Adding an example: put the sample in `docs/samples/`, write the `##` section
   with its prose and a marker in `docs/demo.md`, run `node cli.mjs docs/demo.md`
-  to fill the block, then run the generator (a new file adds a tab to the middle
-  column). Highlighting for every sample comes from the `HIGHLIGHTERS` table in
-  `tools/build-demo.mjs`, whose comment/string spans are the resolver's own
-  syntaxes; a new language needs a keyword set there too.
-- `test.mjs` holds the page to the docs' standard: `docs/demo.md` must be in
-  sync with the sample, every target's line range must be the text it injects,
-  and `docs/index.html` must be byte-identical to the generator's output.
+  to fill the block, add the section's title to the page that owns it in `PAGES`,
+  add the page to the language index in `docs/demo.md` if it is new, then run the
+  generator (a new file adds a tab to that page's middle column). Highlighting for
+  every sample comes from the `HIGHLIGHTERS` table in `tools/build-demo.mjs`,
+  whose comment/string spans are the resolver's own syntaxes; a new language needs
+  a keyword set there too.
+- `test.mjs` holds the pages to the docs' standard: `docs/demo.md` must be in
+  sync with the samples, every target's line range must be the text it injects,
+  every section must be published on exactly one page, every page must carry the
+  menu, and each committed page must be byte-identical to the generator's output.
 
 ## Languages and the mask oracle
 
 - `src/js/scanner/syntaxes.js` is the language table: **one object per
   language, all data** — comment spellings, string forms (`escape`, `hashes`,
-  `maxSpan`/`content`, …), `heredoc`, plus the two optional extras the resolver
+  `maxSpan`/`content`, …), `heredoc`, plus the three optional extras the resolver
   consumes: `declarations` (the shapes the generic `name(` heuristics miss —
-  Ruby `def`, Haskell bindings) and `annotations` (what `+` brings along, e.g. a
-  Haskell `name ::` signature). `src/js/scanner/tokenizer.js` walks the table;
-  `src/js/scanner/lexers.js` maps extensions to it. `lib/section.mjs` must stay
-  dependency-free and untouched by language detail.
+  Ruby `def`, Kotlin `fun`, Haskell bindings), `annotations` (what `+` brings
+  along, e.g. a Haskell `name ::` signature), and a declaration's optional
+  `suffix` (the trailing `!`, `?` or `=` Ruby allows after a bare name, which is
+  part of the name and not a modifier). `src/js/scanner/tokenizer.js` walks the
+  table; `src/js/scanner/lexers.js` maps extensions to it. `lib/section.mjs` must
+  stay dependency-free and untouched by language detail.
+- **A declaration shape's `headerFrom` is the end of its own match.** The resolver
+  follows the header from there to the `{`, `;` or `=` that ends it, which is how
+  a wrapped parameter list is spanned and how a Kotlin expression body is found.
+  A shape whose match stops at the `(` therefore has to include the list, or say
+  where it ends, and a shape for a language that writes `fun` must not also let the
+  generic `name(` shape read an annotation's own arguments as a method.
 - Adding a language: one object in `syntaxes.js`, one line in `EXTENSIONS` in
   `lexers.js`, a mask row in the lexical corpus (below), and probe entries in the
   oracle corpus.
@@ -165,6 +209,13 @@
   `rust/section/src/syntaxes.rs` are the tables; the Rust declaration matchers are
   hand-written in `rust/section/src/tokenizer.rs` (no regex engine, by design),
   which is exactly why the shape rows matter there.
+- **One known port gap.** A Ruby name may end in `!`, `?` or `=` (`add!`,
+  `empty?`, `add=`), and the JavaScript resolver reads such a segment as that name
+  rather than as a name plus a modifier; the lexer reports the name without its
+  suffix as `base` for that lookup. The Rust port reports the whole name and the
+  same `headerFrom`, so the corpus rows it asserts are unchanged, but it has no
+  `base` — so `#add!` resolves in JavaScript and not there yet, while `#add` is
+  unaffected in both.
 - The Java library has no runtime dependencies and no I/O; everything a caller
   needs is a `String` and a reference. `rust/section/src/tokenizer.rs` carries one
   hard rule worth knowing: every offset counts **UTF-16 code units**, as the

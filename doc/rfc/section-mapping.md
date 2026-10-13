@@ -851,6 +851,19 @@ through the fragment.
   changing incompatibly. New languages, lexer entries, conformance rows, `kind`
   members and fields are **minor**; a removal, a rename, a changed message or a
   changed resolution is **major**.- **Change log.**
+  - `0.9-rc` (this revision) — **a comment is any spelling, and a block need not
+    brace.** Three matchers were reachable only through C-style spellings, and are
+    now reachable through the language's own: a region directive accepts a `#`
+    prefix (`# #region add` in Python, Ruby, Shell, YAML and INI, where `#` is the
+    comment and was previously left on the text, so the directive never parsed); a
+    comment anchor accepts a trailing comment on an **indented** block's header
+    line (`def legacy(self):  #count`) or a comment that is the first thing in its
+    body, where matcher 6 previously required braces and so never fired; and a
+    condition literal (matcher 5) is found in a statement closed by **indentation**
+    rather than a brace (`if (name == "count"):`, `If name = "count" Then`),
+    because only a statement block carries its header's literals. Both readers
+    (`index.mjs` and `lib/section.mjs`) change together. Existing resolutions are
+    unchanged — the corpus gains rows for the new spellings and moves none.
   - `0.9-rc` (this revision) — **an ambiguous name is an error.** When two blocks
     at one level both answer to the name a reference selected, the mapper fails
     (`"add" is declared 2 times; names must be unique`) instead of returning the

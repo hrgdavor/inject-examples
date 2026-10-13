@@ -195,6 +195,13 @@ The grammar, as six rules. Each violated below is an error (see
 A **line-range selector** is resolved by none of the six: it names lines, and
 the lines it names are the selection (see [Line ranges](#line-ranges)).
 
+A region directive is a *comment* in the language's own spelling, so the `#` of
+`#region` is the directive and the prefix that makes it a comment is whatever the
+language writes — `// #region add`, `# #region add`, `' #region add`,
+`-- #region add`, `; #region add`, `<!-- #region add -->` or `/* #region add */`.
+A line that is not a comment takes the bare `#region` spelling only, so prose that
+says `region add` is prose.
+
 Rules 1, 2 and 4 are the subject of [Paths and scopes](#paths-and-scopes); rule
 5 (and the matcher table rule 6 names) of
 [Searching one element in a scope](#searching-one-element-in-a-scope); rule 3 of

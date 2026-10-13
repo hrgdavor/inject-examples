@@ -90,6 +90,16 @@
     {"name":"vb-sub","path":"a.vb","line":"    Private Sub Run()","declared":[{"kind":"method","name":"Run","headerFrom":19,"body":"end","end":"End","line":false}]},
     {"name":"vb-keyword-inside-a-longer-word","path":"a.vb","line":"Submarine Function Add(x)","declared":[{"kind":"method","name":"Add","headerFrom":22,"body":"end","end":"End","line":false}]},
     {"name":"vb-prefix-word-is-not-a-boundary","path":"a.vb","line":"MySub Foo","declared":[]},
-    {"name":"vb-end-is-not-a-declaration","path":"a.vb","line":"End Function","declared":[]}
+    {"name":"vb-end-is-not-a-declaration","path":"a.vb","line":"End Function","declared":[]},
+    {"name":"kotlin-fun-plain","path":"a.kt","line":"    fun add(item: String) {","declared":[{"kind":"method","name":"add","headerFrom":11,"body":null,"end":null,"line":false}]},
+    {"name":"kotlin-fun-no-params","path":"a.kt","line":"    fun render(): String = \"x\"","declared":[{"kind":"method","name":"render","headerFrom":14,"body":null,"end":null,"line":false}]},
+    {"name":"kotlin-fun-generic","path":"a.kt","line":"    fun <T> first(items: List<T>): T","declared":[{"kind":"method","name":"first","headerFrom":17,"body":null,"end":null,"line":false}]},
+    {"name":"kotlin-fun-receiver","path":"a.kt","line":"    fun String.shout(): String","declared":[{"kind":"method","name":"shout","headerFrom":20,"body":null,"end":null,"line":false}]},
+    {"name":"kotlin-fun-modifier","path":"a.kt","line":"    private suspend fun load() {}","declared":[]},
+    {"name":"kotlin-fun-annotation","path":"a.kt","line":"    @JvmName(\"addOne\") fun add(item: String) {","declared":[{"kind":"method","name":"add","headerFrom":30,"body":null,"end":null,"line":false}]},
+    {"name":"kotlin-fun-wrapped-header","path":"a.kt","line":"    fun label(","declared":[{"kind":"method","name":"label","headerFrom":13,"body":null,"end":null,"line":false}]},
+    {"name":"kotlin-annotation-line-arguments","path":"a.kt","line":"    @JvmName(\"addOne\")","declared":[]},
+    {"name":"kotlin-annotation-line-bare","path":"a.kt","line":"    @Deprecated","declared":[]},
+    {"name":"kotlin-keyword-is-not-a-fun","path":"a.kt","line":"    funky.add(x)","declared":[]}
   ]
 }

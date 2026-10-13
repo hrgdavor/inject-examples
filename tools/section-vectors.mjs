@@ -85,6 +85,9 @@ const PROPERTY_TYPES = 'test/fixtures/PropertyTypes.java';
 const WRAPPED_KT = 'test/fixtures/Wrapped.kt';
 const WRAPPED_PY = 'test/fixtures/Wrapped.py';
 const ENUM = 'test/fixtures/Enum.java';
+// A `#`-comment language: the region directive is written `# #region name`, and
+// a condition literal or a trailing-comment anchor has no brace to hang on.
+const HASH_PY = 'test/fixtures/Hash.py';
 // The ambiguity fixtures: one name, two blocks at one level. A reference never
 // guesses between them — these are the rows that say so.
 const DUP_JAVA = 'test/fixtures/Duplicate.java';
@@ -191,6 +194,20 @@ const cases = [
     { name: 'wrapped-indented-body', input: WRAPPED_PY, reference: 'Wrapped/describe' },
     { name: 'wrapped-indented-body-inner', input: WRAPPED_PY, reference: 'Wrapped/describe/-' },
     { name: 'wrapped-indented-existing', input: WRAPPED_PY, reference: 'Wrapped/render/-' },
+    // A `#` is a comment spelling like any other, so `# #region catalog` is the
+    // directive a `#`-comment language writes — and its body is the lines
+    // between the two directives, not the comment that explains them.
+    { name: 'hash-region-directive', input: HASH_PY, reference: 'Cart/catalog' },
+    { name: 'hash-region-bare-name', input: HASH_PY, reference: 'catalog' },
+    { name: 'hash-region-missing', input: HASH_PY, reference: 'Cart/missing' },
+    // No brace to open: the condition literal of an indented `if` is reached by
+    // naming it inside the block that holds it, and a trailing comment on a
+    // declaration line is the block's anchor.
+    { name: 'hash-indented-condition', input: HASH_PY, reference: 'Cart/dispatch/count' },
+    { name: 'hash-indented-condition-second', input: HASH_PY, reference: 'Cart/dispatch/clear' },
+    { name: 'hash-indented-condition-missing', input: HASH_PY, reference: 'Cart/dispatch/nope' },
+    { name: 'hash-indented-anchor', input: HASH_PY, reference: 'Cart/legacy/count' },
+    { name: 'hash-indented-anchor-missing', input: HASH_PY, reference: 'Cart/legacy/nope' },
     // A Java enum's constants stand between the declaration and its `{`, one per
     // line, so the header has to be followed past several lines to reach the body.
     { name: 'enum-declaration', input: ENUM, reference: 'OrgFeature' },

@@ -408,6 +408,35 @@ export function tokenize(source, syntax, visitor) {
 }
 
 /**
+ * The offset just past the declaration's parameter list, which is where the
+ * resolver wants a shape's `headerFrom`: it reads the header from there to the
+ * `{`, `;` or `=` that ends it, and that is how a wrapped parameter list is
+ * spanned and how a Kotlin `fun label(\n  x: Int\n): String = …` states its
+ * expression body.
+ *
+ * A shape that stops at the `(` has to say where the list ends, and the list may
+ * wrap across lines — so the walk runs over the whole mask and counts brackets.
+ * A limit is supplied by the caller to keep a repeated line cheap.
+ *
+ * @param {string} mask the masked source
+ * @param {number} end the offset just past the shape's match (at the `(`)
+ * @param {number} [limit] how far the walk may go before giving up
+ * @returns {number}
+ */
+function pastParamList(mask, end, limit) {
+    let depth = 0;
+    const stop = limit === undefined ? mask.length : Math.min(mask.length, limit);
+    for (let i = end - 1; i < stop; i++) {
+        if (mask[i] === '(') depth++;
+        else if (mask[i] === ')') {
+            depth--;
+            if (depth === 0) return i + 1;
+        }
+    }
+    return end;
+}
+
+/**
  * A lexer adapter for `lib/section.mjs`: the shape the resolver's optional
  * `lexer` argument wants (`{ name, mask, comments }`), memoised on the last
  * source so one scan pays for `mask` and `comments` together.
@@ -446,10 +475,22 @@ export function makeLexer(syntax) {
                 if (descriptor.re.global) descriptor.re.lastIndex = 0;
                 const match = descriptor.re.exec(maskedLine);
                 if (!match || !match[1]) continue;
+                // A suffix a language allows after a *bare* name — Ruby's `!`,
+                // `?` or `=` — is part of the name: the shape's regex names the
+                // word, and the character that follows it belongs to the shape's
+                // own vocabulary, so it is taken from there.
+                const suffix = descriptor.suffix
+                    && descriptor.suffix.test(maskedLine[match.index + match[0].length])
+                    ? maskedLine[match.index + match[0].length]
+                    : '';
                 out.push({
                     kind: descriptor.kind ?? 'method',
-                    name: match[1],
-                    headerFrom: match.index + match[0].length,
+                    name: `${match[1]}${suffix}`,
+                    // The name without the suffix it may carry, so the resolver can
+                    // read a declared `add!` as the name `add!` rather than as the
+                    // name `add` with a `!` modifier.
+                    base: match[1],
+                    headerFrom: match.index + match[0].length + suffix.length,
                     body: descriptor.body,
                     end: descriptor.end,
                     line: !!descriptor.line,

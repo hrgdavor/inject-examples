@@ -6,6 +6,7 @@ import java.util.List;
 /** A small stock inventory: the sample every target on this page reads. */
 public class Inventory {
 
+    // The catalog is a region directive: the directive lines are never injected.
     // #region catalog
     /** The catalog, kept as an explicit region directive. */
     static final String[] CATALOG = { "bolt", "nut", "washer" };
@@ -30,7 +31,7 @@ public class Inventory {
     }
 
     /** Summarise the inventory. */
-    @Override
+    @Deprecated
     public String toString() {
         return items.size() + " item(s)";
     }

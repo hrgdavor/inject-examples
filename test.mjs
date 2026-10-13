@@ -3467,46 +3467,53 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
         assert.equal(entry.skipped, false, `${entry.marker.raw} must resolve`);
     }
 
-    const { html, model } = buildDemo({ root });
-    assert.ok(model.exampleCount >= 30, 'the page shows a substantial set of targets');
-    assert.ok(model.files.length >= 16, 'every sample file the document shows is on the page');
-    for (const file of model.files) {
-        assert.ok(html.includes(`data-file="${file.path}"`), `${file.path}: has a tab and a pane`);
-    }
+    const built = buildDemo({ root });
+    const { model } = built;
+    assert.ok(model.exampleCount >= 30, 'the pages show a substantial set of targets');
+    assert.ok(model.files.length >= 16, 'every sample file the document shows is on a page');
 
-    for (const section of model.sections) {
-        for (const example of section.examples) {
-            const file = model.files.find((candidate) => candidate.path === example.path);
-            assert.ok(file, `${example.raw}: the target file is on the page`);
-            assert.ok(html.includes(`id="${example.id}"`), `${example.raw}: the target is clickable`);
-            assert.ok(!html.includes('chip-lines'),
-                `${example.raw}: the chip shows the target syntax, not line numbers`);
-            // The link carries no footnote of its own: the text a reference
-            // injects is the middle column's business, and what it *means* is
-            // the description pane's, so the link is a link and nothing else.
-            assert.ok(html.includes(`<li class="target-item" id="${example.id}">`),
-                `${example.raw}: the target is one link in the list of examples`);
-            assert.ok(!html.includes(`id="${example.id}-snippet"`),
-                `${example.raw}: nothing is injected below the example link`);
-            assert.ok(html.includes(`aria-controls="${example.id}-desc"`),
-                `${example.raw}: the link points at the description it opens`);
-            assert.ok(html.includes(`id="${example.id}-desc" data-desc="${example.id}"`),
-                `${example.raw}: the description pane holds a block of its own for it`);
-            assert.ok(html.includes(example.description),
-                `${example.raw}: its description is on the page, prose and all`);
-            assert.ok(!/^\s*$/.test(example.description.replace(/<[^>]+>/g, '')),
-                `${example.raw}: its description says something`);
-            assert.ok(html.includes(`data-section="${example.section}"`),
-                `${example.raw}: the target names the Markdown section it lives in`);
-            assert.ok(html.includes(`data-marker="${example.id}"`),
-                `${example.raw}: the marker line is addressable in the rendered Markdown`);
-            assert.ok(html.includes(`data-inject="${example.id}"`),
-                `${example.raw}: the injected block is addressable in the rendered Markdown`);
+    // Every page is checked against the part of the document it publishes, and
+    // its own rendered HTML.
+    for (const page of model.pages) {
+        const html = built.pages.find((entry) => entry.page.slug === page.slug).html;
+        for (const file of page.files) {
+            assert.ok(html.includes(`data-file="${file.path}"`),
+                `${page.slug}: ${file.path} has a tab and a pane`);
+        }
 
-            if (example.rendered) {
-                // A rendered rule (JSON, YAML, TOML, INI) re-prints or re-frames
-                // its selection, so its range is where the selected keys were
-                // written in the file — the middle column highlights that.
+        for (const section of page.sections) {
+            for (const example of section.examples) {
+                const file = model.files.find((candidate) => candidate.path === example.path);
+                assert.ok(file, `${example.raw}: the target file is on a page`);
+                assert.ok(html.includes(`id="${example.id}"`), `${example.raw}: the target is clickable`);
+                assert.ok(!html.includes('chip-lines'),
+                    `${example.raw}: the chip shows the target syntax, not line numbers`);
+                // The link carries no footnote of its own: the text a reference
+                // injects is the middle column's business, and what it *means* is
+                // the description pane's, so the link is a link and nothing else.
+                assert.ok(html.includes(`<li class="target-item" id="${example.id}">`),
+                    `${example.raw}: the target is one link in the list of examples`);
+                assert.ok(!html.includes(`id="${example.id}-snippet"`),
+                    `${example.raw}: nothing is injected below the example link`);
+                assert.ok(html.includes(`aria-controls="${example.id}-desc"`),
+                    `${example.raw}: the link points at the description it opens`);
+                assert.ok(html.includes(`id="${example.id}-desc" data-desc="${example.id}"`),
+                    `${example.raw}: the description pane holds a block of its own for it`);
+                assert.ok(html.includes(example.description),
+                    `${example.raw}: its description is on the page, prose and all`);
+                assert.ok(!/^\s*$/.test(example.description.replace(/<[^>]+>/g, '')),
+                    `${example.raw}: its description says something`);
+                assert.ok(html.includes(`data-section="${example.section}"`),
+                    `${example.raw}: the target names the Markdown section it lives in`);
+                assert.ok(html.includes(`data-marker="${example.id}"`),
+                    `${example.raw}: the marker line is addressable in the rendered Markdown`);
+                assert.ok(html.includes(`data-inject="${example.id}"`),
+                    `${example.raw}: the injected block is addressable in the rendered Markdown`);
+
+                if (example.rendered) {
+                    // A rendered rule (JSON, YAML, TOML, INI) re-prints or re-frames
+                    // its selection, so its range is where the selected keys were
+                    // written in the file — the middle column highlights that.
                 assert.ok(example.ranges?.length >= 1,
                     `${example.raw}: a rendered selection still points at its keys`);
                 assert.equal(example.ranges[0][0], example.from, `${example.raw}: from is the first range`);
@@ -3567,13 +3574,12 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
             assert.ok(example.ranges.every(([from, to], index) => index === 0
                 || from > example.ranges[index - 1][1]),
                 `${example.raw}: the pieces are separate ranges, in file order`);
+            }
         }
     }
 
-    assert.ok(html.includes('data-file="samples/Inventory.java"'), 'the file pane is wired to the target');
-    assert.ok(html.includes('<span class="tok-k">public</span>'), 'the sample is highlighted by the tokenizer');
-    // Every language in the table is highlighted in the middle column, from the
-    // same comment/string spans the resolver's lexer uses.
+    // Every language in the table is highlighted in the middle column of the page
+    // that shows it, from the same comment/string spans the resolver's lexer uses.
     for (const [path, marker] of [
         ['samples/Cart.go', '<span class="tok-k">func</span>'],
         ['samples/Cart.rs', '<span class="tok-k">impl</span>'],
@@ -3582,7 +3588,6 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
         ['samples/Cart.kt', '<span class="tok-k">fun</span>'],
         ['samples/Cart.php', '<span class="tok-k">function</span>'],
         ['samples/Cart.rb', '<span class="tok-k">def</span>'],
-        ['samples/report.sql', '<span class="tok-k">select</span>'],
         ['samples/run.sh', '<span class="tok-c"># The heredoc body is data'],
         ['samples/Form.vb', '<span class="tok-k">Public</span>'],
         ['samples/Main.hs', '<span class="tok-k">data</span>'],
@@ -3591,7 +3596,9 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
         ['samples/api.json', '<span class="tok-k">true</span>'],
         ['samples/site.css', '<span class="tok-a">@media</span>'],
     ]) {
-        const pane = html.slice(html.indexOf(`data-file="${path}" aria-label`));
+        const page = built.pages.find((entry) => entry.page.files.some((file) => file.path === path));
+        assert.ok(page, `${path}: some page shows it`);
+        const pane = page.html.slice(page.html.indexOf(`data-file="${path}" aria-label`));
         assert.ok(pane.includes(marker), `${path} is highlighted (${marker})`);
     }
 });
@@ -3658,85 +3665,192 @@ test('demo: fenced code is highlighted per language, or escaped when unknown', (
     assert.equal(highlightCode('x', 'json'), 'x');
 });
 
-test('demo: the page is three titled columns', () => {
+test('demo: every page is three titled columns with the shared header', () => {
     const root = dirname(fileURLToPath(import.meta.url));
-    const { html, model } = buildDemo({ root });
+    const built = buildDemo({ root });
 
-    for (const column of ['pane-left', 'pane-mid', 'pane-right']) {
-        assert.ok(html.includes(`class="pane ${column}"`), `the ${column} column exists`);
+    for (const page of built.model.pages) {
+        const html = built.pages.find((entry) => entry.page.slug === page.slug).html;
+        for (const column of ['pane-left', 'pane-mid', 'pane-right']) {
+            assert.ok(html.includes(`class="pane ${column}"`), `${page.slug}: the ${column} column exists`);
+        }
+        for (const title of ['Targets', 'Description', 'Source file', 'Markdown']) {
+            assert.ok(html.includes(`<div class="col-head">${title}<`), `${page.slug}: ${title} is titled`);
+        }
+        assert.ok(html.includes('<article class="md">'), `${page.slug}: the rendered document is the third column`);
+        assert.equal((html.match(/data-md-section="/g) ?? []).length, page.sections.length,
+            `${page.slug}: one rendered section per "##" it owns, and no lead section`);
+        assert.ok(!html.includes('data-md-section="0"'), `${page.slug}: the lead is the banner`);
+
+        // The header is the same header on every page: the hamburger and the menu
+        // are how a reader crosses from one language to another.
+        assert.match(html, /<button class="menu-toggle" type="button" popovertarget="menu"/,
+            `${page.slug}: the header carries the menu button`);
+        assert.match(html, /<nav class="menu" id="menu" popover aria-label="Example pages">/,
+            `${page.slug}: the menu is a popover`);
+        for (const item of page.menu) {
+            assert.ok(html.includes(`href="${item.href}"`), `${page.slug}: the menu links ${item.slug}`);
+        }
+        assert.ok(html.includes(`<a class="menu-item current" href="${page.menu.find((item) => item.slug === page.slug).href}" aria-current="page">`),
+            `${page.slug}: the menu marks the current page`);
     }
-    for (const title of ['Targets', 'Description', 'Source file', 'Markdown']) {
-        assert.ok(html.includes(`<div class="col-head">${title}<`), `the ${title} column is titled`);
+
+    // The menu is a list to scan, not a paragraph to read: only the Overview
+    // describes itself, and every language entry is its name.
+    const overviewMenu = built.pages.find((entry) => entry.page.isOverview).html;
+    const menu = overviewMenu.slice(overviewMenu.indexOf('<nav class="menu"'), overviewMenu.indexOf('</nav>'));
+    assert.equal((menu.match(/class="menu-blurb"/g) ?? []).length, 1,
+        'the menu carries exactly one description, on the overview');
+    assert.match(menu, new RegExp(`<span class="menu-blurb">${escapeHtml(built.model.pages[0].blurb)}</span>`));
+    for (const page of built.model.pages.filter((candidate) => !candidate.isOverview)) {
+        assert.ok(!menu.includes(escapeHtml(page.blurb)),
+            `${page.slug}: its description is not under its menu entry`);
     }
-    assert.ok(html.includes('<article class="md">'), 'the rendered document is the third column');
-    assert.equal((html.match(/data-md-section="/g) ?? []).length, model.sections.length,
-        'one rendered section per "##", and no lead section');
-    assert.ok(!html.includes('data-md-section="0"'), 'the lead is the banner, not a rendered section');
+});
+
+test('demo: one page per language, and the pages tile the document', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const built = buildDemo({ root });
+    const { model } = built;
+
+    assert.ok(model.pages.length >= 19, 'a page per language and format, and the overview');
+    assert.equal(model.pages[0].isOverview, true, 'the first page is the overview');
+    assert.equal(model.pages.filter((page) => page.isOverview).length, 1, 'exactly one overview');
+
+    // A section is published on exactly one page: nothing is shown twice, and
+    // nothing falls between the pages.
+    const owners = new Map();
+    for (const page of model.pages) {
+        for (const section of page.sections) {
+            assert.ok(!owners.has(section.title), `${section.title}: published once, not twice`);
+            owners.set(section.title, page.slug);
+        }
+    }
+    const doc = parseDemoDoc(readFileSync(join(root, 'docs', 'demo.md'), 'utf8'));
+    for (const section of doc.sections) {
+        assert.ok(owners.has(section.title), `${section.title}: published on a page`);
+        assert.equal(owners.get(section.title), section.page, `${section.title}: on the page that claims it`);
+    }
+
+    // Every language page has examples, and every example is about that page's
+    // sample — the reason a reader came to it.
+    for (const page of model.pages.filter((candidate) => !candidate.isOverview)) {
+        assert.ok(page.examples.length >= 1, `${page.slug}: has examples`);
+        assert.ok(page.sections.some((section) => section.examples.length > 0),
+            `${page.slug}: has a section with a target`);
+    }
+
+    // The overview is the tool's own examples plus the index of the other pages.
+    const overview = built.pages.find((entry) => entry.page.isOverview);
+    const index = overview.page.sections.find((section) => section.title === 'One page per language');
+    assert.ok(index, 'the overview closes with the language index');
+    assert.equal(index.examples.length, 0, 'the index introduces no target of its own');
+    // A section with no target has no description to select, so its prose stands
+    // in the pane, which is how the index reaches the reader.
+    assert.match(overview.html, /<div class="desc-note">/);
+    for (const page of model.pages.filter((candidate) => !candidate.isOverview)) {
+        assert.ok(overview.html.includes(`languages/${page.slug}.html`),
+            `the overview's index links ${page.slug}`);
+    }
+
+    // The overview's own sections are targets, not prose to read: every example
+    // it shows is selectable, and clicking one stays on the overview.
+    assert.ok(overview.page.examples.length >= 6,
+        `the overview shows its own examples (${overview.page.examples.length})`);
+    for (const section of overview.page.sections.filter((candidate) => candidate.title !== 'One page per language')) {
+        assert.ok(section.examples.length >= 1, `${section.title}: is a clickable target on the overview`);
+    }
+    for (const example of overview.page.examples) {
+        assert.ok(overview.html.includes(`id="${example.id}"`), `${example.id}: is an element on the page`);
+        assert.ok(overview.html.includes(`data-inject="${example.id}"`),
+            `${example.id}: marks the injection in the rendered column`);
+    }
 });
 
 test('demo: the left column is the targets and, below them, the description', () => {
     const root = dirname(fileURLToPath(import.meta.url));
-    const { html, model } = buildDemo({ root });
+    const built = buildDemo({ root });
 
-    // Two stacked sections, and the targets one holds the titles and their links
-    // and no prose at all.
-    const left = html.slice(html.indexOf('class="pane pane-left"'), html.indexOf('class="pane pane-mid"'));
-    assert.equal((left.match(/class="pane-section"/g) ?? []).length, 2, 'the left column has two sections');
-    const targets = left.slice(0, left.indexOf('Description'));
-    for (const section of model.sections) {
-        assert.ok(targets.includes(escapeHtml(section.title)), `${section.title}: the title is listed`);
-    }
-    for (const example of model.sections.flatMap((section) => section.examples)) {
-        assert.ok(!targets.includes(example.description), `${example.raw}: no prose beside the link`);
-    }
+    for (const page of built.model.pages) {
+        const html = built.pages.find((entry) => entry.page.slug === page.slug).html;
+        // Two stacked sections, and the targets one holds the titles and their
+        // links and no prose at all.
+        const left = html.slice(html.indexOf('class="pane pane-left"'), html.indexOf('class="pane pane-mid"'));
+        assert.equal((left.match(/class="pane-section"/g) ?? []).length, 2,
+            `${page.slug}: the left column has two sections`);
+        const targets = left.slice(0, left.indexOf('Description'));
+        for (const section of page.sections.filter((candidate) => candidate.examples.length > 0)) {
+            assert.ok(targets.includes(escapeHtml(section.title)), `${page.slug}/${section.title}: the title is listed`);
+        }
+        // A section with no example has no link to offer, so it is not a heading
+        // with an empty list under it; its prose is a note in the description pane.
+        assert.ok(!/<ul class="targets">\s*<\/ul>/.test(targets), `${page.slug}: no empty list of links`);
+        for (const example of page.examples) {
+            assert.ok(!targets.includes(example.description), `${example.raw}: no prose beside the link`);
+        }
 
-    // One description block per example, in document order, and none of them
-    // shown until one is selected.
-    const blocks = [...html.matchAll(/<div class="desc" id="([^"]+)-desc" data-desc="([^"]+)">/g)];
-    const examples = model.sections.flatMap((section) => section.examples);
-    assert.deepEqual(blocks.map((block) => block[2]), examples.map((example) => example.id),
-        'every example has exactly one description, and in the same order');
-    assert.equal((left.match(/class="desc active"/g) ?? []).length, 0,
-        'nothing is selected until it is clicked');
+        // One description block per example, in document order, and none of them
+        // shown until one is selected.
+        const blocks = [...html.matchAll(/<div class="desc" id="([^"]+)-desc" data-desc="([^"]+)">/g)];
+        assert.deepEqual(blocks.map((block) => block[2]), page.examples.map((example) => example.id),
+            `${page.slug}: every example has exactly one description, and in the same order`);
+        assert.equal((left.match(/class="desc active"/g) ?? []).length, 0,
+            `${page.slug}: nothing is selected until it is clicked`);
+    }
 });
 
-test('demo: prose links point where the document means them to point', () => {
+test('demo: prose links point where the page means them to point', () => {
     const root = dirname(fileURLToPath(import.meta.url));
-    const { html } = buildDemo({ root });
-    // The page sits at the document's own path, and the document's links are
-    // written beside it: the banner's link to the sample file must still land on
-    // the sample file once the page is opened.
-    assert.ok(html.includes('<a href="docs/samples/Inventory.java">samples/Inventory.java</a>'),
+    const built = buildDemo({ root });
+    // A page sits beside the document, or one directory below it: the document's
+    // links are written beside the document, so a nested page makes them climb.
+    const overview = built.pages.find((entry) => entry.page.isOverview).html;
+    assert.ok(overview.includes('<a href="docs/samples/Inventory.java">samples/Inventory.java</a>'),
         'a relative prose link is resolved against the document directory');
-    assert.ok(html.includes('<a href="https://github.com/hrgdavor/inject-examples">GIT source</a>'),
+    assert.ok(overview.includes('<a href="https://github.com/hrgdavor/inject-examples">GIT source</a>'),
         'an absolute link is left exactly as it was written');
+
+    const language = built.pages.find((entry) => entry.page.slug === 'java').html;
+    assert.match(language, /href="\.\.\/index\.html"/, 'a nested page links back to the overview');
+    assert.match(language, /href="\.\.\/docs\/samples\/Inventory\.java[^"]*"/,
+        'a nested page climbs back to the document directory first');
+    assert.match(language, /href="java\.html" aria-current="page"/,
+        'a nested page reaches its siblings without climbing at all');
 });
 
-test('demo: the committed docs/index.html is exactly what the generator writes', () => {
+test('demo: the committed pages are exactly what the generator writes', () => {
     const root = dirname(fileURLToPath(import.meta.url));
-    const { html } = buildDemo({ root });
-    assert.equal(readFileSync(join(root, 'docs', 'index.html'), 'utf8'), html,
-        'run: bun tools/build-demo.mjs');
+    const built = buildDemo({ root });
+    for (const { page, html } of built.pages) {
+        assert.equal(readFileSync(join(root, page.path), 'utf8'), html,
+            `${page.path} is stale; run: bun tools/build-demo.mjs`);
+    }
 });
 
 test('demo: --check reports a stale page and --out writes a fresh one', (t) => {
     const dir = mkdtempSync(join(process.cwd(), '.demo-test-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const page = join(dir, 'index.html');
+    const language = join(dir, 'languages', 'java.html');
 
     const lines = [];
     const io = { out: (line) => lines.push(line), err: (line) => lines.push(line) };
 
-    assert.equal(runBuildDemo(['--out', page], io), 0, 'writes the page');
-    assert.ok(existsSync(page), 'the page is written');
-    assert.equal(runBuildDemo(['--check', '--out', page], io), 0, 'a fresh page passes --check');
+    assert.equal(runBuildDemo(['--out', page], io), 0, 'writes the pages');
+    assert.ok(existsSync(page), 'the overview is written');
+    assert.ok(existsSync(language), 'a language page is written beside it');
+    assert.equal(runBuildDemo(['--check', '--out', page], io), 0, 'fresh pages pass --check');
 
     writeFileSync(page, 'stale\n');
-    assert.equal(runBuildDemo(['--check', '--out', page], io), 1, 'a stale page fails --check');
+    assert.equal(runBuildDemo(['--check', '--out', page], io), 1, 'a stale overview fails --check');
     assert.match(lines.join('\n'), /stale/);
 
+    writeFileSync(language, 'stale\n');
+    assert.equal(runBuildDemo(['--check', '--out', page], io), 1, 'a stale language page fails --check');
+    assert.match(lines.join('\n'), /languages\/java\.html/);
+
     assert.equal(runBuildDemo(['--bogus'], io), 2, 'an unknown flag is a usage error');
-    assert.equal(runBuildDemo(['--check'], io), 0, 'the default page is current');
+    assert.equal(runBuildDemo(['--check'], io), 0, 'the default pages are current');
 });
 
 // ---------------------------------------------------------------------------

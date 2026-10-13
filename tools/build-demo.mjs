@@ -1,7 +1,7 @@
 /**
  * build-demo.mjs — the demo page generator.
  *
- * The page at `docs/index.html` is not edited by hand. It is built from
+ * The pages under `docs/` are not edited by hand. They are built from
  * `docs/demo.md`, a Markdown document that is also read by people:
  *
  *   - the first column is two stacked sections: the numbered `##` sections with
@@ -13,20 +13,28 @@
  *     fences highlighted and all, and marks the marker line and the injected
  *     block of the selected target.
  *
+ * One document, one page per language. The document is written for a reader;
+ * `PAGES` decides where each of its `##` sections is published, and a hamburger
+ * menu on every page links them all. `docs/index.html` is the overview — the
+ * examples that are about the tool itself, whatever language the sample happens
+ * to be written in, closing with an index that links every language page — and
+ * `docs/languages/<slug>.html` holds the examples of one language or format, so
+ * a reader can stay in the language they came for.
+ *
  * Code is highlighted with the project's own tokenizers (`src/js/scanner/`) for
  * Java, JavaScript/TypeScript and Zig — the same lexical pass the resolver uses
  * — so a comment or string never mis-colours the code beside it.
  *
  * Both the reference text and its line range are resolved with the library the
- * tool ships (`lib/section.mjs` through `index.mjs`), so the page cannot claim
+ * tool ships (`lib/section.mjs` through `index.mjs`), so a page cannot claim
  * a range the tool would not inject. The document's own fenced blocks are kept
  * in sync by `inject-examples docs/demo.md`; the tests in `test.mjs` assert
- * that, and that this file produces exactly the committed `docs/index.html`.
+ * that, and that this file produces exactly the committed pages.
  *
  * Run it with Bun (or Node — nothing here is Bun-specific):
  *
- *     bun tools/build-demo.mjs           # write docs/index.html
- *     bun tools/build-demo.mjs --check   # exit 1 when it is stale
+ *     bun tools/build-demo.mjs           # write every page
+ *     bun tools/build-demo.mjs --check   # exit 1 when one is stale
  *
  * The module is pure apart from its `run()` entry point: `buildModel` reads
  * only through the `read` it is handed, and `renderPage` is a function of the
@@ -46,18 +54,109 @@ import { SYNTAXES } from '../src/js/scanner/syntaxes.js';
 /** The repository root — this file lives in `tools/`. */
 export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
-/** The document the page is built from, relative to the root. */
+/** The document the pages are built from, relative to the root. */
 export const DEFAULT_DOC = 'docs/demo.md';
 
-/** The page this generator writes, relative to the root. */
+/** The overview page this generator writes, relative to the root. */
 export const DEFAULT_OUT = 'docs/index.html';
+
+/** Where the per-language pages are written, relative to the overview page. */
+export const LANGUAGES_DIR = 'languages';
+
+/**
+ * Every page, in the order the document lists them. Each one owns a run of `##`
+ * sections, named by `sections` — and that list is the page's, not the
+ * document's: a section may sit anywhere in the file and still be published on
+ * the page it belongs to. A section no page claims stays on the overview.
+ *
+ * `group` is the menu's heading and `order` is the menu's order (the pages are
+ * listed in document order instead, so their line ranges tile the document);
+ * `label` is what the menu calls the page, and `title` is its banner title.
+ * `slug` names the file and `sample` is the sample file the page is about.
+ */
+export const PAGES = [
+    { slug: 'overview', label: 'Overview', title: 'Overview', sample: null, group: 'This page', order: 0,
+        sections: ['A named region', 'A declaration, and how much of it comes along', 'A nested declaration',
+            'A condition literal', 'A comment anchor', 'The whole file'],
+        blurb: 'the examples that are about the tool itself, whatever language the sample is written in' },
+    // Languages. Each page earns its sections from what the language actually
+    // needs to show: a braced language can anchor a block with a trailing
+    // comment where an indented one uses a condition literal, and not every
+    // language has annotations to bring along.
+    { slug: 'java', label: 'Java', title: 'Java', group: 'Languages', order: 1, sample: 'samples/Inventory.java',
+        blurb: 'the scopes inside a file, the literal a block tests, and line numbers',
+        sections: ['Java: a path into the file', 'Java: line numbers, and several pieces at once'] },
+    { slug: 'javascript', label: 'JavaScript / TypeScript', title: 'JavaScript and TypeScript', group: 'Languages',
+        order: 2, sample: 'samples/cart.js', blurb: 'a template that hides its braces',
+        sections: ['JavaScript: regions, declarations and modifiers', 'JavaScript: a template, a condition and an anchor'] },
+    { slug: 'go', label: 'Go', title: 'Go', group: 'Languages', order: 3, sample: 'samples/Cart.go',
+        blurb: 'a raw string is not code',
+        sections: ['Go: regions and declarations', 'Go: a switch literal and a trailing comment'] },
+    { slug: 'rust', label: 'Rust', title: 'Rust', group: 'Languages', order: 4, sample: 'samples/Cart.rs',
+        blurb: 'the members live in the impl',
+        sections: ['Rust: regions and the impls', 'Rust: two impls, a literal and an anchor'] },
+    { slug: 'python', label: 'Python', title: 'Python', group: 'Languages', order: 5, sample: 'samples/Cart.py',
+        blurb: 'triple quotes, indentation, and decorators',
+        sections: ['Python: regions, defs and decorators', 'Python: an indented condition and an anchor'] },
+    { slug: 'csharp', label: 'C#', title: 'C#', group: 'Languages', order: 6, sample: 'samples/Cart.cs',
+        blurb: 'a verbatim string keeps its quotes',
+        sections: ['C#: regions and declarations', 'C#: a condition and an anchor'] },
+    { slug: 'kotlin', label: 'Kotlin', title: 'Kotlin', group: 'Languages', order: 7, sample: 'samples/Cart.kt',
+        blurb: 'nested comments, raw strings, and annotations',
+        sections: ['Kotlin: regions and declarations', 'Kotlin: a condition and an anchor'] },
+    { slug: 'php', label: 'PHP', title: 'PHP', group: 'Languages', order: 8, sample: 'samples/Cart.php',
+        blurb: 'a heredoc is not code',
+        sections: ['PHP: regions and declarations', 'PHP: a condition and an anchor'] },
+    { slug: 'ruby', label: 'Ruby', title: 'Ruby', group: 'Languages', order: 9, sample: 'samples/Cart.rb',
+        blurb: 'def, end, and the shift operator',
+        sections: ['Ruby: regions, defs and end', 'Ruby: a condition and an anchor'] },
+    { slug: 'shell', label: 'Shell', title: 'Shell', group: 'Languages', order: 10, sample: 'samples/run.sh',
+        blurb: 'a heredoc is not code either, and regions are how a script is addressed',
+        sections: ['Shell: regions and functions', 'Shell: a heredoc and an anchor'] },
+    { slug: 'vb', label: 'VB', title: 'VB', group: 'Languages', order: 11, sample: 'samples/Form.vb',
+        blurb: 'a function and its End',
+        sections: ['VB: regions and declarations', 'VB: an anchor'] },
+    { slug: 'haskell', label: 'Haskell', title: 'Haskell', group: 'Languages', order: 12, sample: 'samples/Main.hs',
+        blurb: 'a binding and its signature',
+        sections: ['Haskell: bindings and signatures', 'Haskell: a condition in a binding'] },
+    { slug: 'zig', label: 'Zig', title: 'Zig', group: 'Languages', order: 13, sample: 'samples/Nesting.zig',
+        blurb: 'a nested comment hides a decoy',
+        sections: ['Zig: regions and declarations', 'Zig: a nested comment, a switch and an anchor'] },
+    // Config formats.
+    { slug: 'yaml', label: 'YAML', title: 'YAML', group: 'Config formats', order: 14, sample: 'samples/app.yaml',
+        blurb: 'a key path',
+        sections: ['YAML: a key path', 'YAML: several keys at once'] },
+    { slug: 'toml', label: 'TOML', title: 'TOML', group: 'Config formats', order: 15, sample: 'samples/app.toml',
+        blurb: 'a table and its key',
+        sections: ['TOML: tables and keys', 'TOML: nested tables'] },
+    { slug: 'ini', label: 'INI', title: 'INI', group: 'Config formats', order: 16, sample: 'samples/app.ini',
+        blurb: 'a section and its key',
+        sections: ['INI: sections and keys', 'INI: a leading key'] },
+    { slug: 'json', label: 'JSON', title: 'JSON', group: 'Config formats', order: 17, sample: 'samples/api.json',
+        blurb: 'keys, nested and several at once',
+        sections: ['JSON: keys', 'JSON: a nested key'] },
+    { slug: 'css', label: 'CSS', title: 'CSS', group: 'Styles', order: 18, sample: 'samples/site.css',
+        blurb: 'a rule, an at-rule, and the nesting between',
+        sections: ['CSS: rules and at-rules', 'CSS: a predicate, and a region'] },
+];
+
+/** The overview is the first page and the one a reader lands on. */
+export const OVERVIEW = PAGES[0];
+
+/** The site's name, for the `<title>` of every page. */
+const SITE = 'inject-examples';
+
+/** The page a `##` section is published on: the one whose `sections` names it. */
+export function pageOfSection(section) {
+    return (PAGES.find((page) => page.sections.includes(section.title)) ?? OVERVIEW).slug;
+}
 
 const HELP = `usage: bun tools/build-demo.mjs [options]
 
   --doc <file>    source document (default: ${DEFAULT_DOC})
-  --out <file>    page to write (default: ${DEFAULT_OUT})
+  --out <file>    overview page to write (default: ${DEFAULT_OUT})
   --root <dir>    base directory the paths resolve against
-  -c, --check     write nothing; exit 1 when the page is stale
+  -c, --check     write nothing; exit 1 when a page is stale
   -h, --help      show this help`;
 
 // ---------------------------------------------------------------------------
@@ -77,6 +176,22 @@ function posixDirname(path) {
 function joinPath(dir, path) {
     if (dir === '.' || path.startsWith('/')) return path;
     return path.startsWith('./') ? `${dir}/${path.slice(2)}` : `${dir}/${path}`;
+}
+
+/** Where a page is written, relative to the root: the overview, or a language page. */
+export function pagePath(page, outPath = DEFAULT_OUT) {
+    if (page.slug === OVERVIEW.slug) return outPath;
+    return page.file ?? joinPath(posixDirname(slashes(outPath)), `${LANGUAGES_DIR}/${page.slug}.html`);
+}
+
+/** The `href` that reaches `to` from `from` — both page paths, relative to the root. */
+export function pageHref(from, to) {
+    const fromDir = posixDirname(from);
+    const fromParts = fromDir === '.' ? [] : fromDir.split('/');
+    const toParts = to.split('/');
+    let shared = 0;
+    while (shared < fromParts.length && shared < toParts.length - 1 && fromParts[shared] === toParts[shared]) shared++;
+    return [...fromParts.slice(shared).map(() => '..'), ...toParts.slice(shared)].join('/') || toParts[toParts.length - 1];
 }
 
 /** Drop blank lines from both ends of a run of document lines. */
@@ -102,9 +217,11 @@ function trimBlank(lines) {
  * Markers inside fenced blocks are not markers (`fenceRanges` and `parseMarker`
  * decide that, exactly as the tool does), so a section's code examples never
  * register as targets.
+ * A section is published on the page `PAGES` names it on, and a section no page
+ * claims stays on the overview.
  *
  * @param {string} text
- * @returns {{ title: string, intro: object[], sections: Array<{ title: string, lead: object[], examples: object[] }> }}
+ * @returns {{ title: string, intro: object[], sections: Array<{ title: string, page: string, lead: object[], examples: object[] }> }}
  */
 export function parseDemoDoc(text) {
     const lines = text.replace(/\r\n/g, '\n').split('\n');
@@ -132,7 +249,8 @@ export function parseDemoDoc(text) {
             if (heading[1].length === 1) {
                 doc.title = heading[2].trim();
             } else if (heading[1].length === 2) {
-                section = { title: heading[2].trim(), blocks: [], examples: [] };
+                const title = heading[2].trim();
+                section = { title, page: pageOfSection({ title }), line: i + 1, blocks: [], examples: [] };
                 doc.sections.push(section);
             } else {
                 blocks().push({ type: 'heading', level: heading[1].length, text: heading[2].trim() });
@@ -177,10 +295,11 @@ export function parseDemoDoc(text) {
 /**
  * Is a section's own prose only its heading restated?
  *
- * A one-example section usually says everything it has to say in the paragraph
- * above the link, so its first paragraph repeating the title is the section's
- * name, not an explanation — the (possibly empty) rest is what the example says
- * about itself.
+ * A section usually says everything it has to say in the paragraph above its
+ * first link, so a first paragraph repeating the title is the section's name and
+ * not an explanation — the (possibly empty) rest is what the example says about
+ * itself. Examples that share a section have no prose of their own either, and
+ * the pane would otherwise show the section's paragraph under every one of them.
  */
 function withoutRestatedTitle(title, blocks) {
     const first = blocks[0];
@@ -190,18 +309,35 @@ function withoutRestatedTitle(title, blocks) {
 }
 
 /**
- * The blocks the description pane shows for one example.
+ * The blocks the description pane shows for one example: the prose written above
+ * its marker, minus a paragraph that only restates the section's title.
  *
- * The pane is the selected example's own prose; a one-example section may open
- * with a paragraph that is only its title written out again, which the pane (a
- * heading of its own) does not need twice.
+ * An example with nothing of its own falls back, in order, to the prose above the
+ * section's **next** marker — a paragraph that introduces an example the section
+ * writes after it, as the overview's "The whole file" is introduced by the
+ * sentence above it — and to the prose above the section's first marker, which
+ * explains all of the section's examples. Only a section that says nothing at all
+ * leaves the pane empty.
  *
- * @param {{ title: string, examples: object[] }} section
+ * @param {{ title: string, lead: object[], examples: object[] }} section
  * @param {object} example
  * @returns {object[]}
  */
 export function exampleBlocks(section, example) {
-    return section.examples.length === 1 ? withoutRestatedTitle(section.title, example.blocks) : example.blocks;
+    const own = withoutRestatedTitle(section.title, example.blocks ?? []);
+    if (own.some((block) => block.type === 'prose')) return own;
+
+    const index = section.examples.indexOf(example);
+    const candidates = [
+        section.lead,
+        section.examples[index + 1]?.blocks,
+        section.examples[0]?.blocks,
+    ];
+    for (const candidate of candidates) {
+        const blocks = withoutRestatedTitle(section.title, candidate ?? []);
+        if (blocks.some((block) => block.type === 'prose')) return blocks;
+    }
+    return own;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,8 +505,13 @@ export function locateCss(css, source, reference, injected) {
 /**
  * Resolve one marker into the model entry the page needs: the text it injects
  * and the lines of the file it injects them from.
+ *
+ * `idPrefix` separates one page's targets from another's. Two pages may show the
+ * same example — the Overview introduces the tool with Java's own sample, and the
+ * Java page works the same reference in detail — and an id is an element id on one
+ * page, so each page names its targets in its own space.
  */
-function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
+function resolveTarget(marker, file, sectionIndex, targetIndex, warn, idPrefix = '') {
     const rule = ruleFor(marker.path);
     let text;
     let ranges = null;
@@ -408,7 +549,7 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
     }
 
     return {
-        id: `t-${sectionIndex + 1}-${targetIndex + 1}`,
+        id: `${idPrefix}t-${sectionIndex + 1}-${targetIndex + 1}`,
         section: sectionIndex + 1,
         raw: marker.raw,
         path: marker.path,
@@ -425,15 +566,20 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn) {
 }
 
 /**
- * Turn the source document plus its target files into everything the page
+ * Turn the source document plus its target files into everything every page
  * renders. Reads only through `options.read`, so a test can pass a stub.
  *
+ * The document is parsed once and published as `PAGES.length` pages: each one
+ * gets the sections the document routed to it, its own rendered Markdown, and
+ * the menu every page shares.
+ *
  * @param {{ root?: string, docPath?: string, read?: (path: string) => string,
- *           onWarning?: (message: string) => void }} [options]
+ *           onWarning?: (message: string) => void, outPath?: string }} [options]
  */
 export function buildModel(options = {}) {
     const root = options.root ?? REPO_ROOT;
     const docPath = slashes(options.docPath ?? DEFAULT_DOC);
+    const outPath = slashes(options.outPath ?? DEFAULT_OUT);
     const read = options.read ?? fileReader(root);
     const warn = options.onWarning ?? (() => {});
 
@@ -441,10 +587,19 @@ export function buildModel(options = {}) {
     const doc = parseDemoDoc(docText);
     const docDir = posixDirname(docPath);
     const readTarget = (path) => read(docDir === '.' ? path : `${docDir}/${path}`);
-    // Prose link: written beside the document, so it is relative to it — the
-    // page is at the document's own path, and a link that leaves it (an absolute
-    // URL) is left exactly as it was written.
-    const resolveLink = (href) => (/^[a-z][a-z0-9+.-]*:/i.test(href) ? href : joinPath(docDir, href));
+    // Prose link: written beside the document, so it is relative to it — a page
+    // at the document's own path resolves it as written, and a page nested below
+    // that path makes it climb back up to it.
+    const climb = (fromPath) => {
+        const depth = joinPath(posixDirname(outPath), LANGUAGES_DIR).split('/').length
+            - posixDirname(outPath).split('/').length;
+        const climbs = posixDirname(fromPath) === posixDirname(outPath) ? 0 : depth;
+        return '../'.repeat(climbs);
+    };
+    const linkTo = (fromPath) => (href) => {
+        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
+        return `${climb(fromPath)}${joinPath(docDir, href.replace(/^\.\//, ''))}`;
+    };
 
     // A marker outside a `##` section would have no numbered paragraph to live
     // in; it is almost always a heading that was forgotten, so say so.
@@ -453,43 +608,113 @@ export function buildModel(options = {}) {
         throw new Error(`${docPath}:${stray.line}: a marker outside any "##" section has no paragraph to live in`);
     }
 
-    const files = new Map();
-    const sections = [];
-    let exampleCount = 0;
+    // Every page names every other one, so the menu is the first thing built —
+    // in menu order, which is not the document's.
+    const paths = new Map(PAGES.map((entry) => [entry.slug, pagePath(entry, outPath)]));
+    const nav = [...PAGES].sort((a, b) => a.order - b.order).map((entry) => ({
+        slug: entry.slug,
+        label: entry.label,
+        group: entry.group ?? null,
+        title: entry.title,
+        blurb: entry.blurb,
+        sample: entry.sample,
+    }));
 
-    doc.sections.forEach((section, sectionIndex) => {
-        const examples = [];
-        for (const [index, part] of section.examples.entries()) {
-            const file = loadFile(files, part.marker.path, readTarget);
-            file.display = docDir === '.' ? file.path : `${docDir}/${file.path}`;
-            const target = resolveTarget(part.marker, file, sectionIndex, index, warn);
-            target.line = part.line;
-            // The panes carry different renderings of the same prose: the title
-            // is the heading above it in the left column, and the description is
-            // what that column shows while this target is the selected one.
-            target.title = section.title;
-            target.description = renderBlocks(exampleBlocks(section, part), resolveLink);
-            examples.push(target);
-        }
-        exampleCount += examples.length;
-        sections.push({ title: section.title, examples });
+    // The lines of the document each page owns: a section runs to the line before
+    // the next one's heading, so the pages tile the document and the third column
+    // can render one page's stretch of it with the document's own line numbers.
+    const lineCount = docText.replace(/\r\n/g, '\n').split('\n').length;
+    const spans = new Map();
+    doc.sections.forEach((part, index) => {
+        const next = doc.sections[index + 1];
+        spans.set(part, [part.line, next ? next.line - 1 : lineCount]);
     });
 
-    // The third column renders the document itself; the marker lines carry the
-    // target's id so a click can highlight the exact spot in the Markdown.
-    const markerIds = new Map();
-    for (const section of sections) {
-        for (const example of section.examples) markerIds.set(example.line, example.id);
+    const files = new Map();
+    const pages = [];
+    let exampleCount = 0;
+
+    for (const [pageIndex, entry] of PAGES.entries()) {
+        const pageFile = paths.get(entry.slug);
+        const resolveLink = linkTo(pageFile);
+        const owned = doc.sections.filter((part) => part.page === entry.slug);
+        // A page named a section the document does not have is a typo in `PAGES`,
+        // and it would silently publish an empty page; say so instead.
+        const missing = entry.sections.filter((title) => !doc.sections.some((part) => part.title === title));
+        if (missing.length > 0) {
+            throw new Error(`${docPath}: no section named ${missing.map((title) => `"${title}"`).join(', ')}`);
+        }
+        if (entry.slug !== OVERVIEW.slug && owned.length === 0) {
+            throw new Error(`the page "${entry.slug}" owns no section; PAGES and ${docPath} disagree`);
+        }
+
+        const sections = owned.map((part) => {
+            const sectionIndex = doc.sections.indexOf(part);
+            // A page names its targets in its own space, so the same reference
+            // shown on two pages does not collide as an element id: the overview
+            // introduces the tool with Java's sample, and the Java page works the
+            // same reference in detail.
+            const idPrefix = entry.slug === OVERVIEW.slug ? '' : `${entry.slug}-`;
+            const examples = part.examples.map((example, index) => {
+                const file = loadFile(files, example.marker.path, readTarget);
+                file.display = docDir === '.' ? file.path : `${docDir}/${file.path}`;
+                const target = resolveTarget(example.marker, file, sectionIndex, index, warn, idPrefix);
+                target.line = example.line;
+                // The panes carry different renderings of the same prose: the
+                // title is the heading above it in the left column, and the
+                // description is what that column shows while this target is
+                // the selected one.
+                target.title = part.title;
+                target.description = renderBlocks(exampleBlocks(part, example), resolveLink);
+                return target;
+            });
+            exampleCount += examples.length;
+            return {
+                title: part.title,
+                examples,
+                // A section with no example of its own still has something to say
+                // — the overview's index is one — and the description pane is
+                // where the left column can show it.
+                note: examples.length === 0 ? renderBlocks(part.lead, resolveLink) : '',
+            };
+        });
+
+        // The third column renders the document itself, the stretch of it this
+        // page owns; a marker line carries its target's id, so a click can
+        // highlight the exact spot in the Markdown.
+        const markerIds = new Map();
+        for (const section of sections) {
+            for (const example of section.examples) markerIds.set(example.line, example.id);
+        }
+        const ranges = owned.map((part) => spans.get(part));
+
+        pages.push({
+            ...entry,
+            index: pageIndex,
+            path: pageFile,
+            isOverview: entry.slug === OVERVIEW.slug,
+            sections,
+            examples: sections.flatMap((section) => section.examples),
+            // Only the files this page's examples read: the source column gets a
+            // tab per file, and a tab for a sample the page never shows is noise.
+            files: [...new Set(sections.flatMap((section) => section.examples.map((example) => example.path)))]
+                .map((path) => files.get(path)),
+            // The core examples are the document's own lead, so the overview
+            // shows the banner; a language page has its own title to get to.
+            introHtml: entry.slug === OVERVIEW.slug ? renderBlocks(doc.intro, resolveLink) : '',
+            markdownHtml: renderMarkdown(docText, { markerIds, ranges, resolveLink }),
+            menu: nav.map((item) => ({ ...item, href: pageHref(pageFile, paths.get(item.slug)) })),
+        });
     }
 
     return {
         title: doc.title,
         docPath,
-        introHtml: renderBlocks(doc.intro, resolveLink),
-        sections,
+        outPath,
+        pages,
+        nav,
         files: [...files.values()],
         exampleCount,
-        markdownHtml: renderMarkdown(docText, { markerIds, resolveLink }),
     };
 }
 
@@ -606,13 +831,22 @@ function renderMarker(line, id, resolve) {
  * banner, and repeating it would only push the first example down. A document
  * with no `##` at all is rendered whole, as its own single section.
  *
+ * When a page owns only part of the document, `ranges` restricts the render to
+ * those line ranges — the document's own line numbers are still what the anchors
+ * carry, so the rendered column and the document agree — and the sections are
+ * numbered from 1 within the page, matching the targets column beside it.
+ *
  * @param {string} text
- * @param {{ markerIds?: Map<number, string>, resolveLink?: (href: string) => string }} [options]
- *        marker line -> target id, and where a prose link points on the page
+ * @param {{ markerIds?: Map<number, string>, ranges?: Array<[number, number]>,
+ *           resolveLink?: (href: string) => string }} [options]
+ *        marker line -> target id, the lines this page owns, and where a prose
+ *        link points on the page
  */
 export function renderMarkdown(text, options = {}) {
     const markerIds = options.markerIds ?? new Map();
     const resolve = options.resolveLink ?? ((href) => href);
+    const owned = options.ranges ?? null;
+    const wanted = (index) => owned === null || owned.some(([from, to]) => index + 1 >= from && index + 1 <= to);
 
     const lines = text.replace(/\r\n/g, '\n').split('\n');
     const fences = fenceInfo(lines);
@@ -639,13 +873,13 @@ export function renderMarkdown(text, options = {}) {
     while (i < lines.length) {
         const fence = fences.get(i);
         if (fence) {
-            html.push(renderFence(lines, i, fence, markerIds));
+            if (wanted(i)) html.push(renderFence(lines, i, fence, markerIds));
             i = fence.close + 1;
             continue;
         }
 
         const line = lines[i];
-        if (line.trim() === '') {
+        if (line.trim() === '' || !wanted(i)) {
             i++;
             continue;
         }
@@ -669,7 +903,7 @@ export function renderMarkdown(text, options = {}) {
         if (/^\s*[-*]\s+/.test(line)) {
             const from = i;
             const items = [];
-            while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+            while (i < lines.length && wanted(i) && /^\s*[-*]\s+/.test(lines[i])) {
                 items.push(`<li>${renderInline(lines[i].replace(/^\s*[-*]\s+/, ''), resolve)}</li>`);
                 i++;
             }
@@ -679,7 +913,7 @@ export function renderMarkdown(text, options = {}) {
 
         const from = i;
         const rows = [];
-        while (i < lines.length && lines[i].trim() !== '' && !fences.has(i)
+        while (i < lines.length && wanted(i) && lines[i].trim() !== '' && !fences.has(i)
             && !/^(#{1,6})\s+/.test(lines[i]) && !/^\s*[-*]\s+/.test(lines[i])
             && !(rows.length > 0 && markerAt(i))) {
             rows.push(lines[i].trim());
@@ -998,10 +1232,77 @@ body {
 /* A short, full-width banner: title and note on one row, the intro under it. */
 .page-head { background: var(--head); border-bottom: 1px solid var(--line); padding: .45rem .9rem .5rem; }
 .head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.head-title { display: flex; align-items: center; gap: .6rem; min-width: 0; }
 .page-head h1 { margin: 0; font-size: 1.12rem; }
 .page-head p { margin: .15rem 0 0; max-width: none; }
 .page-head .intro p { margin: .2rem 0 0; }
 .page-head .note { margin: 0; color: var(--muted); font-size: .78rem; }
+.page-sub { color: var(--muted); font-size: .84rem; }
+
+/* The hamburger and its menu: one page per language, from any page.
+   The menu is a popover — light dismiss, Escape and the top layer come with it —
+   and CSS anchor positioning pins it to the button, so it follows the banner
+   wherever the button lands. A browser without either API falls back to a
+   scroll-away block, kept usable by the small script below. */
+.menu-wrap { position: relative; flex: none; }
+.menu-toggle {
+  display: flex; align-items: center; gap: .45rem; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  border-radius: 8px; padding: .3rem .55rem; font: 500 .8rem/1.2 ui-sans-serif, system-ui, sans-serif;
+  anchor-name: --examples-menu;
+}
+.menu-toggle:hover { border-color: var(--accent); }
+.menu-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.menu-toggle[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+.menu-bars {
+  flex: none; width: 14px; height: 10px;
+  background:
+    linear-gradient(currentColor, currentColor) 0 0 / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 4px / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 8px / 100% 2px no-repeat;
+}
+@supports selector(:popover-open) and (position-anchor: --examples-menu) {
+  .menu {
+    position-anchor: --examples-menu;
+    position-area: bottom span-right;
+    position-try-fallbacks: bottom span-left, top span-right, top span-left;
+  }
+}
+@supports not (selector(:popover-open) and (position-anchor: --examples-menu)) {
+  .menu { position: absolute; top: 100%; left: 0; }
+  /* Without the popover API the attribute does not hide anything, so the menu
+     starts hidden here and the script below opens it. */
+  .menu:not([data-open]) { display: none; }
+}
+.menu {
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
+}
+.menu:popover-open { display: block; }
+.menu-head {
+  margin: .2rem .5rem .45rem; color: var(--muted); font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .06em; font-weight: 600;
+}
+.menu-group {
+  display: block; margin: .5rem .5rem .25rem; color: var(--muted); font-size: .72rem;
+  text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
+}
+.menu-item {
+  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  text-decoration: none; border: 1px solid transparent;
+}
+.menu-item:hover { background: var(--chip); }
+.menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+.menu-label { font-weight: 600; }
+.menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
+.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-item.current .menu-blurb { color: inherit; opacity: .8; }
+.menu-sample {
+  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.menu-item.current .menu-sample { color: inherit; opacity: .75; }
 
 /* Three columns: targets, source, and the document as it renders. */
 .split {
@@ -1067,8 +1368,19 @@ body {
 .desc-panel .desc h3 { margin: .9rem 0 .35rem; font-size: .95rem; }
 .desc-panel .desc h4, .desc-panel .desc h5, .desc-panel .desc h6 { margin: .8rem 0 .3rem; font-size: .9rem; }
 .desc-panel .desc code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
-.desc-empty { margin: .3rem 0 0; color: var(--muted); font-size: .84rem; }
-.desc-panel.filled .desc-empty { display: none; }
+.desc-empty { margin: .3rem 0 .8rem; color: var(--muted); font-size: .84rem; }
+.desc-note {
+  padding: .1rem 0 .8rem; margin-bottom: .8rem; border-bottom: 1px solid var(--line);
+  font-size: .92rem;
+}
+/* What the pane says before anything is selected: the sections that offer no
+   example explain themselves here, and the hint says how to pick one. */
+.desc-panel.filled .desc-empty, .desc-panel.filled .desc-note { display: none; }
+.desc-note p { margin: .35rem 0 .7rem; }
+.desc-note ul { margin: .35rem 0 .7rem; padding-left: 1.2rem; }
+.desc-note li { margin: .15rem 0; }
+.desc-note code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
+.desc-note a { color: var(--accent); }
 
 .file-tabs { display: flex; gap: .3rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .file-tab {
@@ -1150,6 +1462,29 @@ const SCRIPT = `
   var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
   var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
   var descriptions = Array.prototype.slice.call(document.querySelectorAll('.desc'));
+
+  // The examples menu is a popover: the browser opens it, light-dismisses it,
+  // closes it on Escape and keeps it in the top layer, and the button that
+  // invokes it is wired by popovertarget. A browser without the API gets the
+  // button wired by hand and the data-open attribute the fallback CSS reads.
+  if (!('showPopover' in HTMLElement.prototype)) {
+    var menu = document.querySelector('.menu');
+    var toggle = document.querySelector('.menu-toggle');
+    if (menu && toggle) {
+      toggle.setAttribute('aria-expanded', 'false');
+      var setMenu = function (open) {
+        menu.toggleAttribute('data-open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+      };
+      toggle.addEventListener('click', function () { setMenu(!menu.hasAttribute('data-open')); });
+      document.addEventListener('click', function (event) {
+        if (menu.hasAttribute('data-open') && !menu.contains(event.target)) setMenu(false);
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && menu.hasAttribute('data-open')) { setMenu(false); toggle.focus(); }
+      });
+    }
+  }
 
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
@@ -1235,7 +1570,9 @@ const SCRIPT = `
 /**
  * The first left-hand section: numbered titles and their example links, and
  * nothing else — no prose, and no snippet below a link. What an example *means*
- * is the second section's business, and clicking a link swaps it there.
+ * is the second section's business, and clicking a link swaps it there. A
+ * section with no example of its own has no link to offer, so it is not listed
+ * here; its prose is a note in the description pane instead.
  */
 function renderSection(section, index) {
     const targets = section.examples
@@ -1264,13 +1601,27 @@ function renderSection(section, index) {
     ].join('\n');
 }
 
+/** The left column's list: the sections that have an example to offer. */
+function renderSections(page) {
+    return page.sections
+        .filter((section) => section.examples.length > 0)
+        .map((section) => renderSection(section, page.sections.indexOf(section)))
+        .join('\n');
+}
+
 /**
- * The second left-hand section: one block per example, the selected one the
- * only one shown. Every example's title is rendered above it — the description
- * pane has its own header, so it can say which example it is describing.
+ * The second left-hand section: the prose of the sections that have no example
+ * to select — the overview's language index is the one that matters — then one
+ * block per example, of which the selected one is the only one shown. Every
+ * block carries its title, so the pane says what it is describing.
  */
-function renderDescriptions(sections) {
-    return sections
+function renderDescriptions(page) {
+    const notes = page.sections
+        .filter((section) => section.examples.length === 0 && section.note !== '')
+        .map((section) => `<div class="desc-note"><h2>${escapeHtml(section.title)}</h2>${section.note}</div>`)
+        .join('\n');
+
+    const blocks = page.sections
         .flatMap((section, index) => section.examples.map((example) => [
             `<div class="desc" id="${example.id}-desc" data-desc="${example.id}">`,
             `<h2><span class="num">${index + 1}</span>${escapeHtml(example.title)}</h2>`,
@@ -1278,6 +1629,7 @@ function renderDescriptions(sections) {
             `</div>`,
         ].join('\n')))
         .join('\n');
+    return notes === '' ? blocks : `${notes}\n${blocks}`;
 }
 
 /** The right pane: one tab and one code pane per target file. */
@@ -1295,20 +1647,65 @@ function renderFiles(files) {
 }
 
 /**
+ * The menu every page shares: a hamburger button and the popover it opens.
+ *
+ * The popover is the platform's own — light dismiss, Escape and the top layer
+ * come with it — and CSS anchor positioning pins it to the button wherever the
+ * banner puts that. The button's `popovertarget` makes it the popover's
+ * invoker, so the two stay in step without a line of script.
+ */
+function renderMenu(page) {
+    const items = page.menu
+        .map((item, index, all) => {
+            const note = item.group !== null && (index === 0 || all[index - 1].group !== item.group)
+                ? `<span class="menu-group" role="presentation">${escapeHtml(item.group)}</span>`
+                : '';
+            const current = item.slug === page.slug;
+            const sample = item.sample ? `<span class="menu-sample">${escapeHtml(item.sample)}</span>` : '';
+            // Only the Overview says what it is; a language page is what its name
+            // says it is, and a blurb under every entry made the menu a paragraph
+            // to read instead of a list to scan.
+            const blurb = item.slug === OVERVIEW.slug
+                ? `<span class="menu-blurb">${escapeHtml(item.blurb)}</span>`
+                : '';
+            return `${note}<a class="menu-item${current ? ' current' : ''}" href="${escapeHtml(item.href)}"`
+                + `${current ? ' aria-current="page"' : ''}>`
+                + `<span class="menu-label">${escapeHtml(item.label)}</span>`
+                + blurb
+                + sample
+                + `</a>`;
+        })
+        .join('\n');
+
+    return [
+        `<button class="menu-toggle" type="button" popovertarget="menu" aria-label="Examples by language">`,
+        `<span class="menu-bars" aria-hidden="true"></span>`,
+        `<span class="menu-word">Examples</span>`,
+        `</button>`,
+        `<nav class="menu" id="menu" popover aria-label="Example pages">`,
+        `<p class="menu-head">One page per language</p>`,
+        items,
+        `</nav>`,
+    ].join('\n');
+}
+
+/**
  * The whole page, as one self-contained HTML document — no network, no build
  * step, no runtime dependency. Open it from the filesystem and it works.
  */
 export function renderPage(model) {
-    const { tabs, panes } = renderFiles(model.files);
-    const sections = model.sections.map(renderSection).join('\n');
-    const descriptions = renderDescriptions(model.sections);
+    const page = model.page;
+    const { tabs, panes } = renderFiles(page.files);
+    const sections = renderSections(page);
+    const descriptions = renderDescriptions(page);
+    const title = `${page.isOverview ? 'Overview' : page.title} — ${SITE}`;
 
     return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(model.title)}</title>
+<title>${escapeHtml(title)}</title>
 <style>
 ${STYLE}
 </style>
@@ -1317,11 +1714,17 @@ ${STYLE}
 <div class="page">
 <header class="page-head">
 <div class="head-row">
-<h1>${escapeHtml(model.title)}</h1>
+<div class="head-title">
+<div class="menu-wrap">
+${renderMenu(page)}
+</div>
+<h1>${escapeHtml(page.isOverview ? model.title : page.title)}</h1>
+</div>
 <p class="note">Generated from <code>${escapeHtml(model.docPath)}</code> by <code>tools/build-demo.mjs</code> — edit the Markdown, not this file.</p>
 </div>
+${page.isOverview ? '' : `<p class="page-sub">${escapeHtml(page.blurb)}</p>`}
 <div class="intro">
-${model.introHtml}
+${page.introHtml}
 </div>
 </header>
 <main class="split">
@@ -1353,7 +1756,7 @@ ${panes}
 <div class="col-head">Markdown<span class="col-note">as it reads, injections in place</span></div>
 <div class="md-scroll">
 <article class="md">
-${model.markdownHtml}
+${page.markdownHtml}
 </article>
 </div>
 </section>
@@ -1367,10 +1770,14 @@ ${SCRIPT}
 `;
 }
 
-/** Build the page from a document and its target files. */
+/**
+ * Build every page from a document and its target files: the model, and one
+ * rendered page per file it writes.
+ */
 export function buildDemo(options = {}) {
     const model = buildModel(options);
-    return { html: renderPage(model), model };
+    const html = model.pages.map((page) => ({ page, html: renderPage({ ...model, page }) }));
+    return { html: html[0].html, model, pages: html };
 }
 
 // ---------------------------------------------------------------------------
@@ -1378,7 +1785,7 @@ export function buildDemo(options = {}) {
 // ---------------------------------------------------------------------------
 
 /**
- * Parse `argv` and build, check or write the page. Returns the process exit
+ * Parse `argv` and build, check or write every page. Returns the process exit
  * code and never calls `process.exit`, so tests can drive it.
  */
 export function run(argv = [], io = {}) {
@@ -1402,32 +1809,55 @@ export function run(argv = [], io = {}) {
 
     let built;
     try {
-        built = buildDemo({ root: options.root, docPath: options.docPath, onWarning: (m) => err(`build-demo: warn: ${m}`) });
+        built = buildDemo({
+            root: options.root,
+            docPath: options.docPath,
+            outPath: options.outPath,
+            onWarning: (m) => err(`build-demo: warn: ${m}`),
+        });
     } catch (cause) {
         err(`build-demo: ${cause.message}`);
         return 1;
     }
 
-    const page = resolve(options.root, options.outPath);
-    const current = existsSync(page) ? readFileSync(page, 'utf8') : null;
+    // `--out` says where the overview goes, and the language pages follow it. A
+    // page that would land outside the overview's own directory would write into
+    // the source tree, which is never what the flag meant, so refuse it.
+    const outDir = posixDirname(slashes(options.outPath));
+    const stray = built.pages.find(({ page }) => !page.isOverview && posixDirname(page.path) === outDir);
+    if (stray) {
+        err(`build-demo: ${options.outPath} leaves no room for the language pages beside it`);
+        return 2;
+    }
+
+    // Every page, written or checked: a stale language page is as much a stale
+    // page as a stale overview.
+    const written = built.pages.map(({ page, html }) => {
+        const file = resolve(options.root, page.path);
+        return { page, file, html, current: existsSync(file) ? readFileSync(file, 'utf8') : null };
+    });
 
     if (options.check) {
-        if (current === built.html) {
-            out(`ok      ${options.outPath}`);
+        const stale = written.filter((entry) => entry.current !== entry.html);
+        if (stale.length === 0) {
+            out(`ok      ${written.length} page(s)`);
             return 0;
         }
-        out(`${current === null ? 'missing' : 'stale'} ${options.outPath}`);
+        for (const entry of stale) out(`${entry.current === null ? 'missing' : 'stale'} ${entry.page.path}`);
         out('Run: bun tools/build-demo.mjs');
         return 1;
     }
 
-    if (current === built.html) {
-        out(`ok      ${options.outPath} (unchanged)`);
-        return 0;
+    let changed = 0;
+    for (const entry of written) {
+        if (entry.current === entry.html) continue;
+        mkdirSync(dirname(entry.file), { recursive: true });
+        writeFileSync(entry.file, entry.html);
+        out(`wrote   ${entry.page.path}`);
+        changed++;
     }
-    mkdirSync(dirname(page), { recursive: true });
-    writeFileSync(page, built.html);
-    out(`wrote   ${options.outPath} (${built.model.exampleCount} target(s) in ${built.model.files.length} file(s))`);
+    if (changed === 0) out(`ok      ${written.length} page(s) (unchanged)`);
+    else out(`built   ${written.length} page(s), ${built.model.exampleCount} target(s) in ${built.model.files.length} file(s)`);
     return 0;
 }
 

@@ -101,6 +101,10 @@ pub const Form_vb =
 pub const Generics_rs =
     "use std::fmt::Display;\n\npub struct Cart<T> {\n    publisher: String,\n    pub_key: String,\n    items: Vec<T>,\n}\n\nimpl<T: Clone> Display for Cart<T> {\n    fn render(&self) -> String {\n        String::new()\n    }\n}\n\nimpl Cart<String> {\n    fn add(&mut self, x: String) {\n        self.items.push(x);\n    }\n}\n";
 
+/// `test/fixtures/Hash.py`
+pub const Hash_py =
+    "class Cart:\n    \"\"\"A cart, kept small: the shapes a `#`-comment language needs.\"\"\"\n\n    # The catalog is a class attribute, named by a region directive.\n    # #region catalog\n    CATALOG = [\"bolt\", \"nut\", \"washer\"]\n    # #endregion\n\n    def legacy(self):  # count\n        return len(self.CATALOG)\n\n    def dispatch(self, method_name):\n        if method_name == \"count\":\n            return len(self.CATALOG)\n        if method_name == \"clear\":\n            self.CATALOG.clear()\n        return None\n";
+
 /// `test/fixtures/Nesting.zig`
 pub const Nesting_zig =
     "//! A Zig file whose nested block comment hides a declaration.\nconst std = @import(\"std\");\n\n/* outer /* inner */ fn decoy() void { x(); } */\n\n/// The real target.\nfn target() void {\n    z();\n}\n";
@@ -174,6 +178,7 @@ pub fn sourceOf(input: ?[]const u8) ?[]const u8 {
     if (std.mem.eql(u8, path, "test/fixtures/Example.java")) return Example_java;
     if (std.mem.eql(u8, path, "test/fixtures/Form.vb")) return Form_vb;
     if (std.mem.eql(u8, path, "test/fixtures/Generics.rs")) return Generics_rs;
+    if (std.mem.eql(u8, path, "test/fixtures/Hash.py")) return Hash_py;
     if (std.mem.eql(u8, path, "test/fixtures/Nesting.zig")) return Nesting_zig;
     if (std.mem.eql(u8, path, "test/fixtures/Orders.sql")) return Orders_sql;
     if (std.mem.eql(u8, path, "test/fixtures/Prime.hs")) return Prime_hs;
@@ -1182,6 +1187,94 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .declaration,
         .error_message = null,
+    },
+    .{
+        .name = "hash-region-directive",
+        .input = "test/fixtures/Hash.py",
+        .reference = "Cart/catalog",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "no section named \"catalog\" in \"Cart\"",
+    },
+    .{
+        .name = "hash-region-bare-name",
+        .input = "test/fixtures/Hash.py",
+        .reference = "catalog",
+        .text = "    CATALOG = [\"bolt\", \"nut\", \"washer\"]",
+        .start_line = 6,
+        .end_line = 6,
+        .ranges = &.{.{ .from = 6, .to = 6 }},
+        .kind = .region,
+        .error_message = null,
+    },
+    .{
+        .name = "hash-region-missing",
+        .input = "test/fixtures/Hash.py",
+        .reference = "Cart/missing",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "no section named \"missing\" in \"Cart\"",
+    },
+    .{
+        .name = "hash-indented-condition",
+        .input = "test/fixtures/Hash.py",
+        .reference = "Cart/dispatch/count",
+        .text = "        if method_name == \"count\":\n            return len(self.CATALOG)",
+        .start_line = 13,
+        .end_line = 14,
+        .ranges = &.{.{ .from = 13, .to = 14 }},
+        .kind = .condition,
+        .error_message = null,
+    },
+    .{
+        .name = "hash-indented-condition-second",
+        .input = "test/fixtures/Hash.py",
+        .reference = "Cart/dispatch/clear",
+        .text = "        if method_name == \"clear\":\n            self.CATALOG.clear()",
+        .start_line = 15,
+        .end_line = 16,
+        .ranges = &.{.{ .from = 15, .to = 16 }},
+        .kind = .condition,
+        .error_message = null,
+    },
+    .{
+        .name = "hash-indented-condition-missing",
+        .input = "test/fixtures/Hash.py",
+        .reference = "Cart/dispatch/nope",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "no section named \"nope\" in \"dispatch\"",
+    },
+    .{
+        .name = "hash-indented-anchor",
+        .input = "test/fixtures/Hash.py",
+        .reference = "Cart/legacy/count",
+        .text = "    def legacy(self):  # count\n        return len(self.CATALOG)",
+        .start_line = 9,
+        .end_line = 10,
+        .ranges = &.{.{ .from = 9, .to = 10 }},
+        .kind = .anchor,
+        .error_message = null,
+    },
+    .{
+        .name = "hash-indented-anchor-missing",
+        .input = "test/fixtures/Hash.py",
+        .reference = "Cart/legacy/nope",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "no section named \"nope\" in \"legacy\"",
     },
     .{
         .name = "enum-declaration",
@@ -3382,6 +3475,78 @@ pub const shape_cases = [_]ShapeCase{
         .name = "vb-end-is-not-a-declaration",
         .path = "a.vb",
         .line = "End Function",
+        .declared = &.{},
+    },
+    .{
+        .name = "kotlin-fun-plain",
+        .path = "a.kt",
+        .line = "    fun add(item: String) {",
+        .declared = &.{
+            .{ .kind = .method, .name = "add", .header_from = 11, .body = null, .end = null, .line = false },
+        },
+    },
+    .{
+        .name = "kotlin-fun-no-params",
+        .path = "a.kt",
+        .line = "    fun render(): String = \"x\"",
+        .declared = &.{
+            .{ .kind = .method, .name = "render", .header_from = 14, .body = null, .end = null, .line = false },
+        },
+    },
+    .{
+        .name = "kotlin-fun-generic",
+        .path = "a.kt",
+        .line = "    fun <T> first(items: List<T>): T",
+        .declared = &.{
+            .{ .kind = .method, .name = "first", .header_from = 17, .body = null, .end = null, .line = false },
+        },
+    },
+    .{
+        .name = "kotlin-fun-receiver",
+        .path = "a.kt",
+        .line = "    fun String.shout(): String",
+        .declared = &.{
+            .{ .kind = .method, .name = "shout", .header_from = 20, .body = null, .end = null, .line = false },
+        },
+    },
+    .{
+        .name = "kotlin-fun-modifier",
+        .path = "a.kt",
+        .line = "    private suspend fun load() {}",
+        .declared = &.{},
+    },
+    .{
+        .name = "kotlin-fun-annotation",
+        .path = "a.kt",
+        .line = "    @JvmName(\"addOne\") fun add(item: String) {",
+        .declared = &.{
+            .{ .kind = .method, .name = "add", .header_from = 30, .body = null, .end = null, .line = false },
+        },
+    },
+    .{
+        .name = "kotlin-fun-wrapped-header",
+        .path = "a.kt",
+        .line = "    fun label(",
+        .declared = &.{
+            .{ .kind = .method, .name = "label", .header_from = 13, .body = null, .end = null, .line = false },
+        },
+    },
+    .{
+        .name = "kotlin-annotation-line-arguments",
+        .path = "a.kt",
+        .line = "    @JvmName(\"addOne\")",
+        .declared = &.{},
+    },
+    .{
+        .name = "kotlin-annotation-line-bare",
+        .path = "a.kt",
+        .line = "    @Deprecated",
+        .declared = &.{},
+    },
+    .{
+        .name = "kotlin-keyword-is-not-a-fun",
+        .path = "a.kt",
+        .line = "    funky.add(x)",
         .declared = &.{},
     },
 };

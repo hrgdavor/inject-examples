@@ -49,7 +49,7 @@ export const FENCE = '```';
 
 // `//`, `#`, `--`, `;`, `%`, `'`, REM, <!-- and /* ... */ are all comment
 // spellings seen in the wild; strip whichever one opens the line.
-const COMMENT_OPENER = /^(?:(?:\/\/|--|;|%|'|REM\b|<!--|\/\*|\*)\s*)+/i;
+const COMMENT_OPENER = /^(?:(?:\/\/|--|;|%|'|#|REM\b|<!--|\/\*|\*)\s*)+/i;
 const COMMENT_CLOSER = /\s*(?:-->|\*\/)$/;
 
 /**
@@ -913,6 +913,7 @@ const LANGUAGES = {
     bas: 'vb', vb: 'vb', vbs: 'vb',
     xml: 'xml',
     yaml: 'yaml', yml: 'yaml',
+    zig: 'zig',
 };
 
 /**

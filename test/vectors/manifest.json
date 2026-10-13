@@ -42,7 +42,7 @@
       "layer": 3,
       "name": "shapes",
       "file": "test/vectors/lexical-vectors.json",
-      "rows": 43,
+      "rows": 53,
       "selector": "shapes[]",
       "asserts": [
         "declarations(maskedLine): kind, name, headerFrom, body, end, line"
@@ -68,7 +68,7 @@
       "layer": 5,
       "name": "resolution",
       "file": "test/vectors/section-vectors.json",
-      "rows": 177,
+      "rows": 185,
       "selector": "rows with input !== null (they name a fixture)",
       "asserts": [
         "text",
@@ -112,7 +112,7 @@
   "corpora": [
     {
       "path": "test/vectors/section-vectors.json",
-      "rows": 235,
+      "rows": 243,
       "shape": "array",
       "row_fields": {
         "name": "unique; `<category>:<case>` for parse rows, a slug for resolution rows",
@@ -127,26 +127,26 @@
         "error": "the exact thrown message, or null"
       },
       "counts": {
-        "total": 235,
+        "total": 243,
         "parse": 58,
-        "resolution": 177,
-        "errors": 65,
+        "resolution": 185,
+        "errors": 69,
         "by_kind": {
-          "anchor": 11,
-          "condition": 2,
+          "anchor": 12,
+          "condition": 4,
           "declaration": 77,
           "lines": 6,
           "multiple": 5,
-          "null": 32,
+          "null": 36,
           "property": 39,
-          "region": 5
+          "region": 6
         }
       },
       "assert_all": true
     },
     {
       "path": "test/vectors/lexical-vectors.json",
-      "rows": 89,
+      "rows": 99,
       "shape": "object with masks[] and shapes[]",
       "row_fields": {
         "masks[]": {
@@ -163,8 +163,8 @@
       },
       "counts": {
         "masks": 46,
-        "shapes": 43,
-        "total": 89
+        "shapes": 53,
+        "total": 99
       },
       "assert_all": true
     }
