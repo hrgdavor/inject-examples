@@ -27,6 +27,11 @@ pub const Case = struct {
     /// The matcher that found it, or null for a parse-only probe.
     kind: ?PlanKind,
     error_message: ?[]const u8,
+    /// The stable failure code (RFC 1 §3.6): a `grammar/...` or
+    /// `resolution/...` string, or null on a case that resolves. A host
+    /// branches on this instead of reading the message, so the port reproduces
+    /// it beside the message.
+    code: ?[]const u8,
 };
 
 /// A 1-based inclusive line range.
@@ -125,6 +130,10 @@ pub const PropertyShapes_java =
 pub const PropertyTypes_java =
     "import java.util.List;\nimport java.util.Map;\nimport java.util.function.Supplier;\n\nclass PropertyTypes {\n    java.util.List<String> dotted = new java.util.ArrayList<>();\n\n    Supplier<String> supplier = () -> {\n        return \"value\";\n    };\n\n    int[] numbers = { 1, 2, 3 };\n\n    String[] names = new String[] { \"a\", \"b\" };\n\n    int[][] grid = { { 1, 2 }, { 3, 4 } };\n\n    static final Map<String, Integer> counts = new java.util.HashMap<>();\n\n    @Deprecated\n    int annotated = 7;\n}\n";
 
+/// `test/fixtures/Regions.java`
+pub const Regions_java =
+    "// A region directive names a block, and a name two blocks answer to is ambiguous\n// \xe2\x80\x94 never the first in walk order. The two `dup` regions are at the same level,\n// so a reference that names `dup` has two answers and must fail; the unnamed\n// region and the class are here so a matcher cannot pass by finding one answer\n// and ignoring the other.\npublic class Regions {\n    // #region dup\n    void first() { run(); }\n    // #endregion\n\n    // #region dup\n    void second() { run(); }\n    // #endregion\n\n    // #region solo\n    void only() { run(); }\n    // #endregion\n}\n";
+
 /// `test/fixtures/Repo.kt`
 pub const Repo_kt =
     "class Repo {\n    fun find(id: Int): String {\n        return \"item \" + id\n    }\n\n    fun save(item: String) {\n        println(item)\n    }\n}\n";
@@ -184,6 +193,7 @@ pub fn sourceOf(input: ?[]const u8) ?[]const u8 {
     if (std.mem.eql(u8, path, "test/fixtures/Prime.hs")) return Prime_hs;
     if (std.mem.eql(u8, path, "test/fixtures/PropertyShapes.java")) return PropertyShapes_java;
     if (std.mem.eql(u8, path, "test/fixtures/PropertyTypes.java")) return PropertyTypes_java;
+    if (std.mem.eql(u8, path, "test/fixtures/Regions.java")) return Regions_java;
     if (std.mem.eql(u8, path, "test/fixtures/Repo.kt")) return Repo_kt;
     if (std.mem.eql(u8, path, "test/fixtures/Shapes.java")) return Shapes_java;
     if (std.mem.eql(u8, path, "test/fixtures/Store.hs")) return Store_hs;
@@ -208,6 +218,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:add/-",
@@ -219,6 +230,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:add/+",
@@ -230,6 +242,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:add/++",
@@ -241,6 +254,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/Line/render",
@@ -252,6 +266,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/Line/-",
@@ -263,6 +278,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/Line/++",
@@ -274,6 +290,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/Line/render/-",
@@ -285,6 +302,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:item-list",
@@ -296,6 +314,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:update-document-test",
@@ -307,6 +326,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:--brand",
@@ -318,6 +338,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/--brand",
@@ -329,6 +350,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:add,render",
@@ -340,6 +362,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/Line/render,Cart/Line",
@@ -351,6 +374,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:a,b,c",
@@ -362,6 +386,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:add/-,render/++",
@@ -373,6 +398,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:L40",
@@ -384,6 +410,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:L40:12",
@@ -395,6 +422,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:L40-L44",
@@ -406,6 +434,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:L40:12-L44:3",
@@ -417,6 +446,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:L1-L1",
@@ -428,6 +458,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:add,L40-L44",
@@ -439,6 +470,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:L40-L44,add",
@@ -450,6 +482,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:L40,L50-L52",
@@ -461,6 +494,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:add,L40:2-L40:8,remove",
@@ -472,6 +506,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/^,render,Cart/$",
@@ -483,6 +518,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/^,render,$",
@@ -494,6 +530,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:Cart/^,Cart/render,Cart/$",
@@ -505,6 +542,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:a/b/^,c,$",
@@ -516,6 +554,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:foo$",
@@ -527,6 +566,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "grammar:a/^x,render,a/$y",
@@ -538,6 +578,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a/^x\" names nothing",
+        .code = "grammar/empty-segment",
     },
     .{
         .name = "grammar-error:empty",
@@ -549,6 +590,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#\" names nothing",
+        .code = "grammar/empty-reference",
     },
     .{
         .name = "grammar-error:trailing-slash",
@@ -560,6 +602,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a/\" has an empty path segment",
+        .code = "grammar/empty-segment",
     },
     .{
         .name = "grammar-error:leading-slash",
@@ -571,6 +614,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#/a\" has an empty path segment",
+        .code = "grammar/empty-segment",
     },
     .{
         .name = "grammar-error:double-slash",
@@ -582,6 +626,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a//b\" has an empty path segment",
+        .code = "grammar/empty-segment",
     },
     .{
         .name = "grammar-error:modifier-not-last",
@@ -593,6 +638,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"++\" may only modify the last path segment of \"#a/++/b\"",
+        .code = "grammar/modifier-not-last",
     },
     .{
         .name = "grammar-error:plus-not-last",
@@ -604,6 +650,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"+\" may only modify the last path segment of \"#a/+/b\"",
+        .code = "grammar/modifier-not-last",
     },
     .{
         .name = "grammar-error:dash-not-last",
@@ -615,6 +662,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"-\" may only modify the last path segment of \"#a/-/b\"",
+        .code = "grammar/modifier-not-last",
     },
     .{
         .name = "grammar-error:two-modifiers",
@@ -626,6 +674,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"++\" may only modify the last path segment of \"#a/++/-\"",
+        .code = "grammar/modifier-not-last",
     },
     .{
         .name = "grammar-error:two-modifiers-reversed",
@@ -637,6 +686,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"-\" may only modify the last path segment of \"#a/-/++\"",
+        .code = "grammar/modifier-not-last",
     },
     .{
         .name = "grammar-error:two-positive-modifiers",
@@ -648,6 +698,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"+\" may only modify the last path segment of \"#a/+/++\"",
+        .code = "grammar/modifier-not-last",
     },
     .{
         .name = "grammar-error:three-plus-in-a-segment",
@@ -659,6 +710,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a/+++\" carries more than one modifier",
+        .code = "grammar/too-many-modifiers",
     },
     .{
         .name = "grammar-error:three-dash-in-a-segment",
@@ -670,6 +722,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a/---\" carries more than one modifier",
+        .code = "grammar/too-many-modifiers",
     },
     .{
         .name = "grammar-error:old-trailing-plus",
@@ -681,6 +734,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"++\" is a path segment now; write \"#toString/++\"",
+        .code = "grammar/modifier-old-spelling",
     },
     .{
         .name = "grammar-error:old-trailing-single-plus",
@@ -692,6 +746,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"+\" is a path segment now; write \"#toString/+\"",
+        .code = "grammar/modifier-old-spelling",
     },
     .{
         .name = "grammar-error:old-leading-plus",
@@ -703,6 +758,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"+\" is a path segment now; it follows the path, as \"#<path>/+\"",
+        .code = "grammar/modifier-old-spelling",
     },
     .{
         .name = "grammar-error:old-trailing-plus-in-a-path",
@@ -714,6 +770,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"++\" is a path segment now; write \"#b/++\"",
+        .code = "grammar/modifier-old-spelling",
     },
     .{
         .name = "grammar-error:old-contradiction",
@@ -725,6 +782,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"++\" is a path segment now; write \"#b/++\"",
+        .code = "grammar/modifier-old-spelling",
     },
     .{
         .name = "grammar-error:nine-segments",
@@ -736,6 +794,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a/b/c/d/e/f/g/h/i\" is deeper than 8 sections",
+        .code = "grammar/too-deep",
     },
     .{
         .name = "grammar-error:empty-first-selector",
@@ -747,6 +806,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#add,\" has an empty selector",
+        .code = "grammar/empty-selector",
     },
     .{
         .name = "grammar-error:empty-last-selector",
@@ -758,6 +818,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#,add\" has an empty selector",
+        .code = "grammar/empty-selector",
     },
     .{
         .name = "grammar-error:empty-middle-selector",
@@ -769,6 +830,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#add,,render\" has an empty selector",
+        .code = "grammar/empty-selector",
     },
     .{
         .name = "grammar-error:range-open-ended",
@@ -780,6 +842,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L40-\" is not a line range; write L<line> or L<line>:<column>",
+        .code = "grammar/line-range-not-a-range",
     },
     .{
         .name = "grammar-error:range-column-not-a-number",
@@ -791,6 +854,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L40:x\" is not a line range; write L<line> or L<line>:<column>",
+        .code = "grammar/line-range-not-a-range",
     },
     .{
         .name = "grammar-error:envelope-bare-open",
@@ -802,6 +866,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#^\": a lone \"^\" has nothing to close",
+        .code = "resolution/envelope-alone",
     },
     .{
         .name = "grammar-error:envelope-bare-close",
@@ -813,6 +878,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#$\": a lone \"$\" has nothing to open",
+        .code = "resolution/envelope-alone",
     },
     .{
         .name = "grammar-error:envelope-leading-slash",
@@ -824,6 +890,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#/^\" has an empty path segment",
+        .code = "grammar/empty-segment",
     },
     .{
         .name = "grammar-error:range-line-zero",
@@ -835,6 +902,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L0\" counts lines and columns from 1",
+        .code = "grammar/line-range-from-1",
     },
     .{
         .name = "grammar-error:range-column-zero",
@@ -846,6 +914,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L1:0\" counts lines and columns from 1",
+        .code = "grammar/line-range-from-1",
     },
     .{
         .name = "grammar-error:range-backwards",
@@ -857,6 +926,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L44-L40\" ends before it starts",
+        .code = "grammar/line-range-backwards",
     },
     .{
         .name = "grammar-error:range-end-column-zero",
@@ -868,6 +938,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L40-L44:0\" counts lines and columns from 1",
+        .code = "grammar/line-range-from-1",
     },
     .{
         .name = "grammar-error:range-start-column-not-a-number",
@@ -879,6 +950,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L40:x-L44\" is not a line range; write L<line> or L<line>:<column>",
+        .code = "grammar/line-range-not-a-range",
     },
     .{
         .name = "grammar-error:range-with-a-modifier",
@@ -890,6 +962,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L40-L44+\" is not a line range; write L<line> or L<line>:<column>",
+        .code = "grammar/line-range-not-a-range",
     },
     .{
         .name = "grammar-error:second-hash",
@@ -901,6 +974,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a#b\" has a second \"#\"; a reference names one file",
+        .code = "grammar/second-hash",
     },
     .{
         .name = "grammar-error:trailing-hash",
@@ -912,6 +986,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a#\" has a second \"#\"; a reference names one file",
+        .code = "grammar/second-hash",
     },
     .{
         .name = "grammar-error:second-hash-after-slash",
@@ -923,6 +998,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#a/#b\" has a second \"#\"; a reference names one file",
+        .code = "grammar/second-hash",
     },
     .{
         .name = "grammar-error:second-hash-in-a-selector-list",
@@ -934,6 +1010,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#render#x\" has a second \"#\"; a reference names one file",
+        .code = "grammar/second-hash",
     },
     .{
         .name = "ex-lines-package",
@@ -945,6 +1022,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 1, .to = 3 }},
         .kind = .lines,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-lines-tostring",
@@ -956,6 +1034,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 12, .to = 14 }},
         .kind = .lines,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-lines-tostring-body",
@@ -967,6 +1046,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 13, .to = 13 }},
         .kind = .lines,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-lines-column-to-column",
@@ -978,6 +1058,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 4, .to = 4 }},
         .kind = .lines,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-lines-column-to-end-of-line",
@@ -989,6 +1070,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 13, .to = 13 }},
         .kind = .lines,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-lines-open-end",
@@ -1000,6 +1082,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 12, .to = 30 }},
         .kind = .lines,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-lines-past-the-end",
@@ -1011,6 +1094,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L31\": the file has 30 line(s)",
+        .code = "resolution/line-range-past-end",
     },
     .{
         .name = "ex-lines-column-past-the-line",
@@ -1022,6 +1106,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#L13:100\": line 13 has 39 character(s)",
+        .code = "resolution/line-range-column-past-end",
     },
     .{
         .name = "ex-selectors-method-then-package",
@@ -1033,6 +1118,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 12, .to = 14 }, .{ .from = 1, .to = 3 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-selectors-two-declarations",
@@ -1044,6 +1130,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 12, .to = 14 }, .{ .from = 17, .to = 29 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-selectors-line-then-method",
@@ -1055,6 +1142,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 1, .to = 3 }, .{ .from = 26, .to = 28 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-selectors-modifier-on-the-last",
@@ -1066,6 +1154,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 12, .to = 14 }, .{ .from = 18, .to = 28 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-selectors-modifier-on-an-earlier-one",
@@ -1077,6 +1166,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 13, .to = 13 }, .{ .from = 17, .to = 29 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-selectors-one-missing",
@@ -1088,6 +1178,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region missing\" found, and no section named \"missing\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "envelope-short-form",
@@ -1099,6 +1190,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 7, .to = 7 }, .{ .from = 12, .to = 14 }, .{ .from = 30, .to = 30 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "envelope-long-form",
@@ -1110,6 +1202,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 7, .to = 7 }, .{ .from = 12, .to = 14 }, .{ .from = 30, .to = 30 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "envelope-prefix-only-on-the-close",
@@ -1121,6 +1214,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 7, .to = 7 }, .{ .from = 12, .to = 14 }, .{ .from = 30, .to = 30 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "envelope-member-with-a-modifier",
@@ -1132,6 +1226,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 7, .to = 7 }, .{ .from = 13, .to = 13 }, .{ .from = 30, .to = 30 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "envelope-around-a-nested-member",
@@ -1143,6 +1238,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 7, .to = 7 }, .{ .from = 26, .to = 28 }, .{ .from = 30, .to = 30 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "envelope-of-a-nested-block",
@@ -1154,6 +1250,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#Cart/^,Line/^,render,Line/$,Cart/$\": an envelope has one \"^\" and one \"$\"",
+        .code = "resolution/envelope-marks",
     },
     .{
         .name = "envelope-with-a-line-range",
@@ -1165,6 +1262,7 @@ pub const cases = [_]Case{
         .ranges = &.{ .{ .from = 7, .to = 7 }, .{ .from = 12, .to = 14 }, .{ .from = 30, .to = 30 } },
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "envelope-lone-open",
@@ -1176,6 +1274,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#Cart/^\": a lone \"^\" has nothing to close",
+        .code = "resolution/envelope-alone",
     },
     .{
         .name = "envelope-lone-close",
@@ -1187,6 +1286,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#Cart/$\": a lone \"$\" has nothing to open",
+        .code = "resolution/envelope-alone",
     },
     .{
         .name = "envelope-backwards",
@@ -1198,6 +1298,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#Cart/$,toString,Cart/^\": an envelope is \"^\" first and \"$\" last, around what they open and close",
+        .code = "resolution/envelope-order",
     },
     .{
         .name = "envelope-open-not-first",
@@ -1209,6 +1310,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#toString,Cart/^,Cart/$\": an envelope is \"^\" first and \"$\" last, around what they open and close",
+        .code = "resolution/envelope-order",
     },
     .{
         .name = "envelope-close-not-last",
@@ -1220,6 +1322,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#Cart/^,Cart/$,toString\": an envelope is \"^\" first and \"$\" last, around what they open and close",
+        .code = "resolution/envelope-order",
     },
     .{
         .name = "envelope-two-opens",
@@ -1231,6 +1334,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#Cart/^,Line/^,render,Cart/$\": an envelope has one \"^\" and one \"$\"",
+        .code = "resolution/envelope-marks",
     },
     .{
         .name = "envelope-bare-marks",
@@ -1242,6 +1346,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#^,$\": neither \"^\" nor \"$\" names a block, so there is nothing to open or close",
+        .code = "resolution/envelope-no-block",
     },
     .{
         .name = "envelope-different-parents",
@@ -1253,6 +1358,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#Cart/^,Line/render,Line/$\": \"^\" opens \"Cart\" and \"$\" closes \"Line\"; they must be the same block",
+        .code = "resolution/envelope-mismatch",
     },
     .{
         .name = "envelope-region-parent",
@@ -1264,6 +1370,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"nope\" in \"Cart\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "envelope-rust-struct-and-impl",
@@ -1275,6 +1382,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 5, .to = 9 }},
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "envelope-rust-second-impl",
@@ -1286,6 +1394,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 11, .to = 15 }},
         .kind = .multiple,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "envelope-rust-nested-literal",
@@ -1297,6 +1406,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"dispatch\" in \"Cart\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "envelope-rust-member-in-no-impl",
@@ -1308,6 +1418,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"nope\" in \"Cart\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "wrapped-method",
@@ -1319,6 +1430,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 10 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-method-body",
@@ -1330,6 +1442,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 9, .to = 9 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-method-in-scope",
@@ -1341,6 +1454,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 10 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-generic-method",
@@ -1352,6 +1466,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 12, .to = 16 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-throws-clause",
@@ -1363,6 +1478,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 25, .to = 30 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-throws-clause-body",
@@ -1374,6 +1490,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 29, .to = 29 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-annotation-scope",
@@ -1385,6 +1502,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 19, .to = 23 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-class-header",
@@ -1396,6 +1514,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 7, .to = 18 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-class-member",
@@ -1407,6 +1526,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 13, .to = 17 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-class-header-at-end-of-file",
@@ -1418,6 +1538,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 1, .to = 10 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-class-body-at-end-of-file",
@@ -1429,6 +1550,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 7, .to = 9 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-class-member-at-end-of-file",
@@ -1440,6 +1562,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 7, .to = 9 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-bodyless-member",
@@ -1451,6 +1574,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 35, .to = 35 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-expression-body",
@@ -1462,6 +1586,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 11, .to = 13 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-expression-body-inner",
@@ -1473,6 +1598,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 13, .to = 13 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-indented-body",
@@ -1484,6 +1610,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 11, .to = 15 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-indented-body-inner",
@@ -1495,6 +1622,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 14, .to = 15 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "wrapped-indented-existing",
@@ -1506,6 +1634,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hash-region-directive",
@@ -1517,6 +1646,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"catalog\" in \"Cart\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hash-region-bare-name",
@@ -1528,6 +1658,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .region,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hash-region-missing",
@@ -1539,6 +1670,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"missing\" in \"Cart\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hash-indented-condition",
@@ -1550,6 +1682,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 13, .to = 14 }},
         .kind = .condition,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hash-indented-condition-second",
@@ -1561,6 +1694,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 15, .to = 16 }},
         .kind = .condition,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hash-indented-condition-missing",
@@ -1572,6 +1706,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"nope\" in \"dispatch\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hash-indented-anchor",
@@ -1583,6 +1718,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 9, .to = 10 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hash-indented-anchor-missing",
@@ -1594,6 +1730,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"nope\" in \"legacy\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "enum-declaration",
@@ -1605,6 +1742,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 8, .to = 38 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "enum-member",
@@ -1616,6 +1754,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 19, .to = 21 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "enum-nested",
@@ -1627,6 +1766,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 24, .to = 37 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "enum-nested-member",
@@ -1638,6 +1778,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 34, .to = 36 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "enum-constant-is-not-a-member",
@@ -1649,6 +1790,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"CALL\" in \"OrgFeature\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "ex-tostring",
@@ -1660,6 +1802,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 12, .to = 14 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-tostring-body",
@@ -1671,6 +1814,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 13, .to = 13 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-tostring-annotated",
@@ -1682,6 +1826,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 11, .to = 14 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-tostring-documented",
@@ -1693,6 +1838,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 10, .to = 14 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-line",
@@ -1704,6 +1850,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 17, .to = 29 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-cart-line",
@@ -1715,6 +1862,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 17, .to = 29 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-cart-tostring",
@@ -1726,6 +1874,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 12, .to = 14 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-cart-line-render",
@@ -1737,6 +1886,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 26, .to = 28 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-cart-line-render-body",
@@ -1748,6 +1898,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 27, .to = 27 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-cart-line-body",
@@ -1759,6 +1910,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 18, .to = 28 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ex-cart-line-body-with-a-modifier-on-the-scope",
@@ -1770,6 +1922,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"-\" may only modify the last path segment of \"#Cart/-/Line\"",
+        .code = "grammar/modifier-not-last",
     },
     .{
         .name = "ex-line-tostring-error",
@@ -1781,6 +1934,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"toString\" in \"Line\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "ex-render-extra-error",
@@ -1792,6 +1946,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"extra\" in \"render\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "shapes-property",
@@ -1803,6 +1958,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 2 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-property-body",
@@ -1814,6 +1970,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 2 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-label",
@@ -1825,6 +1982,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 3, .to = 3 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-calls-add-miss",
@@ -1836,6 +1994,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"add\" in \"calls\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "shapes-add",
@@ -1847,6 +2006,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 20, .to = 22 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-add-body",
@@ -1858,6 +2018,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 21, .to = 21 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-anchored",
@@ -1869,6 +2030,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 8 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-not-anchored-miss",
@@ -1880,6 +2042,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"anchor\" in \"notAnchored\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "shapes-anchored-body",
@@ -1891,6 +2054,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 7, .to = 7 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-next-line-brace",
@@ -1902,6 +2066,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 24, .to = 27 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-next-line-brace-body",
@@ -1913,6 +2078,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 26, .to = 26 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-arrow",
@@ -1924,6 +2090,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 29, .to = 31 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-arrow-body",
@@ -1935,6 +2102,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 29, .to = 31 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-lambda-second-shape",
@@ -1946,6 +2114,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-lambda-second-shape-body",
@@ -1957,6 +2126,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-lambda-wrapped-body",
@@ -1968,6 +2138,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 9 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-lambda-wrapped-body-body",
@@ -1979,6 +2150,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 9 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-lambda-generic-type",
@@ -1990,6 +2162,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 11, .to = 13 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-lambda-generic-type-body",
@@ -2001,6 +2174,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 11, .to = 13 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-anonymous-class",
@@ -2012,6 +2186,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 15, .to = 19 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-anonymous-class-body",
@@ -2023,6 +2198,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 15, .to = 19 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-one-line-body",
@@ -2034,6 +2210,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 21, .to = 21 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-one-line-body-body",
@@ -2045,6 +2222,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 21, .to = 21 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-anchor-closes-on-its-own-line",
@@ -2056,6 +2234,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 23, .to = 24 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-anchor-closes-on-its-own-line-body",
@@ -2067,6 +2246,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 23, .to = 24 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-property-raw-string-with-braces",
@@ -2078,6 +2258,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 2 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-property-raw-string-with-braces-body",
@@ -2089,6 +2270,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 2 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-property-multiline-raw-string",
@@ -2100,6 +2282,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 4, .to = 8 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-property-multiline-raw-string-body",
@@ -2111,6 +2294,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 4, .to = 8 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-property-wrapped-call",
@@ -2122,6 +2306,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 10, .to = 13 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-property-wrapped-call-body",
@@ -2133,6 +2318,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 10, .to = 13 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-member-after-a-raw-string-property",
@@ -2144,6 +2330,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 15, .to = 17 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-member-after-a-raw-string-property-by-name",
@@ -2155,6 +2342,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 15, .to = 17 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-second-member-after-a-raw-string-property",
@@ -2166,6 +2354,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 19, .to = 21 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-qualified",
@@ -2177,6 +2366,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-qualified-body",
@@ -2188,6 +2378,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-generic-and-lambda",
@@ -2199,6 +2390,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 8, .to = 10 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-generic-and-lambda-body",
@@ -2210,6 +2402,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 8, .to = 10 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-array",
@@ -2221,6 +2414,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 12, .to = 12 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-array-body",
@@ -2232,6 +2426,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 12, .to = 12 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-array-with-new",
@@ -2243,6 +2438,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 14, .to = 14 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-array-with-new-body",
@@ -2254,6 +2450,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 14, .to = 14 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-array-of-arrays",
@@ -2265,6 +2462,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 16, .to = 16 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-array-of-arrays-body",
@@ -2276,6 +2474,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 16, .to = 16 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-generic-qualified-initialiser",
@@ -2287,6 +2486,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 18, .to = 18 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-generic-qualified-initialiser-body",
@@ -2298,6 +2498,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 18, .to = 18 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-plain",
@@ -2309,6 +2510,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 21, .to = 21 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-annotated",
@@ -2320,6 +2522,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 20, .to = 21 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-type-plain-body",
@@ -2331,6 +2534,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 21, .to = 21 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "property-types-class",
@@ -2342,6 +2546,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 5, .to = 22 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-chains-if-miss",
@@ -2353,6 +2558,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"chain\" in \"chains\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "shapes-chains",
@@ -2364,6 +2570,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 33, .to = 41 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-region",
@@ -2375,6 +2582,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 44, .to = 46 }},
         .kind = .region,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "shapes-region-miss",
@@ -2386,6 +2594,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"wiring\" in \"anchored\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "shapes-regioned",
@@ -2397,6 +2606,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 44, .to = 46 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-getusers-anchor",
@@ -2408,6 +2618,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 14, .to = 16 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-getusers-anchor-body",
@@ -2419,6 +2630,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 14, .to = 16 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-dispatch-getusers",
@@ -2430,6 +2642,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 7, .to = 9 }},
         .kind = .condition,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-getorders-anchor",
@@ -2441,6 +2654,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 19, .to = 21 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-dispatch-getorders",
@@ -2452,6 +2666,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 9, .to = 11 }},
         .kind = .condition,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-handler-anchor",
@@ -2463,6 +2678,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 14, .to = 16 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-handler-anchor-body",
@@ -2474,6 +2690,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 14, .to = 16 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-other-anchor",
@@ -2485,6 +2702,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 19, .to = 21 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-other-anchor-body",
@@ -2496,6 +2714,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 19, .to = 21 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "a-string-not-condition",
@@ -2507,6 +2726,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"getUsers\" in \"commentFromString\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "a-case-sensitive-miss",
@@ -2518,6 +2738,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region getusers\" found, and no section named \"getusers\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "ts-table-region",
@@ -2529,6 +2750,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .region,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ts-table-ignores-modifier",
@@ -2540,6 +2762,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .region,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ts-config-region",
@@ -2551,6 +2774,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 8, .to = 8 }},
         .kind = .region,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "z-target-method",
@@ -2562,6 +2786,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 7, .to = 9 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "z-decoy-hidden-by-nested-comment",
@@ -2573,6 +2798,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region decoy\" found, and no section named \"decoy\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "walkorder-siblings-before-deeper",
@@ -2584,6 +2810,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 14, .to = 16 }},
         .kind = .anchor,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "rb-add",
@@ -2595,6 +2822,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "rb-cart-add",
@@ -2606,6 +2834,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "rb-cart-add-body",
@@ -2617,6 +2846,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 3, .to = 3 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "rb-build",
@@ -2628,6 +2858,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 8 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "rb-missing",
@@ -2639,6 +2870,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region missing\" found, and no section named \"missing\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hs-add",
@@ -2650,6 +2882,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 4, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hs-add-annotated",
@@ -2661,6 +2894,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 3, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hs-add-body",
@@ -2672,6 +2906,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 4, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hs-cart",
@@ -2683,6 +2918,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hs-keyword-is-not-a-member",
@@ -2694,6 +2930,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region data\" found, and no section named \"data\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "rs-bare-cart-is-ambiguous",
@@ -2705,6 +2942,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"Cart\" is declared 3 times; names must be unique",
+        .code = "resolution/ambiguous",
     },
     .{
         .name = "rs-impl-method",
@@ -2716,6 +2954,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 8 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "rs-field-of-the-struct",
@@ -2727,6 +2966,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 2 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "rs-retry-past-the-first-impl",
@@ -2738,6 +2978,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 12, .to = 14 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "rs-missing-in-every-cart",
@@ -2749,6 +2990,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"nope\" in \"Cart\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "ambiguous-method",
@@ -2760,6 +3002,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"add\" is declared 2 times; names must be unique",
+        .code = "resolution/ambiguous",
     },
     .{
         .name = "ambiguous-method-resolved-by-its-scope",
@@ -2771,6 +3014,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"add\" is declared 2 times; names must be unique",
+        .code = "resolution/ambiguous",
     },
     .{
         .name = "unambiguous-method-unchanged",
@@ -2782,6 +3026,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 5, .to = 5 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ambiguous-below-a-path",
@@ -2793,6 +3038,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"Inner\" is declared 2 times; names must be unique",
+        .code = "resolution/ambiguous",
     },
     .{
         .name = "ambiguous-below-a-path-resolved",
@@ -2804,6 +3050,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 3, .to = 3 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "ambiguous-below-a-path-resolved-the-other-way",
@@ -2815,6 +3062,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 8, .to = 8 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "generic-bare-cart-is-ambiguous",
@@ -2826,6 +3074,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"Cart\" is declared 3 times; names must be unique",
+        .code = "resolution/ambiguous",
     },
     .{
         .name = "generic-field-plain",
@@ -2837,6 +3086,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "generic-field-in-scope",
@@ -2848,6 +3098,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 6 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "generic-field-name-begins-with-pub",
@@ -2859,6 +3110,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 4, .to = 4 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "generic-field-name-is-pub-underscore",
@@ -2870,6 +3122,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 5, .to = 5 }},
         .kind = .property,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "generic-impl-method",
@@ -2881,6 +3134,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 10, .to = 12 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "generic-impl-method-in-scope",
@@ -2892,6 +3146,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 10, .to = 12 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "generic-plain-impl-method",
@@ -2903,6 +3158,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 16, .to = 18 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "generic-trait-is-not-the-scope",
@@ -2914,6 +3170,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region Display\" found, and no section named \"Display\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hs-primed-name-is-masked-away",
@@ -2925,6 +3182,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region add\" found, and no section named \"add\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hs-primed-name-is-not-a-section",
@@ -2936,6 +3194,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "\"#add'\" names nothing",
+        .code = "grammar/empty-segment",
     },
     .{
         .name = "hs-binding-with-where-clause",
@@ -2947,6 +3206,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 9, .to = 11 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hs-indented-where-binding-is-invisible",
@@ -2958,6 +3218,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region go\" found, and no section named \"go\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hs-primed-type-name-is-not-a-section",
@@ -2969,6 +3230,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region Foo\" found, and no section named \"Foo\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hs-class-with-a-primed-neighbour",
@@ -2980,6 +3242,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 13, .to = 14 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "hs-indented-class-method-is-invisible",
@@ -2991,6 +3254,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region get\" found, and no section named \"get\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "hs-keyword-is-not-a-binding",
@@ -3002,6 +3266,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region data\" found, and no section named \"data\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "cs-class",
@@ -3013,6 +3278,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 3, .to = 11 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "cs-method-in-scope",
@@ -3024,6 +3290,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 7, .to = 10 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "cs-method",
@@ -3035,6 +3302,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 7, .to = 10 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "cs-auto-property-is-not-a-section",
@@ -3046,6 +3314,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region Name\" found, and no section named \"Name\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "kt-class",
@@ -3057,6 +3326,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 1, .to = 9 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-method-in-scope",
@@ -3068,6 +3338,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-method",
@@ -3079,6 +3350,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-second-method-in-scope",
@@ -3090,6 +3362,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 8 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "kt-report-is-not-a-section",
@@ -3101,6 +3374,7 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no \"#region report\" found, and no section named \"report\"",
+        .code = "resolution/not-found",
     },
     .{
         .name = "sql-region-in-line-comments",
@@ -3112,6 +3386,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 2 }},
         .kind = .region,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "sql-table-is-not-a-section",
@@ -3123,6 +3398,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 5, .to = 5 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "vb-class",
@@ -3134,6 +3410,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 1, .to = 9 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "vb-function-in-scope",
@@ -3145,6 +3422,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "vb-function",
@@ -3156,6 +3434,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 2, .to = 4 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "vb-function-body",
@@ -3167,6 +3446,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 3, .to = 3 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "vb-sub-in-scope",
@@ -3178,6 +3458,7 @@ pub const cases = [_]Case{
         .ranges = &.{.{ .from = 6, .to = 8 }},
         .kind = .declaration,
         .error_message = null,
+        .code = null,
     },
     .{
         .name = "vb-missing-member",
@@ -3189,6 +3470,103 @@ pub const cases = [_]Case{
         .ranges = &.{},
         .kind = null,
         .error_message = "no section named \"nope\" in \"Form\"",
+        .code = "resolution/not-found",
+    },
+    .{
+        .name = "region-duplicated",
+        .input = "test/fixtures/Regions.java",
+        .reference = "dup",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "\"#region dup\" appears 2 times; region names must be unique",
+        .code = "resolution/region-duplicated",
+    },
+    .{
+        .name = "region-as-envelope-parent",
+        .input = "test/fixtures/Regions.java",
+        .reference = "solo/^,first,$",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "\"#solo/^\": a region has no declaration to open or close",
+        .code = "resolution/envelope-region",
+    },
+    .{
+        .name = "envelope-parent-names-nothing",
+        .input = "test/fixtures/Example.java",
+        .reference = "nope/^,x,$",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "no \"#region nope\" found, and no section named \"nope\"",
+        .code = "resolution/region-not-found",
+    },
+    .{
+        .name = "region-is-not-a-container",
+        .input = "test/fixtures/Regions.java",
+        .reference = "solo/x",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "\"solo\" is not a container",
+        .code = "resolution/not-a-container",
+    },
+    .{
+        .name = "property-is-not-a-container",
+        .input = "test/fixtures/Example.java",
+        .reference = "items/x",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "\"items\" is not a container",
+        .code = "resolution/not-a-container",
+    },
+    .{
+        .name = "ambiguous-name",
+        .input = "test/fixtures/Duplicate.java",
+        .reference = "add",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "\"add\" is declared 2 times; names must be unique",
+        .code = "resolution/ambiguous",
+    },
+    .{
+        .name = "lexer-hides-a-commented-out-declaration",
+        .input = "test/fixtures/Nesting.zig",
+        .reference = "decoy",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "no \"#region decoy\" found, and no section named \"decoy\"",
+        .code = "resolution/not-found",
+    },
+    .{
+        .name = "path-parse:line-range-as-a-path",
+        .input = null,
+        .reference = "L40",
+        .text = null,
+        .start_line = null,
+        .end_line = null,
+        .ranges = &.{},
+        .kind = null,
+        .error_message = "\"#L40\" is a line range, not a section path",
+        .code = "grammar/line-range-as-path",
     },
 };
 

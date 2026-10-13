@@ -137,12 +137,29 @@ public final class Syntaxes {
             backslash("\"", "\"", false),
             backslash("'", "'", false)), Syntax.Heredoc.NONE, List.of(), List.of());
 
-    /** Kotlin: nested block comments, like Rust's. */
+    /**
+     * Kotlin declares a function with {@code fun} and no {@code ;}. The generic {@code name(} shape
+     * reads an annotation's own arguments ({@code @JvmName("addOne")}) as a method named after the
+     * annotation; {@code fun name} is the shape the language writes.
+     *
+     * <p>The match ends where the language writes the name, which is the contract every shape has: the
+     * resolver follows the header from there to the {@code {}, {@code ;} or {@code =} that ends it, so
+     * a wrapped parameter list is spanned and an expression body's {@code =} is found. Matching the
+     * list here instead cannot count brackets.
+     */
+    private static final List<Syntax.Declaration> KOTLIN_DECLARATIONS = List.of(
+            Syntax.Declaration.bodyless("method", Pattern.compile(
+                    "^\\s*(?:@\\w+(?:\\([^)]*\\))?\\s*)*(?:public|private|protected|internal|open|"
+                            + "override|suspend|inline|operator|tailrec|abstract|final|external|expect|"
+                            + "actual|infix\\s+)*fun\\s+(?:<[^>]*>\\s*)?(?:[\\w.<>?, ]+\\.)?"
+                            + "([A-Za-z_]\\w*)")));
+
+    /** Kotlin: nested block comments, like Rust's, and the {@code fun} shape. */
     public static final Syntax KOTLIN = new Syntax("kotlin", C_LINE,
             List.of(Syntax.BlockComment.nested("/*", "*/")), List.of(
                     noEscape("\"\"\"", "\"\"\"", true),
                     backslash("\"", "\"", false),
-                    backslash("'", "'", false)), Syntax.Heredoc.NONE, List.of(), List.of());
+                    backslash("'", "'", false)), Syntax.Heredoc.NONE, KOTLIN_DECLARATIONS, List.of());
 
     /** PHP: {@code //} and {@code #} (but {@code #[Attribute]} stays readable), and heredocs. */
     public static final Syntax PHP = new Syntax("php", List.of("//", "#"), C_BLOCK, List.of(

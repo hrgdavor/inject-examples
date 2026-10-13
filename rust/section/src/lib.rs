@@ -22,7 +22,12 @@
 //!   path selector with its path segments and its whole-segment modifier (`++`,
 //!   `+`, `-`), or a comma-separated list of selectors where a selector is a path
 //!   or a line range (`L40:12-L44:3`), with canonicalisation and per-selector
-//!   scopes. Complete, and pinned by every grammar vector.
+//!   scopes. Complete, and pinned by every grammar vector — including the one the
+//!   corpus marks `"parser": "path"`, which only [`parse_reference`] rejects.
+//! - [`ErrorCode`] — the stable failure codes a host branches on, mirroring
+//!   `ERROR_CODES` in `lib/section.mjs`: `grammar/…` on
+//!   [`SectionReferenceError`], `resolution/…` on [`SectionError`], readable
+//!   through `code()` on either (and on [`resolver::PlanError`]).
 //! - [`mask`] and [`lexer`] — the mask pass (part A) and the language-engine
 //!   seam, with the mask invariant asserted.
 //! - [`tokenizer`], [`syntax`] and [`syntaxes`] — the one-pass tokenizer and the
@@ -32,7 +37,9 @@
 //! - [`scanner`] — `scanBlocks`: the layer that composes them into a [`block::Scan`].
 //! - [`resolver`] — resolution (`planSection`/`resolveSection`/`extractDeclaration`):
 //!   the matcher walk, the per-selector scopes, the line ranges and the matcher
-//!   kind the plan reports. Pinned by every resolution vector.
+//!   kind the plan reports. Pinned by every resolution vector except the envelope
+//!   (`^`/`$`) rows and the `Hash.py` region/condition/anchor rows — the two gaps
+//!   the README's status table names.
 
 use std::fmt;
 
@@ -49,25 +56,145 @@ pub mod tokenizer;
 
 pub use resolver::{parse_selectors, LinePoint, Selector};
 
+/// The stable failure codes of RFC 1 §3.6 and §5.3, mirroring `ERROR_CODES` in `lib/section.mjs`.
+///
+/// A code is part of the contract because both profiles branch on it — a jump gate fails what an editor
+/// tolerates, and neither may decide that by matching message text. The prefix says where the failure was
+/// found, which is the same distinction the RFC draws between its two error categories:
+///
+/// - `grammar/` — the reference is malformed as written and **no file was read**
+///   ([`SectionReferenceError`]);
+/// - `resolution/` — the reference is well formed, and the target (or the scan) is what cannot answer it
+///   ([`SectionError`]).
+///
+/// The strings are the JavaScript ones byte for byte, and [`ErrorCode::as_str`] is the whole registry.
+/// Like the JavaScript's, codes are added and never renamed: a message may be reworded without breaking a
+/// caller, and only a code change is a breaking change for one that branches. Two of them —
+/// [`ErrorCode::KeyDuplicated`] and [`ErrorCode::LexerMask`] — have no row any corpus can produce, so the
+/// unit test beside this type is what pins their spelling.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ErrorCode {
+    // grammar — malformed as written, before any file is consulted
+    EmptyReference,
+    EmptySelector,
+    EmptySegment,
+    TooDeep,
+    SecondHash,
+    LineRangeAsPath,
+    LineRangeNotARange,
+    LineRangeFrom1,
+    LineRangeBackwards,
+    ModifierNotLast,
+    ModifierOldSpelling,
+    TooManyModifiers,
+
+    // resolution — well formed, and the file cannot answer it
+    LineRangePastEnd,
+    LineRangeColumnPastEnd,
+    NotFound,
+    Ambiguous,
+    NotAContainer,
+    RegionNotFound,
+    RegionDuplicated,
+    KeyDuplicated,
+    EnvelopeAlone,
+    EnvelopeOrder,
+    EnvelopeMarks,
+    EnvelopeMismatch,
+    EnvelopeNoBlock,
+    EnvelopeRegion,
+    LexerMask,
+}
+
+impl ErrorCode {
+    /// The namespaced code, exactly as `ERROR_CODES` spells it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ErrorCode::EmptyReference => "grammar/empty-reference",
+            ErrorCode::EmptySelector => "grammar/empty-selector",
+            ErrorCode::EmptySegment => "grammar/empty-segment",
+            ErrorCode::TooDeep => "grammar/too-deep",
+            ErrorCode::SecondHash => "grammar/second-hash",
+            ErrorCode::LineRangeAsPath => "grammar/line-range-as-path",
+            ErrorCode::LineRangeNotARange => "grammar/line-range-not-a-range",
+            ErrorCode::LineRangeFrom1 => "grammar/line-range-from-1",
+            ErrorCode::LineRangeBackwards => "grammar/line-range-backwards",
+            ErrorCode::ModifierNotLast => "grammar/modifier-not-last",
+            ErrorCode::ModifierOldSpelling => "grammar/modifier-old-spelling",
+            ErrorCode::TooManyModifiers => "grammar/too-many-modifiers",
+
+            ErrorCode::LineRangePastEnd => "resolution/line-range-past-end",
+            ErrorCode::LineRangeColumnPastEnd => "resolution/line-range-column-past-end",
+            ErrorCode::NotFound => "resolution/not-found",
+            ErrorCode::Ambiguous => "resolution/ambiguous",
+            ErrorCode::NotAContainer => "resolution/not-a-container",
+            ErrorCode::RegionNotFound => "resolution/region-not-found",
+            ErrorCode::RegionDuplicated => "resolution/region-duplicated",
+            ErrorCode::KeyDuplicated => "resolution/key-duplicated",
+            ErrorCode::EnvelopeAlone => "resolution/envelope-alone",
+            ErrorCode::EnvelopeOrder => "resolution/envelope-order",
+            ErrorCode::EnvelopeMarks => "resolution/envelope-marks",
+            ErrorCode::EnvelopeMismatch => "resolution/envelope-mismatch",
+            ErrorCode::EnvelopeNoBlock => "resolution/envelope-no-block",
+            ErrorCode::EnvelopeRegion => "resolution/envelope-region",
+            ErrorCode::LexerMask => "resolution/lexer-mask",
+        }
+    }
+
+    /// Is this a `grammar/` code — a malformed reference, found before any file was read?
+    pub fn is_grammar(self) -> bool {
+        matches!(self.namespace(), "grammar")
+    }
+
+    /// The prefix before the `/`: `grammar` or `resolution`.
+    fn namespace(self) -> &'static str {
+        // Every code is namespaced, and the split is the RFC's error categories.
+        self.as_str()
+            .split_once('/')
+            .map(|(namespace, _)| namespace)
+            .unwrap_or("")
+    }
+}
+
 /// A failure that is not a malformed reference: the mask invariant was broken, the file cannot be
 /// scanned, or a well-formed reference matched nothing.
 ///
 /// Mirrors the plain `Error` the JavaScript module throws for these, so a caller can tell "you wrote the
-/// reference wrong" ([`SectionReferenceError`]) from "the file does not have that" (this).
+/// reference wrong" ([`SectionReferenceError`]) from "the file does not have that" (this). The
+/// JavaScript carries a `code` on both kinds of failure; [`SectionError::code`] is that code, and
+/// [`SectionError::new`] is the constructor for the two internal invariants that have no JavaScript
+/// counterpart and therefore no code.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SectionError {
     message: String,
+    code: Option<ErrorCode>,
 }
 
 impl SectionError {
+    /// An error with no stable code: an internal invariant with no JavaScript counterpart. Every
+    /// failure a reference can cause goes through [`SectionError::coded`].
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            code: None,
+        }
+    }
+
+    /// An error carrying the stable code a host branches on.
+    pub fn coded(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: Some(code),
         }
     }
 
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    /// The stable code, or `None` for an internal invariant (the JavaScript's `code === null`).
+    pub fn code(&self) -> Option<ErrorCode> {
+        self.code
     }
 }
 
@@ -131,21 +258,39 @@ impl Reference {
 }
 
 /// A malformed section reference. The message is part of the contract: the
-/// vectors pin it byte for byte, because it is what a user is shown.
+/// vectors pin it byte for byte, because it is what a user is shown. The code beside it is the other
+/// half of the contract — the one a host branches on — and [`SectionReferenceError::code`] is it.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SectionReferenceError {
     message: String,
+    code: Option<ErrorCode>,
 }
 
 impl SectionReferenceError {
+    /// An error with no stable code, for the one grammar site the JavaScript leaves uncoded (a
+    /// multi-modifier path, which its own path reader rejects before it could be reached).
     fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            code: None,
+        }
+    }
+
+    /// A grammar failure carrying the code `ERROR_CODES` gives it.
+    pub fn coded(code: ErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            code: Some(code),
         }
     }
 
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    /// The stable code, or `None` for the site the JavaScript leaves uncoded.
+    pub fn code(&self) -> Option<ErrorCode> {
+        self.code
     }
 }
 
@@ -210,8 +355,15 @@ fn is_modifier_run(segment: &str) -> bool {
 /// is a modifier — so the message names the spelling that works rather than
 /// leaving them with "names nothing". A `+` that *opens* a segment is the old
 /// prefix form (`+toString`), whose replacement has the path before it.
-fn assert_name(segment: &str, raw: &str) -> Result<()> {
+///
+/// A whole envelope mark (`^`, `$`) is not a name but is a legal last segment,
+/// which `carries_mark` allows; `^` anywhere earlier is the "names nothing" error,
+/// because there is no parent for it to open.
+fn assert_name(segment: &str, raw: &str, carries_mark: bool) -> Result<()> {
     if is_name(segment) {
+        return Ok(());
+    }
+    if carries_mark && resolver::envelope_mark(segment).is_some() {
         return Ok(());
     }
     if let Some(at) = segment.find('+') {
@@ -220,15 +372,21 @@ fn assert_name(segment: &str, raw: &str) -> Result<()> {
             .map_or(segment.len(), |offset| at + offset);
         let run = &segment[at..end];
         let before = &segment[..at];
-        return Err(SectionReferenceError::new(if before.is_empty() {
-            format!("\"{run}\" is a path segment now; it follows the path, as \"#<path>/{run}\"")
-        } else {
-            format!("\"{run}\" is a path segment now; write \"#{before}/{run}\"")
-        }));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::ModifierOldSpelling,
+            if before.is_empty() {
+                format!(
+                    "\"{run}\" is a path segment now; it follows the path, as \"#<path>/{run}\""
+                )
+            } else {
+                format!("\"{run}\" is a path segment now; write \"#{before}/{run}\"")
+            },
+        ));
     }
-    Err(SectionReferenceError::new(format!(
-        "\"#{raw}\" names nothing"
-    )))
+    Err(SectionReferenceError::coded(
+        ErrorCode::EmptySegment,
+        format!("\"#{raw}\" names nothing"),
+    ))
 }
 
 /// Combine the modifier tokens one path carries into the single modifier it has,
@@ -240,6 +398,8 @@ fn merge_modifiers(modifiers: &[&'static str], raw: &str) -> Result<Option<&'sta
     match modifiers {
         [] => Ok(None),
         [modifier] => Ok(Some(*modifier)),
+        // Unreachable through the path reader, which rejects a modifier before the last segment first,
+        // and uncoded in the JavaScript for the same reason.
         _ => Err(SectionReferenceError::new(format!(
             "\"#{raw}\" carries more than one modifier"
         ))),
@@ -265,41 +425,49 @@ fn merge_modifiers(modifiers: &[&'static str], raw: &str) -> Result<Option<&'sta
 /// (a list belongs to [`parse_selectors`]), or a line range (`L40` is not a path).
 pub fn parse_reference(raw: &str) -> Result<Reference> {
     if raw.is_empty() {
-        return Err(SectionReferenceError::new("\"#\" names nothing"));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EmptyReference,
+            "\"#\" names nothing",
+        ));
     }
     if raw.contains(',') {
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" has an empty selector"
-        )));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EmptySelector,
+            format!("\"#{raw}\" has an empty selector"),
+        ));
     }
     // A reference names a section of one file, and the file is the path the
     // marker's link already carries. A second `#` is therefore never a nested
     // reference — it is a link written into the fragment by mistake, and reading
     // it as a name would send the reader to a section that cannot exist.
     if raw.contains('#') {
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" has a second \"#\"; a reference names one file"
-        )));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::SecondHash,
+            format!("\"#{raw}\" has a second \"#\"; a reference names one file"),
+        ));
     }
     if resolver::is_line_range_prefix(raw) {
         resolver::line_range_of(raw)?; // fails when the spelling is malformed
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" is a line range, not a section path"
-        )));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::LineRangeAsPath,
+            format!("\"#{raw}\" is a line range, not a section path"),
+        ));
     }
 
     let parts: Vec<&str> = raw.split('/').collect();
 
     if parts.iter().any(|part| part.is_empty()) {
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" has an empty path segment"
-        )));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EmptySegment,
+            format!("\"#{raw}\" has an empty path segment"),
+        ));
     }
 
     if parts.len() > 8 {
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" is deeper than 8 sections"
-        )));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::TooDeep,
+            format!("\"#{raw}\" is deeper than 8 sections"),
+        ));
     }
 
     let mut modifiers: Vec<&'static str> = Vec::new();
@@ -308,9 +476,10 @@ pub fn parse_reference(raw: &str) -> Result<Reference> {
     for (index, segment) in parts.iter().enumerate() {
         if let Some(modifier) = segment_modifier(segment) {
             if index + 1 != parts.len() {
-                return Err(SectionReferenceError::new(format!(
-                    "\"{modifier}\" may only modify the last path segment of \"#{raw}\""
-                )));
+                return Err(SectionReferenceError::coded(
+                    ErrorCode::ModifierNotLast,
+                    format!("\"{modifier}\" may only modify the last path segment of \"#{raw}\""),
+                ));
             }
             modifiers.push(modifier);
             continue;
@@ -318,11 +487,12 @@ pub fn parse_reference(raw: &str) -> Result<Reference> {
         // A segment of nothing but modifiers (`+++`, `---`) is two of them on one
         // segment. `--` and `--brand` are names: a CSS custom property is one.
         if is_modifier_run(segment) && *segment != "--" {
-            return Err(SectionReferenceError::new(format!(
-                "\"#{raw}\" carries more than one modifier"
-            )));
+            return Err(SectionReferenceError::coded(
+                ErrorCode::TooManyModifiers,
+                format!("\"#{raw}\" carries more than one modifier"),
+            ));
         }
-        assert_name(segment, raw)?;
+        assert_name(segment, raw, index + 1 == parts.len())?;
         names.push(segment.to_string());
     }
 
@@ -330,12 +500,20 @@ pub fn parse_reference(raw: &str) -> Result<Reference> {
         // A path of modifiers has no subject: `-` is the old body scope, and
         // `++`/`+` name nothing at all. Say that rather than "more than one
         // modifier" about a single one.
-        let why = if segment_modifier(raw).is_none() {
+        let more_than_one = segment_modifier(raw).is_none();
+        let why = if more_than_one {
             format!("\"#{raw}\" carries more than one modifier")
         } else {
             format!("\"#{raw}\" names nothing")
         };
-        return Err(SectionReferenceError::new(why));
+        return Err(SectionReferenceError::coded(
+            if more_than_one {
+                ErrorCode::TooManyModifiers
+            } else {
+                ErrorCode::EmptySegment
+            },
+            why,
+        ));
     }
 
     let merged = merge_modifiers(&modifiers, raw)?;
@@ -362,4 +540,72 @@ pub fn is_single_segment(reference: &Reference) -> bool {
 /// The convenience the JavaScript module exports as `finalSegment`.
 pub fn final_segment(reference: &Reference) -> &str {
     reference.final_segment()
+}
+
+#[cfg(test)]
+mod codes {
+    use super::ErrorCode;
+
+    /// The registry, spelled out: the corpus pins the codes its rows reach, and this pins the whole
+    /// table — including `resolution/key-duplicated` (the data-format rules' own code) and
+    /// `resolution/lexer-mask` (an engine defect), neither of which any corpus row can produce. Without
+    /// this, a rename in `ErrorCode::as_str` could go unnoticed exactly where no vector looks.
+    #[test]
+    fn every_code_spells_what_error_codes_spells() {
+        let registry: &[(ErrorCode, &str)] = &[
+            (ErrorCode::EmptyReference, "grammar/empty-reference"),
+            (ErrorCode::EmptySelector, "grammar/empty-selector"),
+            (ErrorCode::EmptySegment, "grammar/empty-segment"),
+            (ErrorCode::TooDeep, "grammar/too-deep"),
+            (ErrorCode::SecondHash, "grammar/second-hash"),
+            (ErrorCode::LineRangeAsPath, "grammar/line-range-as-path"),
+            (
+                ErrorCode::LineRangeNotARange,
+                "grammar/line-range-not-a-range",
+            ),
+            (ErrorCode::LineRangeFrom1, "grammar/line-range-from-1"),
+            (
+                ErrorCode::LineRangeBackwards,
+                "grammar/line-range-backwards",
+            ),
+            (ErrorCode::ModifierNotLast, "grammar/modifier-not-last"),
+            (
+                ErrorCode::ModifierOldSpelling,
+                "grammar/modifier-old-spelling",
+            ),
+            (ErrorCode::TooManyModifiers, "grammar/too-many-modifiers"),
+            (
+                ErrorCode::LineRangePastEnd,
+                "resolution/line-range-past-end",
+            ),
+            (
+                ErrorCode::LineRangeColumnPastEnd,
+                "resolution/line-range-column-past-end",
+            ),
+            (ErrorCode::NotFound, "resolution/not-found"),
+            (ErrorCode::Ambiguous, "resolution/ambiguous"),
+            (ErrorCode::NotAContainer, "resolution/not-a-container"),
+            (ErrorCode::RegionNotFound, "resolution/region-not-found"),
+            (ErrorCode::RegionDuplicated, "resolution/region-duplicated"),
+            (ErrorCode::KeyDuplicated, "resolution/key-duplicated"),
+            (ErrorCode::EnvelopeAlone, "resolution/envelope-alone"),
+            (ErrorCode::EnvelopeOrder, "resolution/envelope-order"),
+            (ErrorCode::EnvelopeMarks, "resolution/envelope-marks"),
+            (ErrorCode::EnvelopeMismatch, "resolution/envelope-mismatch"),
+            (ErrorCode::EnvelopeNoBlock, "resolution/envelope-no-block"),
+            (ErrorCode::EnvelopeRegion, "resolution/envelope-region"),
+            (ErrorCode::LexerMask, "resolution/lexer-mask"),
+        ];
+
+        for (code, spelling) in registry {
+            assert_eq!(code.as_str(), *spelling, "{code:?}");
+        }
+
+        // The namespaced prefix is the RFC's own split: a grammar failure was found before any file
+        // was read, a resolution failure by the file itself.
+        for (code, spelling) in registry {
+            let grammar = spelling.starts_with("grammar/");
+            assert_eq!(code.is_grammar(), grammar, "{spelling}");
+        }
+    }
 }

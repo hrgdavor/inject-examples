@@ -490,6 +490,7 @@ fn match_shape(shape: Shape, line: &str) -> Option<Declared> {
         Shape::RustField => rust_field(line),
         Shape::VbClass => vb_class(line),
         Shape::VbMethod => vb_method(line),
+        Shape::KotlinFun => kotlin_fun(line),
     }
 }
 
@@ -784,4 +785,182 @@ fn vb_method(line: &str) -> Option<Declared> {
         }
     }
     None
+}
+
+/// The modifiers Kotlin's `fun` shape accepts before the keyword. The alternation takes no whitespace
+/// after any of them, so a modifier sequence is only spelled `openfun`-adjacent or `infix fun`.
+const KOTLIN_MODIFIERS: [&str; 15] = [
+    "public",
+    "private",
+    "protected",
+    "internal",
+    "open",
+    "override",
+    "suspend",
+    "inline",
+    "operator",
+    "tailrec",
+    "abstract",
+    "final",
+    "external",
+    "expect",
+    "actual",
+];
+
+/// Kotlin's declaration shape:
+/// `/^\s*(?:@\w+(?:\([^)]*\))?\s*)*(?:public|…|infix\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+\.)?([A-Za-z_]\w*)/`.
+///
+/// The match ends where the language writes the name — the contract every shape has — so the resolver
+/// follows the header from there to the `{`, `;` or `=` that ends it. Reading the parameter list here
+/// instead could not count brackets, and it is also what keeps an annotation's own arguments from being
+/// read as a method: `@JvmName("addOne") fun add(` declares `add`, and the annotation line on its own
+/// declares nothing.
+fn kotlin_fun(line: &str) -> Option<Declared> {
+    let text = units(line);
+    let mut i = 0;
+
+    // `^\s*`
+    while text.get(i).is_some_and(|unit| is_space_unit(*unit)) {
+        i += 1;
+    }
+
+    // `(?:@\w+(?:\([^)]*\))?\s*)*` — an annotation, its optional argument list, then whitespace. An
+    // annotation whose `(` never closes cannot reach `fun` on this line, so the whole match fails here,
+    // exactly as the regex backtracks out of it.
+    loop {
+        if text.get(i) != Some(&(b'@' as u16)) {
+            break;
+        }
+        let mut j = i + 1;
+        while text.get(j).is_some_and(|unit| is_word_unit(*unit)) {
+            j += 1;
+        }
+        if j == i + 1 {
+            break; // `\w+` needs a name; a bare `@` is not an annotation
+        }
+        if text.get(j) == Some(&(b'(' as u16)) {
+            // `\([^)]*\)` — the closer is the first `)`, and there must be one.
+            let close = text[j + 1..].iter().position(|unit| *unit == b')' as u16)?;
+            j += close + 2;
+        }
+        while text.get(j).is_some_and(|unit| is_space_unit(*unit)) {
+            j += 1;
+        }
+        i = j;
+    }
+
+    // `(?:public|private|…|infix\s+)*` — greedy, and in the table's order. Only `infix` carries a
+    // `\s+`, so `private suspend fun` matches neither and declares nothing, while `infix fun` does.
+    loop {
+        let mut matched = false;
+        for modifier in KOTLIN_MODIFIERS {
+            if starts_with(&text, &units(modifier), i) {
+                i += units(modifier).len();
+                matched = true;
+                break;
+            }
+        }
+        if matched {
+            continue;
+        }
+        if starts_with(&text, &units("infix"), i)
+            && text
+                .get(i + "infix".len())
+                .is_some_and(|unit| is_space_unit(*unit))
+        {
+            i += "infix".len();
+            while text.get(i).is_some_and(|unit| is_space_unit(*unit)) {
+                i += 1;
+            }
+            continue;
+        }
+        break;
+    }
+
+    // `fun\s+`
+    if !starts_with(&text, &units("fun"), i) {
+        return None;
+    }
+    i += "fun".len();
+    if !text.get(i).is_some_and(|unit| is_space_unit(*unit)) {
+        return None;
+    }
+    while text.get(i).is_some_and(|unit| is_space_unit(*unit)) {
+        i += 1;
+    }
+
+    // `(?:<[^>]*>\s*)?` — an unterminated generic list is simply not one, and the receiver scan below
+    // is then free to read the `<` as part of a receiver.
+    if text.get(i) == Some(&(b'<' as u16)) {
+        if let Some(close) = text[i + 1..].iter().position(|unit| *unit == b'>' as u16) {
+            i += close + 2;
+            while text.get(i).is_some_and(|unit| is_space_unit(*unit)) {
+                i += 1;
+            }
+        }
+    }
+
+    // `(?:[\w.<>?, ]+\.)?` — greedy over the run, then the *last* `.` in it whose follower can start a
+    // name; failing that the group is skipped and the name is read directly. A `.` whose follower is
+    // not a name start backtracks the regex to the previous one.
+    let run_end = text[i..]
+        .iter()
+        .position(|unit| !is_receiver_unit(*unit))
+        .map_or(text.len(), |at| i + at);
+    let mut name_at = i;
+    let mut at = run_end;
+    while at > i {
+        at -= 1;
+        if text[at] == b'.' as u16 && text.get(at + 1).is_some_and(|unit| is_name_start(*unit)) {
+            name_at = at + 1;
+            break;
+        }
+    }
+
+    // `([A-Za-z_]\w*)` — `match[0]` ends with the name, so the shape's `headerFrom` is just past it.
+    if !text.get(name_at).is_some_and(|unit| is_name_start(*unit)) {
+        return None;
+    }
+    let mut end = name_at + 1;
+    while text.get(end).is_some_and(|unit| is_word_unit(*unit)) {
+        end += 1;
+    }
+    Some(Declared::new(
+        "method",
+        from_units(&text[name_at..end]),
+        end,
+    ))
+}
+
+/// JavaScript's `\s`, over a code unit — the table's regexes are not `/u`, so the set is this one.
+fn is_space_unit(unit: u16) -> bool {
+    matches!(
+        unit,
+        0x09..=0x0d
+            | 0x20
+            | 0xa0
+            | 0x1680
+            | 0x2000..=0x200a
+            | 0x2028
+            | 0x2029
+            | 0x202f
+            | 0x205f
+            | 0x3000
+            | 0xfeff
+    )
+}
+
+/// JavaScript's `\w` in the table's regexes: `[A-Za-z0-9_]`, and **not** `$`.
+fn is_word_unit(unit: u16) -> bool {
+    matches!(unit, 0x30..=0x39 | 0x41..=0x5a | 0x61..=0x7a | 0x5f)
+}
+
+/// `[A-Za-z_]`, the first unit of a declared name.
+fn is_name_start(unit: u16) -> bool {
+    matches!(unit, 0x41..=0x5a | 0x61..=0x7a | 0x5f)
+}
+
+/// `[\w.<>?, ]` — the receiver class. A space, and only a space, is whitespace here.
+fn is_receiver_unit(unit: u16) -> bool {
+    is_word_unit(unit) || matches!(unit, 0x2e | 0x3c | 0x3e | 0x3f | 0x2c | 0x20)
 }

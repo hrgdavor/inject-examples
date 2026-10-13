@@ -22,8 +22,9 @@ pub struct Directive {
     pub name: String,
 }
 
-/// The comment prefixes inject-examples accepts before a `#region` directive.
-const COMMENT_OPENERS: [&str; 9] = ["//", "--", ";", "%", "'", "REM", "<!--", "/*", "*"];
+/// The comment prefixes inject-examples accepts before a `#region` directive — `#` included, because a
+/// `#`-comment language writes `# #region add` and the directive's own `#` is the one the grammar reads.
+const COMMENT_OPENERS: [&str; 10] = ["//", "--", ";", "%", "'", "#", "REM", "<!--", "/*", "*"];
 const COMMENT_CLOSERS: [&str; 2] = ["-->", "*/"];
 
 /// The declaration keywords the generic class-like shape knows.
@@ -494,7 +495,9 @@ fn take_type_token_from_end(text: &str) -> Option<(&str, usize)> {
     // `(?:\s*\[\s*\])*`: the array suffix, innermost bracket last.
     loop {
         let head = text[..end].trim_end();
-        let Some(without_close) = head.strip_suffix(']') else { break };
+        let Some(without_close) = head.strip_suffix(']') else {
+            break;
+        };
         let without_open = without_close.trim_end().strip_suffix('[')?;
         end = without_open.trim_end().len();
     }

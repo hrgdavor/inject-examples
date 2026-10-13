@@ -5,16 +5,107 @@
     "Regenerate with `node tools/conformance-manifest.mjs`; `--check` fails when it is stale."
   ],
   "suite": "section-mapping",
-  "spec": "0.1-draft",
+  "specs": [
+    {
+      "rfc": "1",
+      "title": "section mapping — the contract and the resolution core",
+      "file": "doc/rfc/section-mapping.md",
+      "version": "0.9-rc",
+      "owns": "the operations, the two error categories, the answer shape, the first line, the non-goals, the conformance obligations, the band vocabulary"
+    },
+    {
+      "rfc": "2",
+      "title": "code jump — navigation as a best-effort reader",
+      "file": "doc/rfc/code-jump.md",
+      "version": "0.1-draft",
+      "owns": "the jump profile: the landing line, the fallback ladder, IDE-versus-gate escalation"
+    },
+    {
+      "rfc": "3",
+      "title": "inject examples — the strict reader of the core",
+      "file": "doc/rfc/inject-examples.md",
+      "version": "0.1-draft",
+      "owns": "the document layer, the strict gate, --lenient"
+    }
+  ],
   "rfc": "doc/rfc/section-mapping.md",
   "normative": "doc/section-matching.md",
   "reference": "lib/section.mjs",
+  "operations": [
+    {
+      "name": "parseSelectors(reference)",
+      "alias": "parseReference(reference)",
+      "returns": "Reference",
+      "reads": "a file: no",
+      "asserts": "the grammar rows: canonical spelling and the thrown message"
+    },
+    {
+      "name": "scan(source, lexer?)",
+      "returns": "Blocks",
+      "reads": "the source only",
+      "asserts": "the mask and shape rows: the lexical invariants"
+    },
+    {
+      "name": "planSection(source, reference, lexer?)",
+      "returns": "Plan | error",
+      "reads": "the target file",
+      "asserts": "the resolution rows: text, startLine, endLine, ranges, kind, error"
+    },
+    {
+      "name": "resolveSection(source, reference, lexer?)",
+      "returns": "string",
+      "reads": "the target file",
+      "asserts": "planSection(...).text, byte for byte"
+    },
+    {
+      "name": "diagnose(source, reference, lexer?)",
+      "returns": "{ status, plan, firstLine, error, code, selector, scope, candidates, advice }",
+      "reads": "the target file",
+      "asserts": "never throws; status is ok | failed | invalid, and the failure carries the fields below. Implemented in the JavaScript reference; not required of a port until band rows land — a port that omits it still passes every corpus row"
+    }
+  ],
+  "error_codes": {
+    "comment": "Stable codes, asserted in test.mjs and read by a host choosing a band. A code is added, never renamed; a message may be reworded without breaking a caller.",
+    "grammar": "The reference is malformed as written and no file was read. Thrown as SectionReferenceError.",
+    "resolution": "The reference is well formed and the file cannot answer it. Thrown as a plain Error.",
+    "codes": {
+      "EMPTY_REFERENCE": "grammar/empty-reference",
+      "EMPTY_SELECTOR": "grammar/empty-selector",
+      "EMPTY_SEGMENT": "grammar/empty-segment",
+      "TOO_DEEP": "grammar/too-deep",
+      "SECOND_HASH": "grammar/second-hash",
+      "LINE_RANGE_AS_PATH": "grammar/line-range-as-path",
+      "LINE_RANGE_NOT_A_RANGE": "grammar/line-range-not-a-range",
+      "LINE_RANGE_FROM_1": "grammar/line-range-from-1",
+      "LINE_RANGE_BACKWARDS": "grammar/line-range-backwards",
+      "MODIFIER_NOT_LAST": "grammar/modifier-not-last",
+      "MODIFIER_OLD_SPELLING": "grammar/modifier-old-spelling",
+      "TOO_MANY_MODIFIERS": "grammar/too-many-modifiers",
+      "LINE_RANGE_PAST_END": "resolution/line-range-past-end",
+      "LINE_RANGE_COLUMN_PAST_END": "resolution/line-range-column-past-end",
+      "NOT_FOUND": "resolution/not-found",
+      "AMBIGUOUS": "resolution/ambiguous",
+      "NOT_A_CONTAINER": "resolution/not-a-container",
+      "REGION_NOT_FOUND": "resolution/region-not-found",
+      "EMPTY_KEY": "resolution/empty-key",
+      "REGION_DUPLICATED": "resolution/region-duplicated",
+      "KEY_DUPLICATED": "resolution/key-duplicated",
+      "ENVELOPE_ALONE": "resolution/envelope-alone",
+      "ENVELOPE_ORDER": "resolution/envelope-order",
+      "ENVELOPE_MARKS": "resolution/envelope-marks",
+      "ENVELOPE_MISMATCH": "resolution/envelope-mismatch",
+      "ENVELOPE_NO_BLOCK": "resolution/envelope-no-block",
+      "ENVELOPE_REGION": "resolution/envelope-region",
+      "LEXER_MASK": "resolution/lexer-mask"
+    }
+  },
   "layers": [
     {
       "layer": 1,
       "name": "grammar",
+      "owner": "RFC 1 (core)",
       "file": "test/vectors/section-vectors.json",
-      "rows": 67,
+      "rows": 68,
       "selector": "rows with input === null (they consult no file)",
       "asserts": [
         "canonical spelling",
@@ -27,6 +118,7 @@
     {
       "layer": 2,
       "name": "mask",
+      "owner": "RFC 1 (core)",
       "file": "test/vectors/lexical-vectors.json",
       "rows": 46,
       "selector": "masks[]",
@@ -41,6 +133,7 @@
     {
       "layer": 3,
       "name": "shapes",
+      "owner": "RFC 1 (core)",
       "file": "test/vectors/lexical-vectors.json",
       "rows": 53,
       "selector": "shapes[]",
@@ -54,6 +147,7 @@
     {
       "layer": 4,
       "name": "blocks",
+      "owner": "RFC 1 (core)",
       "file": "test.mjs",
       "rows": null,
       "selector": "tests named scanBlocks:*",
@@ -67,8 +161,9 @@
     {
       "layer": 5,
       "name": "resolution",
+      "owner": "RFC 1 (core)",
       "file": "test/vectors/section-vectors.json",
-      "rows": 205,
+      "rows": 212,
       "selector": "rows with input !== null (they name a fixture)",
       "asserts": [
         "text",
@@ -85,6 +180,7 @@
     {
       "layer": 6,
       "name": "documents",
+      "owner": "RFC 3 (inject examples)",
       "file": "test.mjs",
       "rows": null,
       "selector": "the document-rule tests",
@@ -98,6 +194,7 @@
     {
       "layer": 7,
       "name": "differential",
+      "owner": "RFC 1 (core)",
       "file": "tools/compare-zig.mjs",
       "rows": null,
       "selector": "two implementations, over the corpus plus generated cases",
@@ -107,12 +204,30 @@
       "needs": [
         "a second implementation"
       ]
+    },
+    {
+      "layer": 8,
+      "name": "profile",
+      "owner": "RFC 2 (code jump)",
+      "file": "test/vectors/profile-vectors.json",
+      "rows": 10,
+      "selector": "resolutions[] and documents[]",
+      "asserts": [
+        "the editor's landing line and cause",
+        "the band the gate refuses, and that it refuses every one of them",
+        "every failing reference in one document pass"
+      ],
+      "needs": [
+        "layer 5",
+        "a jump profile"
+      ],
+      "optional": "Only an implementation that offers a profile is held to this layer. A port that implements the resolver alone skips it — RFC 1 §6.3 — and this is the one layer a port may pass by not having it."
     }
   ],
   "corpora": [
     {
       "path": "test/vectors/section-vectors.json",
-      "rows": 272,
+      "rows": 280,
       "shape": "array",
       "row_fields": {
         "name": "unique; `<category>:<case>` for parse rows, a slug for resolution rows",
@@ -124,20 +239,21 @@
         "endLine": "1-based inclusive last line, or null",
         "ranges": "[[from, to], ...] — the spread of text as 1-based inclusive line pairs",
         "kind": "region | declaration | property | condition | anchor | lines | multiple; null for a parse row",
-        "error": "the exact thrown message, or null"
+        "error": "the exact thrown message, or null",
+        "errorCode": "the stable code of the failure (RFC 1 §3.6): `grammar/*` when no file was consulted, `resolution/*` when the file cannot answer. Proposed, not yet a row field: the codes exist on every thrown failure and are asserted in test.mjs, and a row gains the field when band rows land"
       },
       "counts": {
-        "total": 272,
-        "parse": 67,
-        "resolution": 205,
-        "errors": 85,
+        "total": 280,
+        "parse": 68,
+        "resolution": 212,
+        "errors": 93,
         "by_kind": {
           "anchor": 12,
           "condition": 4,
           "declaration": 77,
           "lines": 6,
           "multiple": 13,
-          "null": 48,
+          "null": 55,
           "property": 39,
           "region": 6
         }
@@ -167,6 +283,34 @@
         "total": 99
       },
       "assert_all": true
+    },
+    {
+      "path": "test/vectors/profile-vectors.json",
+      "rows": 10,
+      "shape": "object with resolutions[] and documents[]",
+      "optional": "A port that implements no profile does not read this file; a port that offers one must reproduce every row. It is the only corpus a port may pass by not having the feature.",
+      "row_fields": {
+        "resolutions[]": {
+          "name": "`<target>:<reference>`",
+          "file": "the jump fixture the reference resolves against, under `test/fixtures/jump`",
+          "reference": "the `#` fragment content, without the leading `#`",
+          "editor": "{ firstLine, cause } — where `jump/editor` lands and how it got there",
+          "gate": "the code `jump/gate` fails with, or null when the gate resolves it too",
+          "note": "authored, and not always present: why the row exists"
+        },
+        "documents[]": {
+          "name": "the document, without its extension",
+          "document": "the Markdown text, embedded so a consumer needs no disk",
+          "files": "`[[path, text], …]` — every file the markers name, embedded",
+          "outcome": "{ passed, checked, failures[] } — each failure naming its `reference`, `code` and `selector`"
+        }
+      },
+      "counts": {
+        "resolutions": 8,
+        "documents": 2,
+        "total": 10
+      },
+      "assert_all": true
     }
   ],
   "obligations": {
@@ -180,7 +324,9 @@
   "generators": {
     "test/vectors/section-vectors.json": "node tools/section-vectors.mjs",
     "test/vectors/lexical-vectors.json": "node tools/lexical-vectors.mjs",
+    "test/vectors/profile-vectors.json": "node tools/profile-vectors.mjs",
     "src/section_vectors.zig": "node tools/zig-vectors.mjs",
+    "src/error_codes.zig": "node tools/error-codes-zig.mjs",
     "test/vectors/manifest.json": "node tools/conformance-manifest.mjs"
   }
 }

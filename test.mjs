@@ -472,7 +472,10 @@ test('section-matching: a modifier is the last segment of a path', () => {
 // parseReference unit tests (step 4 of plan/section-matching)
 // ---------------------------------------------------------------------------
 
-import { parseReference, parseSelectors, isSingleSegment, finalSegment, SectionReferenceError, masked, commentsIn, scanBlocks } from './lib/section.mjs';
+import {
+    parseReference, parseSelectors, isSingleSegment, finalSegment, SectionReferenceError,
+    masked, commentsIn, scanBlocks, ERROR_CODES, diagnose, deepestResolvablePrefix,
+} from './lib/section.mjs';
 import { resolveSection, planSection } from './lib/section.mjs';
 
 // Group 1: canonicalisation of single-segment references
@@ -4051,19 +4054,25 @@ test('section vectors match a live implementation call', () => {
         let parseErr = null;
         // The reference grammar is `parseSelectors`: one path selector, several,
         // or a line range. `parseReference` is the single-path-selector reading,
-        // and the rows that are not that are the errors it reports.
-        try { ref = parseSelectors(c.reference); } catch (e) { parseErr = e; }
+        // and the rows that are not that are the errors it reports — a row that is
+        // *about* that difference names the parser it exercises.
+        const parser = c.parser === 'path' ? parseReference : parseSelectors;
+        try { ref = parser(c.reference); } catch (e) { parseErr = e; }
 
         if (parseErr) {
             assert.equal(c.text, null, `${c.name}: a grammar error has no text`);
             assert.ok(c.error !== null, `${c.name}: a grammar error records its message`);
             assert.equal(c.error, parseErr.message, `${c.name}: grammar error message`);
+            // The band, not the prose: a host branches on this and a port must
+            // reproduce it (RFC 1 §3.6).
+            assert.equal(c.code, parseErr.code ?? null, `${c.name}: grammar error code`);
             continue;
         }
         // Parse-success vectors carry a resolution result (text or error) or are
         // parse-only probes (both null) whose value is the canonical spelling.
         if (c.text !== null) {
             assert.equal(c.error, null, `${c.name}: exactly one of text/error`);
+            assert.equal(c.code, null, `${c.name}: a row that resolves carries no code`);
             const plan = planSection(readFileSync(join(root, c.input), 'utf8'), c.reference, lexerFor(c.input));
             assert.equal(plan.text, c.text, `${c.name}: text`);
             // The span and the pieces are part of the answer: a host navigates
@@ -4075,7 +4084,11 @@ test('section vectors match a live implementation call', () => {
             assert.equal(plan.kind, c.kind, `${c.name}: kind`);
         } else if (c.error !== null) {
             assert.throws(() => resolveSection(readFileSync(join(root, c.input), 'utf8'), c.reference, lexerFor(c.input)),
-                (e) => { assert.equal(e.message, c.error, `${c.name}: error message`); return true; });
+                (e) => {
+                    assert.equal(e.message, c.error, `${c.name}: error message`);
+                    assert.equal(e.code ?? null, c.code, `${c.name}: error code`);
+                    return true;
+                });
         } else if (c.input !== null) {
             // A resolution row with neither text nor error cannot exist: every
             // resolution answers with one of the two.
@@ -4154,13 +4167,13 @@ test('the lexical corpus covers every lexer entry', () => {
 // The RFC's contract: the answer shape a port must expose
 // ---------------------------------------------------------------------------
 //
-// `doc/rfc/section-mapping.md` §5.3 names the fields a port must expose, and
-// `test/vectors/manifest.json` lists them for a porter. The corpus asserts
-// *values*; nothing else asserts the *shape*, so a field could be renamed or
-// dropped while every vector still passed. These tests pin it, and they are
-// deliberately exhaustive: a new field must be a deliberate edit here, which is
-// what makes "the field names are frozen at 1.0" (RFC §9.1) checkable.
-test('RFC §5.3: the Plan exposes exactly the documented fields', () => {
+// `doc/rfc/section-mapping.md` §3.4 (RFC 1, the resolution core) names the fields
+// a port must expose, and `test/vectors/manifest.json` lists them for a porter.
+// The corpus asserts *values*; nothing else asserts the *shape*, so a field could
+// be renamed or dropped while every vector still passed. These tests pin it, and
+// they are deliberately exhaustive: a new field must be a deliberate edit here,
+// which is what makes "the field names are frozen at 1.0" (RFC 1 §9.1) checkable.
+test('RFC 1 §3.4: the Plan exposes exactly the documented fields', () => {
     const plan = planSection(JAVA, 'Line', lexerFor('Example.java'));
     assert.deepEqual(Object.keys(plan).sort(),
         ['endLine', 'kind', 'ranges', 'reference', 'startLine', 'text'],
@@ -4169,7 +4182,7 @@ test('RFC §5.3: the Plan exposes exactly the documented fields', () => {
         .includes(plan.kind), `kind "${plan.kind}" is one of the documented members`);
 });
 
-test('RFC §5.3: the Reference exposes exactly the documented fields', () => {
+test('RFC 1 §3.4: the Reference exposes exactly the documented fields', () => {
     const { reference } = planSection(JAVA, 'Line', lexerFor('Example.java'));
     assert.deepEqual(Object.keys(reference).sort(),
         ['canonical', 'raw', 'scope', 'segments', 'selectors']);
@@ -4178,7 +4191,7 @@ test('RFC §5.3: the Reference exposes exactly the documented fields', () => {
     assert.throws(() => parseSelectors('getUsers/++/-'), /may only modify the last path segment/);
 });
 
-test('RFC §5.3: a Selector is a path or a line range, and each carries its own detail', () => {
+test('RFC 1 §3.4: a Selector is a path or a line range, and each carries its own detail', () => {
     const path = planSection(JAVA, 'Line', lexerFor('Example.java')).reference.selectors;
     assert.equal(path.length, 1);
     assert.deepEqual(Object.keys(path[0]).sort(), ['envelope', 'kind', 'raw', 'scope', 'segments']);
@@ -4197,7 +4210,7 @@ test('RFC §5.3: a Selector is a path or a line range, and each carries its own 
     assert.deepEqual(several.reference.selectors.map((s) => s.kind), ['path', 'lines']);
 });
 
-test('RFC §5.3: ranges are the spread of text, ascending and inclusive', () => {
+test('RFC 1 §3.4: ranges are the spread of text, ascending and inclusive', () => {
     const plan = planSection(JAVA, 'Line', lexerFor('Example.java'));
     assert.equal(plan.startLine, plan.ranges[0].from, 'startLine is the first range\'s start');
     assert.equal(plan.endLine, plan.ranges[plan.ranges.length - 1].to, 'endLine is the last range\'s end');
@@ -4207,4 +4220,152 @@ test('RFC §5.3: ranges are the spread of text, ascending and inclusive', () => 
             assert.ok(range.from > plan.ranges[index - 1].to, 'ranges ascend and never overlap');
         }
     }
+});
+
+// ---------------------------------------------------------------------------
+// RFC 1 §5.3: the diagnosis surface — codes, candidates, and diagnose()
+// ---------------------------------------------------------------------------
+//
+// The band table (RFC 1 §5.2) is what a jump gate and an editor read to decide
+// whether a failure ends the run, and neither may decide that by matching message
+// text. These tests pin the value they branch on: a stable code, the selector at
+// fault, and the candidates an ambiguous name answered to. They assert the
+// contract, not the implementation — the messages themselves are pinned by the
+// corpus rows.
+
+/** One name, two declarations at the same level: the ambiguity band, in its smallest shape. */
+const TWO_ADDS = [
+    'class Cart {',
+    '    void add(String item) { items.add(item); }',
+    '    void add(String item, int count) { items.add(item); }',
+    '}',
+].join('\n');
+
+/** Haskell, where a type and its constructor share the name `Cart`. */
+const STORE = fileReader(dirname(fileURLToPath(import.meta.url)))('test/fixtures/Store.hs');
+
+test('RFC 1 §3.6: a grammar failure carries a grammar/ code and no file is consulted', () => {
+    const java = lexerFor('Example.java');
+    const malformed = diagnose(JAVA, 'L40-', java);
+    assert.equal(malformed.status, 'invalid');
+    assert.equal(malformed.code, ERROR_CODES.LINE_RANGE_NOT_A_RANGE);
+    assert.match(malformed.code, /^grammar\//);
+    assert.equal(malformed.selector, 'L40-', 'the selector at fault, as written');
+    assert.ok(malformed.advice !== null, 'a grammar failure carries the repair advice');
+    assert.equal(malformed.plan, null);
+
+    // The thrown error keeps its message and its type; the code is an addition.
+    const thrown = (() => { try { planSection(JAVA, 'L40-', java); return null; } catch (e) { return e; } })();
+    assert.ok(thrown instanceof SectionReferenceError);
+    assert.equal(thrown.code, ERROR_CODES.LINE_RANGE_NOT_A_RANGE);
+    assert.match(thrown.message, /is not a line range/);
+});
+
+test('RFC 1 §3.6: a resolution failure carries a resolution/ code and stays a plain Error', () => {
+    const java = lexerFor('Example.java');
+    const missing = diagnose(JAVA, 'nope', java);
+    assert.equal(missing.status, 'failed');
+    assert.equal(missing.code, ERROR_CODES.NOT_FOUND);
+    assert.match(missing.code, /^resolution\//);
+    assert.equal(missing.selector, 'nope');
+    assert.equal(missing.scope, '<file>', 'a bare name that matches nothing was searched in the file');
+    assert.equal(missing.advice, null, 'only a malformed reference has advice to offer');
+
+    const thrown = (() => { try { planSection(JAVA, 'nope', java); return null; } catch (e) { return e; } })();
+    assert.ok(thrown instanceof Error);
+    assert.ok(!(thrown instanceof SectionReferenceError),
+        'the two error categories stay distinguishable by type (RFC 1 §3.6)');
+    assert.equal(thrown.code, ERROR_CODES.NOT_FOUND);
+});
+
+test('RFC 1 §5.3: an ambiguous name reports the candidates the ladder picks from', () => {
+    const java = lexerFor('Two.java');
+    const ambiguous = diagnose(TWO_ADDS, 'add', java);
+    assert.equal(ambiguous.status, 'failed');
+    assert.equal(ambiguous.code, ERROR_CODES.AMBIGUOUS);
+    assert.equal(ambiguous.candidates.length, 2, 'both blocks that answer to the name');
+    assert.deepEqual(ambiguous.candidates.map((c) => c.name), ['add', 'add']);
+    for (const candidate of ambiguous.candidates) {
+        assert.ok(Number.isInteger(candidate.startLine), 'a candidate names the line it starts on');
+        assert.ok(candidate.endLine >= candidate.startLine);
+        assert.equal(typeof candidate.kind, 'string');
+    }
+    // A name that is not ambiguous reports no candidates, so a host cannot read
+    // the field as "there were other matches".
+    assert.equal(diagnose(JAVA, 'toString', java).candidates, null);
+});
+
+test('RFC 1 §5.3: diagnose() never throws, and answers the same resolve planSection does', () => {
+    const java = lexerFor('Example.java');
+    for (const reference of ['toString', 'Cart/Line/render/-', 'L1', '', 'L40-', 'nope', 'a/++/b', 'getUsers/++/-']) {
+        let direct = null;
+        try { direct = planSection(JAVA, reference, java); } catch { direct = null; }
+        const d = diagnose(JAVA, reference, java);
+        assert.notEqual(d.status, undefined, `diagnose("${reference}") answered`);
+        if (direct !== null) {
+            assert.equal(d.status, 'ok', `"${reference}" resolves in both`);
+            assert.deepEqual(d.plan, direct, 'one answer, not two: diagnose is planSection as a value');
+            assert.equal(d.firstLine, direct.ranges[0].from, 'firstLine is the first range, per RFC 1 §3.5');
+        } else {
+            assert.notEqual(d.status, 'ok', `"${reference}" fails in both`);
+            assert.ok(d.error instanceof Error, 'the failure itself is returned, not just its description');
+            assert.equal(d.plan, null);
+            assert.equal(d.firstLine, null);
+        }
+    }
+});
+
+test('RFC 1 §3.5: the first line is the first selector written, not the lowest line number', () => {
+    const java = lexerFor('Example.java');
+    // `L26,toString` names line 26 first, then a method near the top: startLine is
+    // the outermost bound (12), and the landing line is 26 — the first selector
+    // written — not the lowest line in the selection.
+    const plan = planSection(EXAMPLE, 'L26,toString', java);
+    assert.equal(plan.startLine, 12);
+    assert.equal(plan.ranges[0].from, 26);
+    assert.equal(diagnose(EXAMPLE, 'L26,toString', java).firstLine, 26);
+});
+
+test('RFC 1 §3.6: a scope that cannot hold anything is its own code, not "not found"', () => {
+    // Haskell's `data Cart = Cart { … }` puts the type and its constructor in the
+    // same name, so the outer `Cart` resolves and the inner one is not a container
+    // — a distinct failure the ladder treats differently from a name that matched
+    // nothing, which is why the two are separate codes.
+    const haskell = lexerFor('Store.hs');
+    const d = diagnose(STORE, 'Cart/Cart', haskell);
+    assert.equal(d.status, 'failed');
+    assert.equal(d.code, ERROR_CODES.NOT_A_CONTAINER);
+    assert.match(d.error.message, /"Cart" is not a container/);
+    assert.equal(d.selector, 'Cart');
+    assert.notEqual(d.code, ERROR_CODES.NOT_FOUND, 'the two bands are distinguishable');
+    assert.ok(!('near' in d), 'the core ranks nothing, so it reports no "nearest name" field at all');
+});
+
+test('RFC 2 §4.3: the deepest resolvable prefix is a prefix of the reference, or nothing', () => {
+    const java = lexerFor('Example.java');
+    const deep = deepestResolvablePrefix(JAVA, 'Cart/Line/renderr', java);
+    assert.equal(deep.reference, 'Cart/Line', 'the last container that exists');
+    assert.deepEqual(deep.segments, ['Cart', 'Line']);
+    assert.ok(Number.isInteger(deep.firstLine));
+
+    // Every answer is a prefix of what the user wrote — the rung never invents a
+    // name, which is what keeps the ladder policy out of the resolver.
+    assert.ok('Cart/Line/renderr'.startsWith(deep.reference));
+
+    assert.equal(deepestResolvablePrefix(JAVA, 'nope/deeper', java), null,
+        'no prefix of a name that does not exist resolves');
+    assert.equal(deepestResolvablePrefix(JAVA, 'L40-', java), null, 'a malformed reference has no prefix');
+    assert.equal(deepestResolvablePrefix(JAVA, 'toString', java), null,
+        'a one-segment path has no shorter prefix to fall back to');
+});
+
+test('RFC 1 §3.6: every code is namespaced by the category it belongs to', () => {
+    for (const [name, code] of Object.entries(ERROR_CODES)) {
+        assert.match(code, /^(?:grammar|resolution)\//, `${name} is namespaced`);
+        assert.equal(code, code.toLowerCase(), `${name} is lowercase`);
+    }
+    assert.ok(Object.isFrozen(ERROR_CODES), 'the registry is a frozen table, not a mutable object');
+    // A code, once shipped, is a compatibility surface: assert the count so an
+    // accidental rename is a deliberate edit here rather than a silent break.
+    assert.equal(Object.keys(ERROR_CODES).length, 28);
 });

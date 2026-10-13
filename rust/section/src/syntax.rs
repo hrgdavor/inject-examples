@@ -192,6 +192,9 @@ pub enum Shape {
     VbClass,
     /// VB's `Sub`/`Function name`, body closed by `End`.
     VbMethod,
+    /// Kotlin's `fun name`, which the generic `name(` shape would otherwise read an annotation's own
+    /// arguments as (`@JvmName("addOne")`).
+    KotlinFun,
 }
 
 /// What counts as the annotation directly above a declaration, for the `+` scope.

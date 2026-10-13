@@ -1,7 +1,9 @@
 package hr.hrg.inject.section;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
@@ -104,6 +106,10 @@ public final class SectionResolver {
     /**
      * Resolve a section reference to text, exposing the reference and its line ranges.
      *
+     * <p>A reference carrying envelope marks is resolved <b>as a unit</b> before any selector is
+     * rendered: the marks name one block, the candidate that holds what sits between them is the one
+     * meant, and the selectors between the marks are read inside it rather than from the file.
+     *
      * @param text      the target file's content
      * @param reference the {@code #} fragment content
      * @param lexer     the file type's lexer, or {@link BlockScanner#DEFAULT}
@@ -118,6 +124,12 @@ public final class SectionResolver {
         BlockScanner.Lex lex = scan.lex();
         Ctx ctx = new Ctx(lex.lines, lex.source, lex.starts, lex.lexer);
 
+        // An envelope is resolved first, and as a unit: the parent it names may be a name several
+        // blocks answer to (a Rust type with three `impl`s), and which one is meant is decided by what
+        // the marks wrap — the candidate that holds the member. That is the same retry a path uses, one
+        // level up, so it is done once for the whole reference rather than per selector.
+        Envelope envelope = resolveEnvelope(parsed.selectors(), scan, ctx);
+
         List<Contribution> parts = new ArrayList<>();
         for (SectionReference.Selector selector : parsed.selectors()) {
             if (selector.isLines()) {
@@ -128,51 +140,15 @@ public final class SectionResolver {
                 continue;
             }
 
-            // Resolve every segment but the last to a container, retrying same-named candidates (a
-            // Rust `struct Cart` beside its `impl Cart`), then take the final segment's first match in
-            // walk order as the selection.
-            Hit found = resolvePath(selector.segments(), 0, scan.root(), false, null, ctx);
-
-            Rendered rendered;
-            // `slice` is the area of the source the rendering was made from, which may be wider than
-            // what the selector contributes: a region's rendering excludes the two directive lines, but
-            // its `head` is read from the whole region. `range` is what the selector reports.
-            Range slice;
-            Range range;
-            String kind;
-            if (found.region() != null) {
-                int from = found.region().startLine() + 1;
-                slice = new Range(from, found.region().endLine() - 1);
-                rendered = span(slice(lex.lines, from, found.region().endLine()), from,
-                        found.region().endLine());
-                range = new Range(rendered.from(), rendered.to());
-                kind = "region";
-            } else {
-                rendered = renderBlock(found.block(), selector.scope(), ctx, found.kind());
-                kind = found.kind();
-                if ("condition".equals(found.kind())) {
-                    // The header line the matcher cites is rendered ahead of the block's own first
-                    // line; it is the first line of the slice.
-                    slice = new Range(found.headerLine() + 1, lastDeclarationLine(found.block()) + 1);
-                } else if ("anchor".equals(found.kind())) {
-                    int anchorLine = found.block().anchor != null
-                            ? found.block().anchor.line() : found.block().declLine;
-                    slice = new Range(anchorLine + 1, lastDeclarationLine(found.block()) + 1);
-                } else {
-                    slice = new Range(rendered.from(), rendered.to());
-                }
-                range = slice;
+            // A parent's own opening or closing lines, taken verbatim around whatever sits between
+            // the marks.
+            if (selector.envelope() != null) {
+                parts.add(envelope.parts().get(selector));
+                continue;
             }
 
-            // A rendering may prepend a line of its own invention — the `if` of a condition literal,
-            // the brace line of a body that opens below its header — before the lines the span names,
-            // so the span is only exact for the part of the text that matches the source; the lead is
-            // the header line's own.
-            String head = source.substring(lex.starts[slice.from() - 1],
-                    offsetOf(lex, slice.to() + 1));
-            int lead = rendered.text().startsWith(head) ? head.length() : 0;
-            parts.add(new Contribution(rendered.text(), kind,
-                    sliceRanges(range, rendered.text(), lead)));
+            BlockScanner.Block scope = envelope == null ? null : envelope.scopes().get(selector);
+            parts.add(selectorPart(selector, scope == null ? scan.root() : scope, scan, ctx));
         }
 
         StringBuilder joined = new StringBuilder();
@@ -214,6 +190,23 @@ public final class SectionResolver {
     }
 
     /**
+     * A reference's envelope, resolved as a unit: the pieces the two marks contribute, and the block
+     * every selector between them is read inside.
+     *
+     * <p>It is resolved before any selector is rendered because which block the marks open and close is
+     * decided by what they wrap, not by the parent's name alone: a Rust type is a {@code struct} beside
+     * one or more {@code impl}s, all answering to the same name, and the member between the marks
+     * chooses. The maps are keyed by the selector the parsed reference holds, so a mark finds its own
+     * piece and an interior selector finds the block it resolved in.
+     *
+     * @param parts  the {@code ^} and {@code $} pieces, per mark
+     * @param scopes the block each selector between the marks is read inside
+     */
+    private record Envelope(Map<SectionReference.Selector, Contribution> parts,
+                            Map<SectionReference.Selector, BlockScanner.Block> scopes) {
+    }
+
+    /**
      * The offset line {@code line} (1-based) starts at. The Java {@code starts} array stops at the last
      * line, where the JavaScript one has one entry past the end, so a line past the last one is the end
      * of the file — which is exactly what a slice running to the last line wants.
@@ -230,6 +223,95 @@ public final class SectionResolver {
 
     /** A line range's text and the line range it covers. */
     private record Slice(String text, Range range) {
+    }
+
+    /**
+     * Resolve one path selector inside {@code scope} into its text and ranges.
+     *
+     * <p>Every segment but the last is a container to descend into, retrying same-named candidates (a
+     * Rust {@code struct Cart} beside its {@code impl Cart}); the last segment's first match in walk
+     * order is the selection. The scope is the whole file for an ordinary selector, and the block an
+     * envelope names for a selector written between its marks.
+     */
+    private static Contribution selectorPart(SectionReference.Selector selector,
+                                             BlockScanner.Block scope, BlockScanner.Scan scan,
+                                             Ctx ctx) {
+        BlockScanner.Lex lex = scan.lex();
+        String source = lex.source;
+        Hit found;
+        try {
+            found = scope == scan.root()
+                    ? resolvePath(selector.segments(), 0, scope, false, null, ctx)
+                    : resolveWithin(scope, selector.segments(), ctx);
+        } catch (SectionError error) {
+            // Inside an envelope the parent is already chosen, so a failure here is the reference's
+            // own: keep the failure's own diagnosis (its code, its candidates) and add the selector it
+            // happened in — a bare rethrow would lose the fields a host branches on.
+            if (scope == scan.root()) {
+                throw error;
+            }
+            throw new SectionError(error.getMessage(), error.code(), selector.text(), scope.name(),
+                    error.candidates());
+        }
+
+        Rendered rendered;
+        // `slice` is the area of the source the rendering was made from, which may be wider than what
+        // the selector contributes: a region's rendering excludes the two directive lines, but its
+        // `head` is read from the whole region. `range` is what the selector reports.
+        Range slice;
+        Range range;
+        String kind;
+        if (found.region() != null) {
+            int from = found.region().startLine() + 1;
+            slice = new Range(from, found.region().endLine() - 1);
+            rendered = span(slice(lex.lines, from, found.region().endLine()), from,
+                    found.region().endLine());
+            range = new Range(rendered.from(), rendered.to());
+            kind = "region";
+        } else {
+            rendered = renderBlock(found.block(), selector.scope(), ctx, found.kind());
+            kind = found.kind();
+            if ("condition".equals(found.kind())) {
+                // The header line the matcher cites is rendered ahead of the block's own first line;
+                // it is the first line of the slice.
+                slice = new Range(found.headerLine() + 1, lastDeclarationLine(found.block()) + 1);
+            } else if ("anchor".equals(found.kind())) {
+                int anchorLine = found.block().anchor != null
+                        ? found.block().anchor.line() : found.block().declLine;
+                slice = new Range(anchorLine + 1, lastDeclarationLine(found.block()) + 1);
+            } else {
+                slice = new Range(rendered.from(), rendered.to());
+            }
+            range = slice;
+        }
+
+        // A rendering may prepend a line of its own invention — the `if` of a condition literal, the
+        // brace line of a body that opens below its header — before the lines the span names, so the
+        // span is only exact for the part of the text that matches the source; the lead is the header
+        // line's own.
+        String head = source.substring(lex.starts[slice.from() - 1], offsetOf(lex, slice.to() + 1));
+        int lead = rendered.text().startsWith(head) ? head.length() : 0;
+        return new Contribution(rendered.text(), kind, sliceRanges(range, rendered.text(), lead));
+    }
+
+    /**
+     * Resolve a path whose <b>first</b> segment is a member of {@code block}, exactly as
+     * {@code Cart/add} resolves inside {@code Cart}: the rest of the path is searched in that block and
+     * nothing else is considered.
+     */
+    private static Hit resolveWithin(BlockScanner.Block block, List<String> segments, Ctx ctx) {
+        if (segments.size() == 1) {
+            List<Hit> candidates = matchSegment(block, segments.get(0), true);
+            if (candidates.isEmpty()) {
+                throw new SectionError("no section named \"" + segments.get(0) + "\" in \""
+                        + block.name + "\"", ErrorCodes.NOT_FOUND, segments.get(0), block.name);
+            }
+            if (candidates.size() > 1) {
+                throw ambiguous(segments.get(0), candidates.size(), block, candidates);
+            }
+            return candidates.get(0);
+        }
+        return resolvePath(segments, 1, block, true, block.name, ctx);
     }
 
     /**
@@ -266,7 +348,8 @@ public final class SectionResolver {
         List<BlockScanner.Block> chosen = classes.isEmpty() ? found : classes;
         if (chosen.size() > 1) {
             throw new SectionError(
-                    "\"" + name + "\" is declared " + chosen.size() + " times; names must be unique");
+                    "\"" + name + "\" is declared " + chosen.size() + " times; names must be unique",
+                    ErrorCodes.AMBIGUOUS, name, null, blockCandidates(chosen));
         }
         return renderDeclaration(lex.lines, lex.source, lex.starts, chosen.get(0), scope,
                 line -> lex.lexer.isAnnotationLine(line)).text();
@@ -318,11 +401,13 @@ public final class SectionResolver {
         // last line is the last entry that is not that emptiness.
         int total = source.isEmpty() ? 0 : lines.length;
         if (fromLine > total || toLine > total) {
-            throw new SectionError("\"#" + raw + "\": the file has " + total + " line(s)");
+            throw new SectionError("\"#" + raw + "\": the file has " + total + " line(s)",
+                    ErrorCodes.LINE_RANGE_PAST_END, raw);
         }
         if (from.column() != null && from.column() - 1 >= lines[fromLine - 1].length()) {
             throw new SectionError("\"#" + raw + "\": line " + fromLine + " has "
-                    + lines[fromLine - 1].length() + " character(s)");
+                    + lines[fromLine - 1].length() + " character(s)",
+                    ErrorCodes.LINE_RANGE_COLUMN_PAST_END, raw);
         }
 
         int start = starts[fromLine - 1] + (from.column() == null ? 0 : from.column() - 1);
@@ -330,7 +415,8 @@ public final class SectionResolver {
         if (to != null && to.column() != null) {
             if (to.column() - 1 >= lines[toLine - 1].length()) {
                 throw new SectionError("\"#" + raw + "\": line " + toLine + " has "
-                        + lines[toLine - 1].length() + " character(s)");
+                        + lines[toLine - 1].length() + " character(s)",
+                        ErrorCodes.LINE_RANGE_COLUMN_PAST_END, raw);
             }
             // Both columns are inclusive, so the slice runs one past the character the second column
             // names.
@@ -370,16 +456,17 @@ public final class SectionResolver {
             // used names both engines it could have come from.
             if (index == 0 && last) {
                 throw new SectionError("no \"#region " + segment + "\" found, and no section named \""
-                        + segment + "\"");
+                        + segment + "\"", ErrorCodes.NOT_FOUND, segment, "<file>");
             }
             throw new SectionError("no section named \"" + segment + "\" in \""
-                    + (prevName == null ? "" : prevName) + "\"");
+                    + (prevName == null ? "" : prevName) + "\"", ErrorCodes.NOT_FOUND, segment,
+                    prevName == null ? "<file>" : prevName);
         }
 
         // The selection itself: nothing follows, so a second candidate is a second answer and the
         // reference does not say which one it wants.
         if (last && candidates.size() > 1) {
-            throw ambiguous(segment, candidates.size());
+            throw ambiguous(segment, candidates.size(), scope, candidates);
         }
 
         SectionError failure = null;
@@ -390,7 +477,8 @@ public final class SectionResolver {
             }
             if (candidate.region() != null || !isContainer(candidate.block())) {
                 if (failure == null) {
-                    failure = new SectionError("\"" + segment + "\" is not a container");
+                    failure = new SectionError("\"" + segment + "\" is not a container",
+                            ErrorCodes.NOT_A_CONTAINER, segment, scope.name());
                 }
                 continue;
             }
@@ -407,7 +495,7 @@ public final class SectionResolver {
             // the path does not choose between them. Decided after the catch, because the error
             // belongs to this frame, not that one.
             if (matched != null) {
-                throw ambiguous(segment, candidates.size());
+                throw ambiguous(segment, candidates.size(), scope, candidates);
             }
             matched = resolved;
         }
@@ -418,9 +506,35 @@ public final class SectionResolver {
     }
 
     /** The error for a name that two blocks at one level answer to. */
-    private static SectionError ambiguous(String segment, int count) {
+    private static SectionError ambiguous(String segment, int count, BlockScanner.Block scope,
+                                          List<Hit> candidates) {
         return new SectionError("\"" + segment + "\" is declared " + count
-                + " times; names must be unique");
+                + " times; names must be unique", ErrorCodes.AMBIGUOUS, segment, scope.name(),
+                candidateInfo(candidates));
+    }
+
+    /** What a name answered to, as a resolution failure reports it: `candidateInfo` in the JavaScript. */
+    private static List<SectionError.Candidate> candidateInfo(List<Hit> hits) {
+        List<SectionError.Candidate> out = new ArrayList<>(hits.size());
+        for (Hit hit : hits) {
+            out.add(candidateOf(hit.block()));
+        }
+        return List.copyOf(out);
+    }
+
+    /** The same, for the blocks {@link #extractDeclaration} chose among. */
+    private static List<SectionError.Candidate> blockCandidates(List<BlockScanner.Block> blocks) {
+        List<SectionError.Candidate> out = new ArrayList<>(blocks.size());
+        for (BlockScanner.Block block : blocks) {
+            out.add(candidateOf(block));
+        }
+        return List.copyOf(out);
+    }
+
+    /** One block as the diagnosis reports it: its name, its kind and the lines it spans. */
+    private static SectionError.Candidate candidateOf(BlockScanner.Block block) {
+        return new SectionError.Candidate(block.name(), block.kind(), block.declLine(),
+                block.closeLine() != null ? block.closeLine() : block.declLine());
     }
 
     /**
@@ -468,7 +582,8 @@ public final class SectionResolver {
         }
         if (regions.size() > 1) {
             throw new SectionError("\"#region " + segment + "\" appears " + regions.size()
-                    + " times; region names must be unique");
+                    + " times; region names must be unique", ErrorCodes.REGION_DUPLICATED, segment,
+                    scope.name());
         }
         if (regions.size() == 1) {
             return List.of(Hit.ofRegion(regions.get(0)));
@@ -553,6 +668,150 @@ public final class SectionResolver {
         return !block.children().isEmpty() || block.indented
                 || (block.openLine() != null && block.closeLine() != null
                         && block.openLine() < block.closeLine());
+    }
+
+    // ------------------------------------------------------------------
+    // Envelopes
+    // ------------------------------------------------------------------
+
+    /**
+     * Read a reference's envelope as a unit: which block the marks open and close, and the opening and
+     * closing pieces for it.
+     *
+     * <p>Which block is meant is decided by what the marks <b>wrap</b>, not by the name — the same
+     * retry a path uses one level up. A Rust type has a {@code struct} and one or more {@code impl}
+     * blocks, all of them answering to the type's name, so {@code Cart/^,add,$} is the {@code impl}
+     * that holds {@code add}; a type with a single declaration has one candidate and no retry at all.
+     *
+     * @param selectors every parsed selector, in written order
+     * @param scan      the scan of the target file
+     * @param ctx       the rendering context, for the probe that decides the candidate
+     * @return the envelope, or {@code null} when the reference has none
+     */
+    private static Envelope resolveEnvelope(List<SectionReference.Selector> selectors,
+                                            BlockScanner.Scan scan, Ctx ctx) {
+        boolean any = false;
+        for (SectionReference.Selector selector : selectors) {
+            if (selector.envelope() != null) {
+                any = true;
+                break;
+            }
+        }
+        if (!any) {
+            return null;
+        }
+
+        SectionReference.Selector open = selectors.get(0);
+        SectionReference.Selector close = selectors.get(selectors.size() - 1);
+        List<String> parent = open.envelope().parent();
+
+        // A one-segment parent is asked for *every* block it names, because the marks choose among
+        // them: a Rust type is a `struct` beside one or more `impl`s, and the envelope is whichever one
+        // holds the member. A path of several segments already decided, so there is one candidate.
+        //
+        // The region is kept beside the candidates rather than filtered out of them: a region is a
+        // *match* that cannot be an envelope — it has no declaration to open or close — and reporting
+        // it as "found nothing" would be a lie about what the file wrote.
+        List<Hit> matched = null;
+        List<BlockScanner.Block> blocks;
+        if (parent.size() == 1) {
+            matched = matchSegment(scan.root(), parent.get(0), false);
+            blocks = new ArrayList<>();
+            for (Hit hit : matched) {
+                if (hit.region() == null) {
+                    blocks.add(hit.block());
+                }
+            }
+        } else {
+            Hit found = resolvePath(parent, 0, scan.root(), false, null, ctx);
+            if (found.region() != null) {
+                throw new SectionError("\"#" + open.text()
+                        + "\": a region has no declaration to open or close",
+                        ErrorCodes.ENVELOPE_REGION, open.text());
+            }
+            blocks = List.of(found.block());
+        }
+        if (blocks.isEmpty()) {
+            if (matched != null && matched.stream().anyMatch(hit -> hit.region() != null)) {
+                throw new SectionError("\"#" + open.text()
+                        + "\": a region has no declaration to open or close",
+                        ErrorCodes.ENVELOPE_REGION, open.text());
+            }
+            throw new SectionError("no \"#region " + parent.get(0) + "\" found, and no section named \""
+                    + parent.get(0) + "\"", ErrorCodes.REGION_NOT_FOUND, parent.get(0), null);
+        }
+
+        List<SectionReference.Selector> interior = selectors.subList(1, selectors.size() - 1);
+        Map<SectionReference.Selector, Contribution> parts = new LinkedHashMap<>();
+        Map<SectionReference.Selector, BlockScanner.Block> scopes = new LinkedHashMap<>();
+
+        SectionError failure = null;
+        for (BlockScanner.Block block : blocks) {
+            if (!isContainer(block)) {
+                continue;
+            }
+            SectionReference.Selector tried = null;
+            try {
+                // Every interior selector has to resolve inside this candidate, or this is not the
+                // block the envelope is about.
+                for (SectionReference.Selector selector : interior) {
+                    if (selector.isLines()) {
+                        continue;
+                    }
+                    tried = selector;
+                    selectorPart(selector, block, scan, ctx);
+                }
+            } catch (SectionError error) {
+                // One message, naming the selector as the *user* wrote it rather than the
+                // parent-qualified spelling the envelope reads it as — with the diagnosis the failure
+                // carried, since a host still branches on it.
+                if (failure == null) {
+                    failure = new SectionError(error.getMessage(), error.code(),
+                            tried == null ? null : tried.text(), String.join("/", parent),
+                            error.candidates());
+                }
+                continue;
+            }
+            for (SectionReference.Selector selector : List.of(open, close)) {
+                parts.put(selector, envelopePart(selector, scan, block));
+                scopes.put(selector, block);
+            }
+            for (SectionReference.Selector selector : interior) {
+                scopes.put(selector, block);
+            }
+            return new Envelope(parts, scopes);
+        }
+        if (failure != null) {
+            throw failure;
+        }
+        throw new SectionError("\"" + String.join(",", parent) + "\" is not a container",
+                ErrorCodes.NOT_A_CONTAINER, String.join("/", parent), null);
+    }
+
+    /**
+     * Resolve one envelope selector: the first lines of the block its path names, or the last one.
+     *
+     * <p>The lines are taken verbatim, because that is what the envelope is <em>for</em>: a method
+     * copied out of a class reads as a fragment, and the declaration that holds it is what makes it
+     * read as code. The head is the declaration's <b>opening lines</b> — where the name is written,
+     * through the line its body opens on, so a wrapped signature comes whole — and the tail is the
+     * block's <b>closing line</b>. Each is a piece of its own, so a member selected between them is a
+     * third: the three are disjoint, which is what lets a host point at the declaration, the member and
+     * the end of the block separately instead of at everything between them.
+     */
+    private static Contribution envelopePart(SectionReference.Selector selector,
+                                             BlockScanner.Scan scan, BlockScanner.Block block) {
+        String[] lines = scan.lex().lines;
+        boolean isHead = selector.envelope().isHead();
+        int to = isHead
+                ? Math.min(block.openLine != null ? block.openLine : block.declLine,
+                        lastDeclarationLine(block))
+                : lastDeclarationLine(block);
+        int from = isHead ? block.declLine : to;
+        // The text is exactly the range: a tail is the closing line and not the block it closes, and
+        // the caller rebuilds nothing for an envelope.
+        return new Contribution(String.join("\n", slice(lines, from, to + 1)), "envelope",
+                List.of(new Range(from + 1, to + 1)));
     }
 
     // ------------------------------------------------------------------

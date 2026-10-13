@@ -11,7 +11,9 @@
 
 use std::rc::Rc;
 
-use crate::block::{apply_span, leading_anchor, pair_regions, Anchor, Block, BlockRef, Scan};
+use crate::block::{
+    apply_span, indent_anchor, leading_anchor, pair_regions, Anchor, Block, BlockRef, Scan,
+};
 use crate::lexer::Lexer;
 use crate::mask::{from_units, index_of, line_of, line_starts, matching_bracket, units, Comment};
 use crate::matchers::{
@@ -22,7 +24,7 @@ use crate::span::{
     body_span, header_end, indent_width_units, is_blank_unit, keyword_body, statement_end,
     trim_units, Span,
 };
-use crate::SectionError;
+use crate::{ErrorCode, SectionError};
 
 /// The lexical facts one scan needs, kept so the resolver does not have to re-read the file.
 #[derive(Clone, Debug)]
@@ -369,17 +371,21 @@ fn make_lex(source: &str, lexer: &dyn Lexer) -> Result<Lex, SectionError> {
 
     let who = format!("lexer \"{}\"", lexer.name());
     if mask.len() != source_units.len() {
-        return Err(SectionError::new(format!(
-            "{who} mask must preserve length ({} != {})",
-            mask.len(),
-            source_units.len()
-        )));
+        return Err(SectionError::coded(
+            ErrorCode::LexerMask,
+            format!(
+                "{who} mask must preserve length ({} != {})",
+                mask.len(),
+                source_units.len()
+            ),
+        ));
     }
     for (i, unit) in source_units.iter().enumerate() {
         if *unit == b'\n' as u16 && mask.get(i) != Some(&(b'\n' as u16)) {
-            return Err(SectionError::new(format!(
-                "{who} mask must preserve every newline offset (broken at {i})"
-            )));
+            return Err(SectionError::coded(
+                ErrorCode::LexerMask,
+                format!("{who} mask must preserve every newline offset (broken at {i})"),
+            ));
         }
     }
 
@@ -508,12 +514,20 @@ fn build_scope(
                             false,
                         );
                     } else {
-                        span = Some(Span {
-                            indented: true,
-                            body_from: Some(i),
-                            body_end_line: Some(i),
-                            ..Span::default()
-                        });
+                        // The shape names no body of its own (its match ends at the name, or at the `(`
+                        // of a parameter list), so the header is followed from there — the same scan
+                        // the generic `name(` shape gets, which spans a wrapped parameter list and
+                        // finds the `{` or `=` after it. It is what makes a Kotlin `fun` shape carry
+                        // the body the generic shape used to read for it.
+                        span = body_span(
+                            &lex.mask,
+                            &lex.mask_lines,
+                            &lex.starts,
+                            i,
+                            at,
+                            name_at,
+                            false,
+                        );
                     }
                 }
                 let kind = if entry.kind.is_empty() {
@@ -531,7 +545,7 @@ fn build_scope(
                     }
                     None => continue,
                 }
-                apply_anchor(&block, lex, span.as_ref().and_then(|span| span.open));
+                apply_anchor(&block, lex, span.as_ref());
                 register(&mut list, block.clone(), blocks);
                 descend(&block, i, span.as_ref(), lex, lexer, blocks);
                 last_end = last_end.max(end_line_of(span.as_ref(), i));
@@ -557,7 +571,7 @@ fn build_scope(
                 if let Some(span) = &span {
                     apply_span(&block, span);
                 }
-                apply_anchor(&block, lex, span.as_ref().and_then(|span| span.open));
+                apply_anchor(&block, lex, span.as_ref());
                 register(&mut list, block.clone(), blocks);
                 descend(&block, i, span.as_ref(), lex, lexer, blocks);
                 i = end_line_of(span.as_ref(), i) + 1;
@@ -583,7 +597,7 @@ fn build_scope(
             if let Some(span) = &span {
                 apply_span(&block, span);
             }
-            apply_anchor(&block, lex, span.as_ref().and_then(|span| span.open));
+            apply_anchor(&block, lex, span.as_ref());
             register(&mut list, block.clone(), blocks);
             descend(&block, i, span.as_ref(), lex, lexer, blocks);
             i = end_line_of(span.as_ref(), i) + 1;
@@ -603,6 +617,12 @@ fn build_scope(
                 let mut last_close_line = i;
                 for segment in segments {
                     let block = Block::new("statement", None, segment.header_line);
+                    let segment_span = Span {
+                        open: Some(segment.open),
+                        open_line: Some(segment.open_line),
+                        close_line: Some(segment.close_line),
+                        ..Span::default()
+                    };
                     {
                         let mut block_ref = block.borrow_mut();
                         block_ref.open = Some(segment.open);
@@ -616,17 +636,12 @@ fn build_scope(
                             segment.cond_offset,
                         ));
                     }
-                    apply_anchor(&block, lex, Some(segment.open));
+                    apply_anchor(&block, lex, Some(&segment_span));
                     register(&mut list, block.clone(), blocks);
-                    let child_span = Span {
-                        open_line: Some(segment.open_line),
-                        close_line: Some(segment.close_line),
-                        ..Span::default()
-                    };
                     descend(
                         &block,
                         segment.header_line,
-                        Some(&child_span),
+                        Some(&segment_span),
                         lex,
                         lexer,
                         blocks,
@@ -634,6 +649,46 @@ fn build_scope(
                     last_close_line = last_close_line.max(segment.close_line);
                 }
                 i = last_close_line + 1;
+                continue;
+            }
+
+            // The same statement, closed by indentation rather than a brace — Python's `if`, Ruby's
+            // `if`/`elsif`, VB's `If`/`ElseIf`. Only a statement block carries its header's literals, so
+            // without this a condition literal in a language that does not brace its blocks is
+            // unreachable at any depth.
+            let indent = indent_width_units(&lex.mask_lines[i]);
+            let body_from = i + 1;
+            let mut body_end_line = i;
+            for k in body_from..lex.lines.len() {
+                if trim_units(&lex.lines[k]).is_empty() {
+                    continue;
+                }
+                if indent_width_units(&lex.lines[k]) <= indent {
+                    break;
+                }
+                body_end_line = k;
+            }
+            if body_end_line > i {
+                let block = Block::new("statement", None, i);
+                let span = Span {
+                    indented: true,
+                    body_from: Some(body_from),
+                    body_end_line: Some(body_end_line),
+                    ..Span::default()
+                };
+                apply_span(&block, &span);
+                {
+                    // The keyword's own offset, counted in UTF-16 code units as the JavaScript's
+                    // `match.index` is — `statement_keyword` reports it in bytes.
+                    let keyword_units = masked_line[..keyword_offset].encode_utf16().count();
+                    let mut block_ref = block.borrow_mut();
+                    block_ref.conditions =
+                        Some(lexer.condition_literals(lex.source_line(i), keyword_units));
+                }
+                apply_anchor(&block, lex, Some(&span));
+                register(&mut list, block.clone(), blocks);
+                descend(&block, i, Some(&span), lex, lexer, blocks);
+                i = body_end_line + 1;
                 continue;
             }
         }
@@ -1013,13 +1068,33 @@ fn descend(
     block_ref.blocks.extend(children);
 }
 
-fn apply_anchor(block: &BlockRef, lex: &Lex, open: Option<usize>) {
-    // No opening offset (an indented body, a keyword-delimited block): there is no brace to hang a
-    // comment anchor on, and a missing offset must not be searched as if it were line 0.
-    let Some(open) = open else {
+/// The anchor a block carries: the first thing inside its braces (matcher 6), or — for a body with no
+/// braces (a Python `def`, a Ruby `def`, a keyword-delimited block) — the trailing comment on its
+/// header line or the first comment in its body, where the brace-only rule never fired.
+fn apply_anchor(block: &BlockRef, lex: &Lex, span: Option<&Span>) {
+    let Some(span) = span else {
         return;
     };
-    if let Some(anchor) = leading_anchor(&lex.comments, &lex.mask, &lex.lines, &lex.starts, open) {
+    if let Some(open) = span.open {
+        if let Some(anchor) =
+            leading_anchor(&lex.comments, &lex.mask, &lex.lines, &lex.starts, open)
+        {
+            block.borrow_mut().anchor = Some(anchor);
+        }
+        return;
+    }
+    // No opening offset, so the anchor is looked for on the declaration's own header line and in the
+    // first line of the body — never searched as if a missing offset were line 0.
+    let decl_line = block.borrow().decl_line;
+    let body_to = span.body_end_line.unwrap_or(decl_line);
+    if let Some(anchor) = indent_anchor(
+        &lex.comments,
+        &lex.mask,
+        &lex.lines,
+        &lex.starts,
+        decl_line,
+        body_to,
+    ) {
         block.borrow_mut().anchor = Some(anchor);
     }
 }

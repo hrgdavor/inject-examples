@@ -9,21 +9,29 @@ disagreement here is a bug here.
 
 ## Status
 
-| Layer | State |
-| --- | --- |
-| Reference parsing, canonicalisation, errors | **ported** — pinned by every grammar vector |
-| Mask pass (`masked`, `comments_in`) and the lexer seam | **ported** — pinned by the mask rows of the lexical corpus, over every entry |
-| Per-language tokenizer and table | **ported** — all eighteen entries, and the extension registry |
-| Declaration shapes (`declarations`) | **ported** — pinned by the shape rows of the lexical corpus |
-| Block scanner (`scan_blocks`) | **partial** — the `Block` model, the span readers, the region and anchor helpers and every generic matcher are written and unit-tested, but nothing composes them: there is no `scan_blocks` driver, so the `Scan` struct has no producer |
-| Resolution (`resolve_section`, `extract_declaration`) | not started |
+| Layer                                                                              | State                                                                        |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Reference parsing, canonicalisation, errors                                        | **ported** — pinned by every grammar vector, including the one row the corpus marks `"parser": "path"`, which is fed to the single-path `parse_reference` rather than to `parse_selectors` |
+| Stable failure codes (`ERROR_CODES`)                                               | **ported** — `ErrorCode` mirrors the JavaScript registry string for string, and every vector asserts its `code` beside its message (the message text is byte-identical to before the codes were added) |
+| Mask pass (`masked`, `comments_in`) and the lexer seam                             | **ported** — pinned by the mask rows of the lexical corpus, over every entry |
+| Per-language tokenizer and table                                                   | **ported** — all eighteen entries, and the extension registry                |
+| Declaration shapes (`declarations`)                                                | **ported** — pinned by every shape row of the lexical corpus, including the six Kotlin `fun` spellings, which the hand-written matcher answers without a regex engine |
+| Block scanner (`scan_blocks`)                                                      | **ported** — the `Block` model, the span readers, the region and anchor helpers, every generic matcher, and the driver that composes them into a `Scan` |
+| Resolution (`plan_section`, `resolve_section`, `extract_declaration`)              | **ported** — the walk, the per-selector scopes, the line ranges, the matcher `kind` and the diagnosis are all here, and every one of the 280 vectors resolves as the JavaScript does |
+| Envelopes (`Inventory/^,toString,$`)                                               | **ported** — `^` and `$` are whole-segment marks on a path (`Envelope`), read as one unit before the per-selector loop: the head is the parent's declaration line through the line its body opens on, the tail is its last declaration line, and what sits between the marks is read **inside** the parent. The marks **retry** a name several blocks answer to, so `Cart/^,add,$` names the `impl` that holds `add` |
+| Regions a bare name reaches (`catalog`), an indented condition, an indented anchor | **ported** — a `#`-prefixed region directive, a condition literal in a statement closed by indentation, and a comment anchor on an indented block's header line or as the first thing in its body, pinned by the four `test/fixtures/Hash.py` vectors (`hash-region-bare-name`, `hash-indented-condition`, `hash-indented-condition-second`, `hash-indented-anchor`) |
+
+The port is complete: `tests/vectors.rs` asserts all 280 vectors and disagrees on
+none, and every suite the crate ships is green. No vector that passed before the
+codes were added fails now, and no expectation was relaxed to make the codes fit.
 
 Parity means matching the JavaScript's *answers*, not only its text: `plan_section` must return the
 **1-based inclusive line span** (`start_line`/`end_line`) the text came from and the **matcher** that
-found it (`kind` — `region`, `declaration`, `property`, `condition` or `anchor`), because a host
-navigates to the span and explains itself with the kind, and `test/vectors/section-vectors.json` pins
-both. The Java port in [`java/section`](../../java/section) already does all of this and is the
-blueprint for what is left here.
+found it (`kind` — `region`, `declaration`, `property`, `condition`, `anchor`, the `envelope` a mark
+contributes, `lines` for a line range, or `multiple` when the reference had several selectors), because
+a host navigates to the span and explains itself with the kind, and
+`test/vectors/section-vectors.json` pins both. It also pins the **stable failure code** a host branches
+on, and so does `tests/vectors.rs`.
 
 One Rust-specific decision worth knowing: every offset counts **UTF-16 code units**, as the JavaScript
 does, so the mask pass works over `Vec<u16>` and converts at its edges. A Rust `char` is a scalar value,
@@ -40,8 +48,9 @@ cargo test -- --nocapture  # also prints what is asserted and what is pending
 
 `tests/vectors.rs` reads
 [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json) —
-the same 124 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
-to — and asserts every vector the ported layers can answer. It fails if a vector
+the same 280 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
+to — and asserts every vector the ported layers can answer, its message and its
+stable `code` alike. It fails if a vector
 is neither asserted nor counted, so the remaining work is visible rather than
 silently skipped.
 

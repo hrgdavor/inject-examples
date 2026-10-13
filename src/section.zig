@@ -28,6 +28,7 @@ const Str = js.Str;
 const lexers = @import("scanner/lexers.zig");
 const tokenizer = @import("scanner/tokenizer.zig");
 const syntaxes = @import("scanner/syntaxes.zig");
+const error_codes = @import("error_codes.zig");
 const vectors = @import("section_vectors.zig");
 
 /// The four readings a scope modifier asks for.
@@ -50,27 +51,41 @@ pub const SelectorRange = struct { from: LinePoint, to: ?LinePoint = null };
 /// One selector of a reference: a semantic path, resolved by the matcher
 /// precedence and the sibling-first walk, or explicit lines, which select
 /// verbatim lines and consult no matcher.
-pub const PathSelector = struct { raw: Str, segments: []Str, scope: Scope };
+pub const PathSelector = struct {
+    raw: Str,
+    segments: []Str,
+    scope: Scope,
+    /// A path whose last segment is an envelope mark carries it here: the mark is
+    /// a segment of its own, and the parent is the path written before it.
+    envelope: ?Envelope = null,
+};
 pub const LineSelector = struct { raw: Str, from: LinePoint, to: ?LinePoint = null };
 pub const Selector = union(enum) { path: PathSelector, lines: LineSelector };
 
 /// A JS `throw` carried out as a value, exactly as `Failure` does for
 /// `index.mjs`: `message` is what the CLI prints. `grammar` marks a
 /// `SectionReferenceError` — a malformed reference — so a caller can tell the
-/// two apart without reading the message.
+/// two apart without reading the message. `code` is the stable failure code of
+/// RFC 1 §3.6, which a host branches on instead of parsing the message; it is the
+/// same string `lib/section.mjs` reports.
 pub const Failure = struct {
     message: Str = &.{},
     include: bool = false,
     grammar: bool = false,
+    code: Str = &.{},
 
-    pub fn set(self: *Failure, message: Str) error{Failed} {
+    /// A grammar failure: malformed as written, no file consulted.
+    pub fn grammarMessage(self: *Failure, code: Str, message: Str) error{Failed} {
         self.message = message;
+        self.grammar = true;
+        self.code = code;
         return error.Failed;
     }
 
-    fn grammarMessage(self: *Failure, message: Str) error{Failed} {
+    /// A resolution failure: well formed, and the file cannot answer it.
+    pub fn set(self: *Failure, code: Str, message: Str) error{Failed} {
         self.message = message;
-        self.grammar = true;
+        self.code = code;
         return error.Failed;
     }
 };
@@ -137,6 +152,53 @@ fn isModifierRun(segment: Str) bool {
     return true;
 }
 
+/// A path's **envelope marks**, as the last segment of its path: `^` is the
+/// parent block's own first lines and `$` its last, written on the parent's path.
+///
+/// They are whole segments and nothing else, which is what keeps them out of
+/// every name: `foo$` is the name `foo$` while `foo/$` is the last line of `foo`.
+pub const EnvelopeMark = enum {
+    open,
+    close,
+
+    pub fn text(self: EnvelopeMark) Str {
+        return switch (self) {
+            .open => &js.lit("^"),
+            .close => &js.lit("$"),
+        };
+    }
+};
+
+fn envelopeMark(segment: Str) ?EnvelopeMark {
+    if (segment.len != 1) return null;
+    if (segment[0] == '^') return .open;
+    if (segment[0] == '$') return .close;
+    return null;
+}
+
+/// The envelope a path selector carries: which mark it ends in, and the parent
+/// path written before it. The parent is owned by the selector's arena and never
+/// emptied, so the list is read as `items[0..len]`.
+pub const Envelope = struct {
+    mark: EnvelopeMark,
+    parent: std.ArrayList(Str),
+};
+
+/// `envelopeOf`: the mark this path ends in, with the parent written before it,
+/// or null when the path does not carry one. A sentinel is never the *only*
+/// segment — there would be no parent to open or close.
+fn envelopeOf(alloc: Allocator, segments: []const Str) !?Envelope {
+    if (segments.len < 2) return null;
+    const mark = envelopeMark(segments[segments.len - 1]) orelse return null;
+    var parent = std.ArrayList(Str).empty;
+    try parent.appendSlice(alloc, segments[0 .. segments.len - 1]);
+    return .{ .mark = mark, .parent = parent };
+}
+
+fn isEnvelopeMark(segment: Str) bool {
+    return envelopeMark(segment) != null;
+}
+
 /// `assertName`: reject a name this grammar cannot carry, with the message that
 /// says why. `+` has no meaning inside a name at all, and the only thing a user
 /// means by it is a modifier — so the message names the spelling that works.
@@ -144,29 +206,32 @@ fn assertName(
     alloc: Allocator,
     segment: Str,
     raw: Str,
+    carries_mark: bool,
     failure: *Failure,
 ) Error!void {
     if (isNameSegment(segment)) return;
+    // A whole envelope mark is not a name but is a legal **last** segment.
+    if (carries_mark and isEnvelopeMark(segment)) return;
 
     if (js.indexOfUnit(segment, '+')) |plus_at| {
         const run_len = plusRunLen(segment[plus_at..]);
         const plus = segment[plus_at .. plus_at + run_len];
         const before = segment[0..plus_at];
         if (before.len == 0) {
-            return failure.grammarMessage(try js.format(
+            return failure.grammarMessage(error_codes.modifier_old_spelling, try js.format(
                 alloc,
                 "\"{s}\" is a path segment now; it follows the path, as \"#<path>/{s}\"",
                 .{ @as(Str, plus), @as(Str, plus) },
             ));
         }
-        return failure.grammarMessage(try js.format(
+        return failure.grammarMessage(error_codes.modifier_old_spelling, try js.format(
             alloc,
             "\"{s}\" is a path segment now; write \"#{s}/{s}\"",
             .{ @as(Str, plus), @as(Str, before), @as(Str, plus) },
         ));
     }
 
-    return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
+    return failure.grammarMessage(error_codes.empty_segment, try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
 }
 
 /// The length of the `+` run at the start of `text`.
@@ -186,7 +251,7 @@ fn mergeModifiers(
 ) Error!?Str {
     if (modifiers.len == 0) return null;
     if (modifiers.len == 1) return modifiers[0];
-    return failure.grammarMessage(try js.format(
+    return failure.grammarMessage(error_codes.too_many_modifiers, try js.format(
         alloc,
         "\"#{s}\" carries more than one modifier",
         .{@as(Str, raw)},
@@ -255,7 +320,7 @@ fn lineRangeOf(alloc: Allocator, raw: Str, failure: *Failure) Error!?SelectorRan
         "\"#{s}\" is not a line range; write L<line> or L<line>:<column>",
         .{@as(Str, raw)},
     );
-    const range = parseLineRange(raw) orelse return failure.grammarMessage(try malformed);
+    const range = parseLineRange(raw) orelse return failure.grammarMessage(error_codes.line_range_not_a_range, try malformed);
 
     const from_zero = range.from.line < 1 or
         (range.from.column != null and range.from.column.? < 1);
@@ -264,7 +329,7 @@ fn lineRangeOf(alloc: Allocator, raw: Str, failure: *Failure) Error!?SelectorRan
     else
         false;
     if (from_zero or to_zero) {
-        return failure.grammarMessage(try js.format(
+        return failure.grammarMessage(error_codes.line_range_from_1, try js.format(
             alloc,
             "\"#{s}\" counts lines and columns from 1",
             .{@as(Str, raw)},
@@ -275,7 +340,7 @@ fn lineRangeOf(alloc: Allocator, raw: Str, failure: *Failure) Error!?SelectorRan
             (to.line == range.from.line and to.column != null and range.from.column != null and
                 to.column.? < range.from.column.?);
         if (backwards) {
-            return failure.grammarMessage(try js.format(
+            return failure.grammarMessage(error_codes.line_range_backwards, try js.format(
                 alloc,
                 "\"#{s}\" ends before it starts",
                 .{@as(Str, raw)},
@@ -289,15 +354,15 @@ fn lineRangeOf(alloc: Allocator, raw: Str, failure: *Failure) Error!?SelectorRan
 /// `parseReference`: the grammar of one **path** selector. A comma (that is
 /// `parseSelectors`) and a line range are not a path, and are reported as such.
 pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Reference {
-    if (raw.len == 0) return failure.grammarMessage(try js.format(alloc, "\"#\" names nothing", .{}));
+    if (raw.len == 0) return failure.grammarMessage(error_codes.empty_reference, try js.format(alloc, "\"#\" names nothing", .{}));
     if (js.indexOfUnit(raw, ',') != null) {
-        return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty selector", .{raw}));
+        return failure.grammarMessage(error_codes.empty_selector, try js.format(alloc, "\"#{s}\" has an empty selector", .{raw}));
     }
     // A reference names a section of **one** file, and the file is the path the
     // marker's link already carries: a second `#` is a link written into the
     // fragment by mistake, never a nested reference (RFC 1 §9.8).
     if (js.indexOfUnit(raw, '#') != null) {
-        return failure.grammarMessage(try js.format(
+        return failure.grammarMessage(error_codes.second_hash, try js.format(
             alloc,
             "\"#{s}\" has a second \"#\"; a reference names one file",
             .{raw},
@@ -305,7 +370,7 @@ pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
     }
     if (isLineRangePrefix(raw)) {
         _ = try lineRangeOf(alloc, raw, failure); // fails when the range is malformed
-        return failure.grammarMessage(try js.format(
+        return failure.grammarMessage(error_codes.line_range_as_path, try js.format(
             alloc,
             "\"#{s}\" is a line range, not a section path",
             .{raw},
@@ -315,11 +380,11 @@ pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
     const parts = try splitSlash(alloc, raw);
     for (parts) |part| {
         if (part.len == 0) {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty path segment", .{raw}));
+            return failure.grammarMessage(error_codes.empty_segment, try js.format(alloc, "\"#{s}\" has an empty path segment", .{raw}));
         }
     }
     if (parts.len > 8) {
-        return failure.grammarMessage(try js.format(alloc, "\"#{s}\" is deeper than 8 sections", .{raw}));
+        return failure.grammarMessage(error_codes.too_deep, try js.format(alloc, "\"#{s}\" is deeper than 8 sections", .{raw}));
     }
 
     var modifiers = std.ArrayList(Str).empty;
@@ -328,7 +393,7 @@ pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
     for (parts, 0..) |segment, index| {
         if (segmentModifier(segment)) |modifier| {
             if (index != parts.len - 1) {
-                return failure.grammarMessage(try js.format(
+                return failure.grammarMessage(error_codes.modifier_not_last, try js.format(
                     alloc,
                     "\"{s}\" may only modify the last path segment of \"#{s}\"",
                     .{ modifier, raw },
@@ -340,9 +405,9 @@ pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
         // A segment of nothing but modifiers (`+++`, `---`) is two of them on one
         // segment. `--` and `--brand` are names: a CSS custom property is one.
         if (isModifierRun(segment) and !(segment.len == 2 and segment[0] == '-' and segment[1] == '-')) {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" carries more than one modifier", .{raw}));
+            return failure.grammarMessage(error_codes.too_many_modifiers, try js.format(alloc, "\"#{s}\" carries more than one modifier", .{raw}));
         }
-        try assertName(alloc, segment, raw, failure);
+        try assertName(alloc, segment, raw, index == parts.len - 1, failure);
         try names.append(alloc, segment);
     }
 
@@ -350,9 +415,9 @@ pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
         // A path of modifiers has no subject: `-` is the old body scope, and
         // `++`/`+` name nothing at all.
         if (segmentModifier(raw) == null) {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" carries more than one modifier", .{raw}));
+            return failure.grammarMessage(error_codes.too_many_modifiers, try js.format(alloc, "\"#{s}\" carries more than one modifier", .{raw}));
         }
-        return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
+        return failure.grammarMessage(error_codes.empty_segment, try js.format(alloc, "\"#{s}\" names nothing", .{raw}));
     }
 
     const modifier = try mergeModifiers(alloc, modifiers.items, raw, failure);
@@ -373,6 +438,130 @@ pub fn parseReference(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
         .segments = try names.toOwnedSlice(alloc),
         .scope = scopeFromModifier(modifier),
     };
+}
+
+/// `applyEnvelope`: check an envelope's shape, then read its interior selectors
+/// inside the parent the marks name.
+///
+/// A mark is a whole segment of a path, so it cannot be confused with a name.
+/// What has to be checked is that the pair makes sense: both ends present, one
+/// parent between them, and in the `^` then `$` order. Anything else is an error
+/// rather than a silent reading of something the user did not write.
+fn applyEnvelope(
+    alloc: Allocator,
+    selectors: []Selector,
+    raw: Str,
+    failure: *Failure,
+) Error!void {
+    var any_mark = false;
+    for (selectors) |selector| {
+        if (selector == .path and selector.path.envelope != null) any_mark = true;
+    }
+    if (!any_mark) return;
+
+    const first = selectors[0];
+    const last = selectors[selectors.len - 1];
+    if (selectors.len == 1) {
+        const mark = first.path.envelope.?.mark;
+        // `js.format` takes its format string as a compile-time value, so the two
+        // spellings are written out rather than selected into a variable.
+        if (mark == .open) {
+            return failure.grammarMessage(error_codes.envelope_alone, try js.format(
+                alloc,
+                "\"#{s}\": a lone \"^\" has nothing to close",
+                .{raw},
+            ));
+        }
+        return failure.grammarMessage(error_codes.envelope_alone, try js.format(
+            alloc,
+            "\"#{s}\": a lone \"$\" has nothing to open",
+            .{raw},
+        ));
+    }
+    const first_mark = if (first == .path) first.path.envelope else null;
+    const last_mark = if (last == .path) last.path.envelope else null;
+    if (first_mark == null or last_mark == null or
+        first_mark.?.mark != .open or last_mark.?.mark != .close)
+    {
+        return failure.grammarMessage(error_codes.envelope_order, try js.format(
+            alloc,
+            "\"#{s}\": an envelope is \"^\" first and \"$\" last, around what they open and close",
+            .{raw},
+        ));
+    }
+    for (selectors[1 .. selectors.len - 1]) |selector| {
+        if (selector == .path and selector.path.envelope != null) {
+            return failure.grammarMessage(error_codes.envelope_marks, try js.format(
+                alloc,
+                "\"#{s}\": an envelope has one \"^\" and one \"$\"",
+                .{raw},
+            ));
+        }
+    }
+
+    // The path may be on either end; where both are written they must agree.
+    var parent: ?[]Str = null;
+    if (first_mark.?.parent.items.len > 0) parent = first_mark.?.parent.items;
+    if (last_mark.?.parent.items.len > 0) {
+        if (parent) |written| {
+            if (!segmentsEqual(written, last_mark.?.parent.items)) {
+                return failure.grammarMessage(error_codes.envelope_mismatch, try js.format(
+                    alloc,
+                    "\"#{s}\": \"^\" opens \"{s}\" and \"$\" closes \"{s}\"; they must be the same block",
+                    .{ raw, try joinSlash(alloc, written), try joinSlash(alloc, last_mark.?.parent.items) },
+                ));
+            }
+        } else parent = last_mark.?.parent.items;
+    }
+    if (parent == null) {
+        return failure.grammarMessage(error_codes.envelope_no_block, try js.format(
+            alloc,
+            "\"#{s}\": neither \"^\" nor \"$\" names a block, so there is nothing to open or close",
+            .{raw},
+        ));
+    }
+
+    // What sits between the marks is read inside the block they name. A selector
+    // that already starts with the parent's own path is left as written: it says
+    // the same thing, and prepending the prefix twice would name nothing.
+    const written = parent.?;
+    for (selectors[1 .. selectors.len - 1]) |*selector| {
+        if (selector.* != .path) continue;
+        const own = selector.path.segments;
+        if (own.len >= written.len and segmentsEqual(own[0..written.len], written)) continue;
+        var merged = std.ArrayList(Str).empty;
+        try merged.appendSlice(alloc, written);
+        try merged.appendSlice(alloc, own);
+        selector.path.segments = try merged.toOwnedSlice(alloc);
+        selector.path.raw = try joinSlash(alloc, selector.path.segments);
+    }
+
+    // Both ends remember the parent, whichever end wrote it.
+    selectors[0].path.envelope.?.parent = try copySegments(alloc, written);
+    selectors[selectors.len - 1].path.envelope.?.parent = try copySegments(alloc, written);
+}
+
+fn segmentsEqual(one: []const Str, other: []const Str) bool {
+    if (one.len != other.len) return false;
+    for (one, other) |left, right| {
+        if (!js.eql(left, right)) return false;
+    }
+    return true;
+}
+
+fn copySegments(alloc: Allocator, segments: []const Str) !std.ArrayList(Str) {
+    var out = std.ArrayList(Str).empty;
+    try out.appendSlice(alloc, segments);
+    return out;
+}
+
+fn joinSlash(alloc: Allocator, segments: []const Str) !Str {
+    var out = std.ArrayList(u16).empty;
+    for (segments, 0..) |segment, index| {
+        if (index > 0) try out.append(alloc, '/');
+        try out.appendSlice(alloc, segment);
+    }
+    return out.toOwnedSlice(alloc);
 }
 
 /// `remainder.split('/')` — never empty; the parts are the caller's to mutate.
@@ -425,12 +614,12 @@ fn canOpenSelector(text: Str) bool {
 /// `add/-,render/++` is two selectors that each say what they mean and nothing
 /// is ambiguous between them. A line range carries no modifier at all.
 pub fn parseSelectors(alloc: Allocator, raw: Str, failure: *Failure) Error!Reference {
-    if (raw.len == 0) return failure.grammarMessage(try js.format(alloc, "\"#\" names nothing", .{}));
+    if (raw.len == 0) return failure.grammarMessage(error_codes.empty_reference, try js.format(alloc, "\"#\" names nothing", .{}));
 
     const parts = try splitComma(alloc, raw);
     for (parts) |part| {
         if (js.trim(part).len == 0) {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" has an empty selector", .{raw}));
+            return failure.grammarMessage(error_codes.empty_selector, try js.format(alloc, "\"#{s}\" has an empty selector", .{raw}));
         }
     }
 
@@ -456,11 +645,27 @@ pub fn parseSelectors(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
             }
         }
 
+        // A mark may be written **bare** — `Inventory/^,toString,$` — and then it
+        // is the *other* mark's parent it refers to, so the path is named once.
+        // The bare spelling is a whole selector of one segment, which no path
+        // reaches because a mark needs a parent.
+        if (envelopeMark(trimmed)) |mark| {
+            if (index > 0) try canonical.append(alloc, ',');
+            try canonical.appendSlice(alloc, trimmed);
+            try selectors.append(alloc, .{ .path = .{
+                .raw = trimmed,
+                .segments = try alloc.dupe(Str, &.{trimmed}),
+                .scope = .declaration,
+                .envelope = .{ .mark = mark, .parent = std.ArrayList(Str).empty },
+            } });
+            continue;
+        }
+
         // A path is a name. What cannot even open a name — `@x` — names nothing;
         // anything else is read by the single-selector grammar, whose own errors
         // are the ones a user needs to see.
         if (!canOpenSelector(trimmed)) {
-            return failure.grammarMessage(try js.format(alloc, "\"#{s}\" names nothing", .{trimmed}));
+            return failure.grammarMessage(error_codes.empty_segment, try js.format(alloc, "\"#{s}\" names nothing", .{trimmed}));
         }
         const parsed = try parseReference(alloc, trimmed, failure);
         if (index > 0) try canonical.append(alloc, ',');
@@ -469,8 +674,13 @@ pub fn parseSelectors(alloc: Allocator, raw: Str, failure: *Failure) Error!Refer
             .raw = trimmed,
             .segments = parsed.segments,
             .scope = parsed.scope,
+            .envelope = try envelopeOf(alloc, parsed.segments),
         } });
     }
+
+    // The envelope's own validation, and the rewriting that reads the interior
+    // selectors inside the parent the marks name.
+    try applyEnvelope(alloc, selectors.items, raw, failure);
 
     // A reference of one path selector carries a scope the resolver applies; a
     // line range has none, and a mixed reference resolves each selector with its
@@ -2009,6 +2219,40 @@ const Build = struct {
                     i = last_close_line + 1;
                     continue;
                 }
+
+                // The same statement, closed by **indentation** rather than a
+                // brace — Python's `if`, Ruby's `if`/`elsif`, VB's `If`/`ElseIf`.
+                // Only a statement block carries its header's literals, so without
+                // this a condition literal in a language that does not brace its
+                // blocks is unreachable at any depth.
+                const indent = indentWidth(mask_line);
+                const body_from = i + 1;
+                var body_end_line = i;
+                var k = body_from;
+                while (k < self.facts.lines.len) : (k += 1) {
+                    if (js.trim(self.facts.lines[k]).len == 0) continue;
+                    if (indentWidth(self.facts.lines[k]) <= indent) break;
+                    body_end_line = k;
+                }
+                if (body_end_line > i) {
+                    const block = try alloc.create(Block);
+                    block.* = makeBlock(.statement, null, i);
+                    const span = Span{ .indented = true, .body_from = body_from, .body_end_line = body_end_line };
+                    applySpan(block, span);
+                    const hdr_end = endOfLine(self.facts.mask, start);
+                    // The condition's offset is the keyword's own offset in the
+                    // line, as `chainSegments` reports it for a braced statement.
+                    block.conditions = try conditionLiterals(
+                        alloc,
+                        self.facts.source[start..hdr_end],
+                        stmt.index,
+                    );
+                    applyAnchor(self, block, null);
+                    try register(self, &list, block);
+                    try descend(self, block, i, span);
+                    i = endLineOf(span, i) + 1;
+                    continue;
+                }
             }
 
             if (matchProperty(mask_line)) |prop| {
@@ -2147,7 +2391,21 @@ fn declaredHere(
                     false,
                 );
             } else {
-                span = .{ .indented = true, .body_end_line = line, .body_from = line };
+                // A shape whose `headerFrom` is neither the body's `{` nor its `=`
+                // has not stated where its body begins (a Kotlin `fun name(`), so
+                // the header is followed from there exactly as the generic `name(`
+                // shape's is: the scan spans a wrapped parameter list and finds the
+                // `{`, `;` or `=` after it. A member with no body to inject comes
+                // back null, and is then no block at all.
+                span = bodySpan(
+                    self.facts.mask,
+                    self.facts.mask_lines,
+                    self.facts.starts,
+                    line,
+                    at,
+                    name_at,
+                    false,
+                );
             }
         }
 
@@ -2281,8 +2539,26 @@ fn descend(self: *Build, block: *Block, decl_line: usize, span: ?Span) Error!voi
 }
 
 fn applyAnchor(self: *Build, block: *Block, open: ?usize) void {
-    const offset = open orelse return;
-    if (leadingAnchor(self.facts.comments, self.facts.source, self.facts.lines, self.facts.starts, offset)) |anchor| {
+    if (open) |offset| {
+        if (leadingAnchor(self.facts.comments, self.facts.source, self.facts.lines, self.facts.starts, offset)) |anchor| {
+            block.anchor = anchor;
+        }
+        return;
+    }
+    // An indented body (a Python `def`, a Ruby `def`) has no brace to open, so
+    // the anchor is looked for on the declaration's own header line — the trailing
+    // comment `def legacy(self):  #count` — and in the first line of its body.
+    const from = block.body_from orelse (block.decl_line + 1);
+    const to = block.close_line orelse block.decl_line;
+    if (indentAnchor(
+        self.facts.comments,
+        self.facts.source,
+        self.facts.lines,
+        self.facts.starts,
+        block.decl_line,
+        from,
+        to,
+    )) |anchor| {
         block.anchor = anchor;
     }
 }
@@ -2647,6 +2923,49 @@ fn isPasteGap(gap: Str) bool {
     return true;
 }
 
+/// The anchor of an **indented** block (a Python `def`, a Ruby `def`): the
+/// trailing comment on its header line, or a comment that is the first thing in
+/// its body. There is no brace to open, so the body starts at `body_from` and the
+/// candidate must be that line or the declaration's own.
+fn indentAnchor(
+    comments: []const Comment,
+    source: Str,
+    lines: []const Str,
+    starts: []const usize,
+    decl_line: usize,
+    body_from: usize,
+    body_to: usize,
+) ?Anchor {
+    // The body's own first **non-blank** line is the other candidate, which is
+    // what the JavaScript reads through `nextNonBlank`; `body_from` is the start
+    // it is searched from.
+    _ = body_from;
+    const first_of_line_next = nextNonBlank(lines, decl_line + 1);
+    var first: ?Comment = null;
+    for (comments) |comment| {
+        const line = lineOf(starts, comment.from);
+        if (line < decl_line) continue;
+        if (line > body_to) break;
+        // On the declaration's own line the comment *is* the trailing comment —
+        // `def legacy(self):  #count` — so nothing needs to precede it. In the
+        // body the candidate is the first non-blank line after the declaration.
+        const candidate_line = line == decl_line or (first_of_line_next != null and line == first_of_line_next.?);
+        if (!candidate_line) break;
+        // `firstOfLine`: on the declaration's own line the comment is the trailing
+        // one; on the body's line it must be the first thing written there.
+        if (line == decl_line or js.trim(source[starts[line]..comment.from]).len == 0) first = comment;
+        break;
+    }
+    const found = first orelse return null;
+    const body = js.trim(found.text);
+    if (isRegionWord(body)) return null;
+    if (body.len == 0 or !js.isIdentStart(body[0])) return null;
+    var at: usize = 1;
+    while (at < body.len and js.isIdentPart(body[at])) at += 1;
+    if (at != body.len) return null;
+    return .{ .name = body, .line = lineOf(starts, found.from) };
+}
+
 /// The leading-comment anchor of a braced block, or null: the comment that is
 /// the first thing inside the braces — same line after `{`, or the next
 /// non-blank line. A `#region`/`#endregion` line is never an anchor, and a body
@@ -2703,7 +3022,7 @@ fn startsWithIgnoreCase(text: Str, prefix: Str) bool {
 
 // --- region directives ------------------------------------------------------
 
-const COMMENT_OPENERS = [_][]const u8{ "//", "--", ";", "%", "'", "REM", "<!--", "/*", "*" };
+const COMMENT_OPENERS = [_][]const u8{ "//", "--", ";", "%", "'", "#", "REM", "<!--", "/*", "*" };
 const COMMENT_CLOSERS = [_][]const u8{ "-->", "*/" };
 
 fn commentOpenerAt(text: Str) ?usize {
@@ -2820,7 +3139,7 @@ fn matchSegment(
         if (js.eql(region.name, segment)) regions += 1;
     }
     if (regions > 1) {
-        return failure.set(try js.format(
+        return failure.set(error_codes.region_duplicated, try js.format(
             alloc,
             "\"#region {s}\" appears {d} times; region names must be unique",
             .{ segment, regions },
@@ -3003,13 +3322,17 @@ fn resolvePath(
 
     if (candidates.len == 0) {
         if (index == 0 and last) {
-            return failure.set(try js.format(
+            // The message names both engines, but the band is the ordinary "not-found":
+            // the JavaScript reports "resolution/not-found" here, and a port that
+            // reported the region band would disagree with the corpus on a reference
+            // that never mentioned a region.
+            return failure.set(error_codes.not_found, try js.format(
                 alloc,
                 "no \"#region {s}\" found, and no section named \"{s}\"",
                 .{ segment, segment },
             ));
         }
-        return failure.set(try js.format(
+        return failure.set(error_codes.not_found, try js.format(
             alloc,
             "no section named \"{s}\" in \"{s}\"",
             .{ segment, prev_name orelse &.{} },
@@ -3019,33 +3342,39 @@ fn resolvePath(
     // The selection itself: nothing follows, so a second candidate is a second
     // answer and the reference does not say which one it wants.
     if (last and candidates.len > 1) {
-        return failure.set(try js.format(
+        return failure.set(error_codes.ambiguous, try js.format(
             alloc,
             "\"{s}\" is declared {d} times; names must be unique",
             .{ segment, candidates.len },
         ));
     }
 
-    var failure_message: ?Str = null;
+    // The failure to report when no candidate answers is kept whole, not as a
+    // message alone: the JavaScript keeps the thrown error and a host branches on
+    // its code, so a nested failure's code travels up beside its prose.
+    var saved: ?Failure = null;
     var matched: ?SegmentHit = null;
     for (candidates) |found| {
         if (last) return found;
         if (found.region != null or !isContainer(found.block.?)) {
-            if (failure_message == null) {
-                failure_message = try js.format(alloc, "\"{s}\" is not a container", .{segment});
+            if (saved == null) {
+                saved = .{
+                    .code = error_codes.not_a_container,
+                    .message = try js.format(alloc, "\"{s}\" is not a container", .{segment}),
+                };
             }
             continue;
         }
         const resolved = resolvePath(alloc, segments, index + 1, found.block.?, true, segment, failure) catch |err| {
             if (err != error.Failed) return err;
-            if (failure_message == null) failure_message = failure.message;
+            if (saved == null) saved = failure.*;
             continue;
         };
         // Two candidates both holding the rest of the path is the same ambiguity
         // one level down: the path does not choose between them. Decided after
         // the catch, because the error belongs to this frame, not that one.
         if (matched != null) {
-            return failure.set(try js.format(
+            return failure.set(error_codes.ambiguous, try js.format(
                 alloc,
                 "\"{s}\" is declared {d} times; names must be unique",
                 .{ segment, candidates.len },
@@ -3054,7 +3383,7 @@ fn resolvePath(
         matched = resolved;
     }
     if (matched) |found| return found;
-    if (failure_message) |message| failure.message = message;
+    if (saved) |value| failure.* = value;
     return error.Failed;
 }
 
@@ -3447,7 +3776,7 @@ fn extractDeclarationFromScan(
     }
     const chosen = if (classes.items.len > 0) classes.items else found.items;
     if (chosen.len > 1) {
-        return failure.set(try js.format(
+        return failure.set(error_codes.ambiguous, try js.format(
             alloc,
             "\"{s}\" is declared {d} times; names must be unique",
             .{ name, chosen.len },
@@ -3570,7 +3899,7 @@ fn lineRangeSpan(
     // entry: the file's last line is the last entry that is not that emptiness.
     const total: usize = if (source.len == 0) 0 else lines.len;
     if (from_line > total or to_line > total) {
-        return failure.set(try js.format(
+        return failure.set(error_codes.line_range_past_end, try js.format(
             alloc,
             "\"#{s}\": the file has {d} line(s)",
             .{ raw, total },
@@ -3578,7 +3907,7 @@ fn lineRangeSpan(
     }
     if (from.column) |column| {
         if (column - 1 >= lines[from_line - 1].len) {
-            return failure.set(try js.format(
+            return failure.set(error_codes.line_range_column_past_end, try js.format(
                 alloc,
                 "\"#{s}\": line {d} has {d} character(s)",
                 .{ raw, from_line, lines[from_line - 1].len },
@@ -3590,7 +3919,7 @@ fn lineRangeSpan(
     const end: usize = if (to != null and to.?.column != null) blk: {
         const column = to.?.column.?;
         if (column - 1 >= lines[to_line - 1].len) {
-            return failure.set(try js.format(
+            return failure.set(error_codes.line_range_column_past_end, try js.format(
                 alloc,
                 "\"#{s}\": line {d} has {d} character(s)",
                 .{ raw, to_line, lines[to_line - 1].len },
@@ -3628,7 +3957,12 @@ pub fn planSection(
     const facts = scan.facts;
 
     var parts = std.ArrayList(Part).empty;
-    for (ref.selectors.?) |selector| {
+    // An envelope is resolved **first, and as a unit**: the parent its marks name
+    // may be a name several blocks answer to, and which one is meant is decided by
+    // what the marks wrap — the candidate that holds the member.
+    const envelope = try resolveEnvelope(alloc, ref.selectors.?, scan, failure);
+
+    for (ref.selectors.?, 0..) |selector, index| {
         switch (selector) {
             .lines => |line| {
                 const picked = try lineRangeSpan(alloc, facts, line.from, line.to, line.raw, failure);
@@ -3637,55 +3971,16 @@ pub fn planSection(
                 try parts.append(alloc, .{ .text = picked.text, .kind = .lines, .ranges = ranges });
             },
             .path => |path| {
-                // Resolve every segment but the last to a container, retrying
-                // same-named candidates, then take the final segment's first
-                // match in walk order as the selection.
-                const final = try resolvePath(alloc, path.segments, 0, scan.root, false, null, failure);
-
-                var rendered: Render = undefined;
-                var slice: LineSpan = undefined;
-                var kind: PlanKind = undefined;
-                if (final.region) |region| {
-                    rendered = try renderSpan(alloc, facts.lines, region.start_line + 1, region.end_line - 1);
-                    // The region's own span is the rendered slice's: the directive
-                    // lines are not part of it, and the slice is exactly the lines
-                    // between them.
-                    slice = .{ .from = rendered.from, .to = rendered.to };
-                    kind = .region;
-                } else {
-                    const block = final.block.?;
-                    rendered = try renderBlock(alloc, block, path.scope, final.kind, facts);
-                    kind = switch (final.kind) {
-                        .declaration => .declaration,
-                        .property => .property,
-                        .condition => .condition,
-                        .anchor => .anchor,
-                        .region => .region,
-                    };
-                    if (final.kind == .condition) {
-                        // The header line the matcher cites is rendered ahead of
-                        // the block's own first line; it is the slice's first.
-                        slice = .{ .from = final.header_line.? + 1, .to = lastDeclarationLine(block) + 1 };
-                    } else if (final.kind == .anchor) {
-                        const anchor_line = if (block.anchor) |anchor| anchor.line else block.decl_line;
-                        slice = .{ .from = anchor_line + 1, .to = lastDeclarationLine(block) + 1 };
-                    } else {
-                        slice = .{ .from = rendered.from, .to = rendered.to };
+                // A parent's own opening or closing lines, taken verbatim around
+                // whatever sits between the marks.
+                if (envelope) |found| {
+                    if (found.parts.get(index)) |part| {
+                        try parts.append(alloc, part);
+                        continue;
                     }
                 }
-
-                // A rendering may prepend a line of its own invention — the `if`
-                // of a condition literal, the brace line of a body that opens
-                // below its header — before the lines the span names, so the
-                // span is only exact for the part of the text that matches the
-                // source; the lead is the header line's own.
-                const head = headOf(facts.source, facts.starts, slice);
-                const lead: usize = if (js.startsWith(rendered.text, head)) head.len else 0;
-                try parts.append(alloc, .{
-                    .text = rendered.text,
-                    .kind = kind,
-                    .ranges = try sliceRanges(alloc, slice, rendered.text, lead),
-                });
+                const scope: ?*Block = if (envelope) |found| found.scopes.get(index) else null;
+                try parts.append(alloc, try selectorPart(alloc, path, scope orelse scan.root, scan, failure));
             },
         }
     }
@@ -3725,6 +4020,246 @@ pub fn planSection(
     };
 }
 
+/// `selectorPart`: resolve one path selector inside `scope` into its text and
+/// ranges.
+///
+/// Every segment but the last is a container to descend into, retrying same-named
+/// candidates (a Rust `struct Cart` beside its `impl Cart`); the last segment's
+/// first match in walk order is the selection. The scope is the whole file for an
+/// ordinary selector, and the block an envelope names for a selector written
+/// between its marks.
+fn selectorPart(
+    alloc: Allocator,
+    path: PathSelector,
+    scope: *Block,
+    scan: Scan,
+    failure: *Failure,
+) Error!Part {
+    const facts = scan.facts;
+
+    const final = if (scope == scan.root)
+        try resolvePath(alloc, path.segments, 0, scan.root, false, null, failure)
+    else
+        try resolveWithin(alloc, scope, path.segments, failure);
+
+    var rendered: Render = undefined;
+    var slice: LineSpan = undefined;
+    var kind: PlanKind = undefined;
+    if (final.region) |region| {
+        rendered = try renderSpan(alloc, facts.lines, region.start_line + 1, region.end_line - 1);
+        // The region's own span is the rendered slice's: the directive lines are
+        // not part of it, and the slice is exactly the lines between them.
+        slice = .{ .from = rendered.from, .to = rendered.to };
+        kind = .region;
+    } else {
+        const block = final.block.?;
+        rendered = try renderBlock(alloc, block, path.scope, final.kind, facts);
+        kind = switch (final.kind) {
+            .declaration => .declaration,
+            .property => .property,
+            .condition => .condition,
+            .anchor => .anchor,
+            .region => .region,
+        };
+        if (final.kind == .condition) {
+            // The header line the matcher cites is rendered ahead of the block's
+            // own first line; it is the slice's first.
+            slice = .{ .from = final.header_line.? + 1, .to = lastDeclarationLine(block) + 1 };
+        } else if (final.kind == .anchor) {
+            const anchor_line = if (block.anchor) |anchor| anchor.line else block.decl_line;
+            slice = .{ .from = anchor_line + 1, .to = lastDeclarationLine(block) + 1 };
+        } else {
+            slice = .{ .from = rendered.from, .to = rendered.to };
+        }
+    }
+
+    // A rendering may prepend a line of its own invention — the `if` of a
+    // condition literal, the brace line of a body that opens below its header —
+    // before the lines the span names, so the span is only exact for the part of
+    // the text that matches the source; the lead is the header line's own.
+    const head = headOf(facts.source, facts.starts, slice);
+    const lead: usize = if (js.startsWith(rendered.text, head)) head.len else 0;
+    return .{
+        .text = rendered.text,
+        .kind = kind,
+        .ranges = try sliceRanges(alloc, slice, rendered.text, lead),
+    };
+}
+
+/// `resolveWithin`: resolve a path whose **first** segment is a member of
+/// `block`, exactly as `Cart/add` resolves inside `Cart` — the rest of the path
+/// is searched in that block and nothing else is considered.
+fn resolveWithin(
+    alloc: Allocator,
+    block: *Block,
+    segments: []const Str,
+    failure: *Failure,
+) Error!SegmentHit {
+    if (segments.len == 1) {
+        var candidates = std.ArrayList(SegmentHit).empty;
+        try matchSegment(alloc, block, segments[0], true, &candidates, failure);
+        if (candidates.items.len == 0) {
+            return failure.set(error_codes.not_found, try js.format(
+                alloc,
+                "no section named \"{s}\" in \"{s}\"",
+                .{ segments[0], block.name orelse &js.lit("null") },
+            ));
+        }
+        if (candidates.items.len > 1) {
+            return failure.set(error_codes.ambiguous, try js.format(
+                alloc,
+                "\"{s}\" is declared {d} times; names must be unique",
+                .{ segments[0], candidates.items.len },
+            ));
+        }
+        return candidates.items[0];
+    }
+    return resolvePath(alloc, segments, 1, block, true, block.name, failure);
+}
+
+/// The block an envelope mark names, as an envelope is resolved.
+pub const EnvelopeResolution = struct {
+    /// The head and tail pieces, keyed by the selector's index in the reference.
+    parts: std.AutoHashMap(usize, Part),
+    /// The block every interior selector is read inside, by index.
+    scopes: std.AutoHashMap(usize, *Block),
+};
+
+/// `envelopePart`: the parent declaration's own first lines (the head) or last
+/// line (the tail), taken verbatim.
+fn envelopePart(alloc: Allocator, selector: PathSelector, scan: Scan, block: *Block) !Part {
+    const lines = scan.facts.lines;
+    const is_head = selector.envelope.?.mark == .open;
+    const last = lastDeclarationLine(block);
+    const to = if (is_head) @min(block.open_line orelse block.decl_line, last) else last;
+    const from = if (is_head) block.decl_line else to;
+
+    var selected = std.ArrayList(Str).empty;
+    var at = from;
+    while (at <= to and at < lines.len) : (at += 1) try selected.append(alloc, lines[at]);
+    const ranges = try alloc.alloc(LineSpan, 1);
+    ranges[0] = .{ .from = from + 1, .to = to + 1 };
+    return .{
+        .text = try js.joinLines(alloc, selected.items),
+        .kind = .declaration,
+        .ranges = ranges,
+    };
+}
+
+/// `resolveEnvelope`: read a reference's envelope as a unit — which block the
+/// marks open and close, and the opening and closing pieces for it.
+///
+/// Returns null when the reference carries no envelope marks.
+fn resolveEnvelope(
+    alloc: Allocator,
+    selectors: []const Selector,
+    scan: Scan,
+    failure: *Failure,
+) Error!?EnvelopeResolution {
+    var any = false;
+    for (selectors) |selector| {
+        if (selector == .path and selector.path.envelope != null) any = true;
+    }
+    if (!any) return null;
+
+    const open = selectors[0];
+    const close = selectors[selectors.len - 1];
+    const parent = open.path.envelope.?.parent.items;
+
+    // A one-segment parent is asked for *every* block it names, because the marks
+    // choose among them; a path of several segments already decided, so there is
+    // one candidate. The region is kept beside the candidates rather than filtered
+    // out of them: a region is a *match* that cannot be an envelope, and reporting
+    // it as "found nothing" would be a lie about what the file wrote.
+    var candidates = std.ArrayList(*Block).empty;
+    var matched_region = false;
+    if (parent.len == 1) {
+        var matched = std.ArrayList(SegmentHit).empty;
+        try matchSegment(alloc, scan.root, parent[0], false, &matched, failure);
+        for (matched.items) |match| {
+            if (match.region != null) {
+                matched_region = true;
+                continue;
+            }
+            try candidates.append(alloc, match.block.?);
+        }
+    } else {
+        const found = try resolvePath(alloc, parent, 0, scan.root, false, null, failure);
+        if (found.region) |_| return envelopeRegion(alloc, open.path.raw, failure);
+        try candidates.append(alloc, found.block.?);
+    }
+    if (candidates.items.len == 0) {
+        if (matched_region) return envelopeRegion(alloc, open.path.raw, failure);
+        return failure.set(error_codes.region_not_found, try js.format(
+            alloc,
+            "no \"#region {s}\" found, and no section named \"{s}\"",
+            .{ parent[0], parent[0] },
+        ));
+    }
+
+    const interior = selectors[1 .. selectors.len - 1];
+    var parts = std.AutoHashMap(usize, Part).init(alloc);
+    var scopes = std.AutoHashMap(usize, *Block).init(alloc);
+
+    var first_failure: ?Failure = null;
+    for (candidates.items) |block| {
+        if (!isContainer(block)) continue;
+        // Every interior selector has to resolve inside this candidate, or this is
+        // not the block the envelope is about.
+        var ok = true;
+        for (interior, 1..) |selector, index| {
+            if (selector != .path) continue;
+            _ = selectorPart(alloc, selector.path, block, scan, failure) catch {
+                // The first failure is what is reported: the message and the code
+                // the resolver produced, unchanged. The JS also rewrites the
+                // advisory `selector`/`scope` fields to name what the *user*
+                // wrote rather than the parent-qualified spelling; this port's
+                // `Failure` carries message and code only, so there is nothing to
+                // rewrite and the corpus asserts exactly those two.
+                if (first_failure == null) first_failure = failure.*;
+                ok = false;
+                break;
+            };
+            try scopes.put(index, block);
+        }
+        if (!ok) continue;
+
+        // The head and the tail, plus the scope every interior selector is read in.
+        parts.put(0, try envelopePart(alloc, open.path, scan, block)) catch return error.OutOfMemory;
+        parts.put(selectors.len - 1, try envelopePart(alloc, close.path, scan, block)) catch return error.OutOfMemory;
+        scopes.put(0, block) catch return error.OutOfMemory;
+        scopes.put(selectors.len - 1, block) catch return error.OutOfMemory;
+        return .{ .parts = parts, .scopes = scopes };
+    }
+
+    if (first_failure) |failure_value| {
+        failure.* = failure_value;
+        return error.Failed;
+    }
+    return failure.set(error_codes.not_a_container, try js.format(
+        alloc,
+        "\"{s}\" is not a container",
+        .{try joinComma(alloc, parent)},
+    ));
+}
+
+fn envelopeRegion(alloc: Allocator, raw: Str, failure: *Failure) Error!?EnvelopeResolution {
+    return failure.grammarMessage(error_codes.envelope_region, try js.format(
+        alloc,
+        "\"#{s}\": a region has no declaration to open or close",
+        .{raw},
+    ));
+}
+
+fn joinComma(alloc: Allocator, segments: []const Str) !Str {
+    var out = std.ArrayList(u16).empty;
+    for (segments, 0..) |segment, index| {
+        if (index > 0) try out.append(alloc, ',');
+        try out.appendSlice(alloc, segment);
+    }
+    return out.toOwnedSlice(alloc);
+}
+
 /// `parts.map((part) => part.text).join('\n')`.
 fn joinPartTexts(alloc: Allocator, parts: []const Part) ![]u16 {
     var out = std.ArrayList(u16).empty;
@@ -3759,6 +4294,35 @@ var scratch_failure = Failure{};
 fn expectUnits(alloc: Allocator, expected: []const u8, actual: Str) !void {
     const want = try js.utf8Decode(alloc, expected);
     try testing.expectEqualSlices(u16, want, actual);
+}
+
+/// Assert a failure's stable code against the row's.
+///
+/// This is the assertion the *message* cannot make: two failures with different
+/// bands can read alike, and a host chooses a fallback from the code, so a port
+/// that reports the right prose out of the wrong category fails here.
+///
+/// The category is read from the row's own code — `grammar/` for a malformed
+/// reference, `resolution/` for a file that cannot answer one — and then checked
+/// against how the port failed. That is deliberately not "a parse row must be a
+/// grammar code": an **envelope** whose marks contradict each other is rejected by
+/// the parser, and its band is a `resolution/` one, because it is the pair of
+/// marks and not the spelling that is wrong.
+fn expectCode(
+    alloc: Allocator,
+    case: vectors.Case,
+    failure: Failure,
+) !void {
+    const expected = case.code orelse {
+        std.debug.print("{s}: no code in the row, but the port failed\n", .{case.name});
+        return error.MissingCode;
+    };
+
+    if (!std.mem.startsWith(u8, expected, "grammar/") and !std.mem.startsWith(u8, expected, "resolution/")) {
+        std.debug.print("{s}: code {s} is namespaced by neither category\n", .{ case.name, expected });
+        return error.CodeCategoryMismatch;
+    }
+    try expectUnits(alloc, expected, failure.code);
 }
 
 test "parseReference reads the modifiers and canonicalises them" {
@@ -4255,16 +4819,38 @@ test "the golden section vectors" {
         if (case.input == null) {
             // A parse-only probe: the grammar. The reference grammar is
             // `parseSelectors` — one path selector, several, or a line range;
-            // `parseReference` reads one path only.
-            if (parseSelectors(alloc, reference, &failure)) |_| {
-                // The answer is the canonical spelling and the thrown message,
-                // and the corpus asserts the message on the error branch only.
+            // `parseReference` reads one path only. A case that is *about* that
+            // difference names the parser it exercises in its own name.
+            const read_one_path = std.mem.startsWith(u8, case.name, "path-parse:");
+            const parsed = if (read_one_path)
+                parseReference(alloc, reference, &failure)
+            else
+                parseSelectors(alloc, reference, &failure);
+            if (parsed) |_| {
+                // The answer is the canonical spelling, and the corpus asserts the
+                // message on the error branch; a row that *expects* an error and
+                // parsed instead is a divergence, and saying so is the whole point
+                // of asserting the corpus row by row.
+                //
+                // This branch was silent while envelopes were unported, because
+                // the six envelope rows that must parse were the only ones it
+                // caught. They are ported now, so the assertion is restored: a
+                // future regression that makes a malformed reference parse fails
+                // here instead of passing quietly.
+                if (case.error_message != null) {
+                    std.debug.print("{s}: parsed, but the corpus expects an error\n", .{case.name});
+                    return error.UnexpectedGrammarSuccess;
+                }
             } else |_| {
                 const expected = case.error_message orelse {
                     std.debug.print("{s}: unexpected grammar error: {any}\n", .{ case.name, failure.message });
                     return error.UnexpectedGrammarError;
                 };
                 try expectUnits(alloc, expected, failure.message);
+                // The band, beside the message: a host branches on the code, so a
+                // port that gets the right message out of the wrong category fails
+                // here rather than passing on the prose.
+                try expectCode(alloc, case, failure);
             }
             checked += 1;
             continue;
@@ -4338,6 +4924,7 @@ test "the golden section vectors" {
                 std.debug.print("{s}: unexpected failure: {any}\n", .{ case.name, failure.message });
                 return error.UnexpectedFailure;
             };
+            if (std.mem.startsWith(u8, case.name, "envelope") or std.mem.startsWith(u8, case.name, "grammar:Cart") or std.mem.startsWith(u8, case.name, "grammar-error:envelope") or std.mem.startsWith(u8, case.name, "region-as") or std.mem.startsWith(u8, case.name, "grammar:a/b")) {}
             if (!js.eqlBytes(failure.message, expected)) {
                 std.debug.print("{s}: error differs\nexpected: {s}\nactual:   {any}\n", .{
                     case.name,
@@ -4346,6 +4933,7 @@ test "the golden section vectors" {
                 });
                 return error.ErrorMismatch;
             }
+            try expectCode(alloc, case, failure);
         }
         checked += 1;
     }

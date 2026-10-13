@@ -13,15 +13,28 @@ import the ES module, and it is the sibling of the Rust implementation in
 
 ## Status
 
-| Layer | State |
-| --- | --- |
-| Reference parsing, canonicalisation, errors | **ported** — a modifier is a whole segment, legal only last; no warning exists |
-| Mask pass (`masked`, `commentsIn`) | **ported** — the mask invariant is asserted, as the spec requires |
-| Block scanner (`scanBlocks`) | **ported** — regions, comment anchors, condition literals, properties, if/else chains, headers that wrap |
-| Resolution (`resolveSection`, `extractDeclaration`) | **ported** |
-| Per-language lexers (the language table) | **ported** — all eighteen entries and the extension registry |
+| Layer                                               | State                                                                                            |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Reference parsing, canonicalisation, errors         | **ported** — a modifier is a whole segment, legal only last; no warning exists                   |
+| Failure codes (`ERROR_CODES`, RFC 1 §5.3)           | **ported** — both failure types carry `code()`, `selector()`, `scope()` and `candidates()`       |
+| Mask pass (`masked`, `commentsIn`)                  | **ported** — the mask invariant is asserted, as the spec requires                                |
+| Block scanner (`scanBlocks`)                        | **ported** — regions, comment anchors, condition literals, properties, if/else chains, headers that wrap |
+| Resolution (`resolveSection`, `extractDeclaration`) | **ported**                                                                                       |
+| Per-language lexers (the language table)            | **ported** — all eighteen entries and the extension registry, Kotlin's `fun` shapes included     |
+| Envelopes (`Inventory/^,toString,$`)                | **ported** — `^`/`$` are whole path segments; the pair is validated at parse, and the block is chosen by what the marks wrap |
 
-All 189 conformance vectors pass, and so does the lexical corpus beside them.
+`mvn test` is therefore **green** — `Tests run: 34, Failures: 0`, all 280 section vectors
+and all 53 lexical shape rows asserted. Nothing is skipped and no assertion is weakened.
+
+The `vectors:` line the suite prints reads `280 asserted, 93 with a code compared, 187
+resolving and 0 failing`. The two bare-mark rows (`^` and `$`) are among the compared codes:
+they carry a `resolution/envelope-alone` code because the pair is what cannot be read, while
+the JavaScript raises its *grammar* error type for them because the reference is read without
+a file. The Java port does the same — the envelope pair is validated by `parse` — so the type
+follows the raise site and the code keeps its namespace: the harness asserts the type from the
+code's namespace and only where that namespace implies one, so a `grammar/…` code requires a
+`SectionReferenceException` while a `resolution/…` code (the envelope pair included) implies
+no type at all (RFC 1 §3.6).
 
 ```sh
 mvn test        # the gate
@@ -30,10 +43,14 @@ mvn package     # jar + sources + javadoc, as Maven Central wants them
 
 `SectionVectorsTest` reads
 [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json) —
-the same 189 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
-to — and asserts all of them: the grammar, the exact error text, and resolution
-against the fixtures, each through the language its file extension selects. It
-fails if a vector is unaccounted for, so nothing can quietly leave the gate.
+the same 280 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
+to — and asserts all of them: the grammar, the exact error text **and the stable
+failure code** beside it, and resolution against the fixtures, each through the
+language its file extension selects. A row's `parser` field names the entry point
+that reads it — `parseReference`, the single-path-selector reader, for the one row
+about the difference between a line range and a section path — and a row that
+resolves must carry no code at all. It fails if a vector is unaccounted for, so
+nothing can quietly leave the gate.
 
 `LexicalVectorsTest` reads
 [`test/vectors/lexical-vectors.json`](../../test/vectors/lexical-vectors.json),

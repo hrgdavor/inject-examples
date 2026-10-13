@@ -13,11 +13,14 @@
 //! are joined with a newline; the line ranges and the `kind` are the same slice the text was made from,
 //! so no second search can disagree with the first answer.
 
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use crate::block::{Block, BlockRef, Region, Scan};
 use crate::lexer::Lexer;
 use crate::mask::{bracket_balance, end_of_line, line_of, units};
 use crate::scanner::{scan_blocks, Lex};
-use crate::{Reference, Scope, SectionError, SectionReferenceError};
+use crate::{ErrorCode, Reference, Scope, SectionError, SectionReferenceError};
 
 // ---------------------------------------------------------------------------
 // The reference grammar: one path selector, or a comma-separated selector list
@@ -47,6 +50,9 @@ pub enum Selector {
         raw: String,
         segments: Vec<String>,
         scope: Scope,
+        /// The envelope mark this path carries as its last segment, if any. `None` for a path that
+        /// names a section outright, which is every path but the two ends of an envelope.
+        envelope: Option<Envelope>,
     },
     /// Verbatim lines: no name, no matcher, no scope and no modifier of its own.
     Lines {
@@ -54,6 +60,180 @@ pub enum Selector {
         from: LinePoint,
         to: Option<LinePoint>,
     },
+}
+
+/// A path's **envelope mark**, as the last segment of its path: `^` is the parent block's own first
+/// lines and `$` its last, written on the parent's path.
+///
+/// The marks are whole segments and nothing else, which is what keeps them out of every name: a mark
+/// is never the only segment of its path (there would be no parent to open or close), and a `$` that
+/// is part of a name is not a mark because the segment is longer than it. `foo$` is therefore the
+/// name `foo$` while `foo/$` is the last line of `foo`.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Envelope {
+    /// `'^'` — the head — or `'$'` — the tail.
+    pub mark: char,
+    /// The path before the mark, or `None` for a mark written bare (`Cart/^,toString,$`), which
+    /// [`apply_envelope`] fills in with the path the other end names.
+    pub parent: Option<Vec<String>>,
+}
+
+/// Is this segment a whole envelope mark? Mirrors the JavaScript's `envelopeMark`.
+pub(crate) fn envelope_mark(segment: &str) -> Option<char> {
+    match segment {
+        "^" => Some('^'),
+        "$" => Some('$'),
+        _ => None,
+    }
+}
+
+/// The path before an envelope mark, or `None` when the segment does not carry one.
+///
+/// `Inventory/^` opens `Inventory` and `Inventory/Item/$` closes the `Item` inside it; a bare `^` has
+/// no parent and is not a mark at all.
+fn envelope_of(segments: &[String]) -> Option<Envelope> {
+    if segments.len() < 2 {
+        return None;
+    }
+    let mark = envelope_mark(segments.last().map(String::as_str).unwrap_or(""))?;
+    Some(Envelope {
+        mark,
+        parent: Some(segments[..segments.len() - 1].to_vec()),
+    })
+}
+
+/// The envelope mark a selector carries, if any. A line range never carries one.
+fn mark_of(selector: &Selector) -> Option<char> {
+    match selector {
+        Selector::Path {
+            envelope: Some(envelope),
+            ..
+        } => Some(envelope.mark),
+        _ => None,
+    }
+}
+
+/// The path an envelope mark names, before [`apply_envelope`] has filled a bare mark in.
+fn parent_of(selector: &Selector) -> Option<&Vec<String>> {
+    match selector {
+        Selector::Path {
+            envelope: Some(envelope),
+            ..
+        } => envelope.parent.as_ref(),
+        _ => None,
+    }
+}
+
+/// Read a reference's envelope marks: a parent declaration's own first and last lines, wrapped around
+/// the members selected from inside it.
+///
+/// `Inventory/^,toString,$` is the class's opening line, the `toString` method, and the class's
+/// closing line. The marks say which block is being opened and closed, and the path may be written on
+/// **either** of them: a bare mark refers to the parent the other one names, so the path is written
+/// once rather than on every selector. What sits **between** the marks is read inside that block, and
+/// a selector that already names the parent is left alone, so the long form
+/// (`Inventory/^,Inventory/toString,Inventory/$`) means the same thing.
+///
+/// A mark is a whole segment of a path, so it cannot be confused with a name. What has to be checked
+/// is that the pair makes sense: both ends present, one parent between them, and in the `^` then `$`
+/// order. Anything else is an error rather than a silent reading of something the user did not write.
+fn apply_envelope(selectors: &mut [Selector], raw: &str) -> Result<(), SectionReferenceError> {
+    if !selectors.iter().any(|selector| mark_of(selector).is_some()) {
+        return Ok(());
+    }
+
+    // A mark is half of an envelope, so a reference that writes one has to write both ends.
+    if selectors.len() == 1 {
+        let mark = mark_of(&selectors[0]).expect("the reference carries a mark");
+        let verb = if mark == '^' { "close" } else { "open" };
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EnvelopeAlone,
+            format!("\"#{raw}\": a lone \"{mark}\" has nothing to {verb}"),
+        ));
+    }
+
+    let first = mark_of(&selectors[0]);
+    let last = mark_of(&selectors[selectors.len() - 1]);
+    if first != Some('^') || last != Some('$') {
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EnvelopeOrder,
+            format!(
+                "\"#{raw}\": an envelope is \"^\" first and \"$\" last, around what they open and close"
+            ),
+        ));
+    }
+    if selectors[1..selectors.len() - 1]
+        .iter()
+        .any(|selector| mark_of(selector).is_some())
+    {
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EnvelopeMarks,
+            format!("\"#{raw}\": an envelope has one \"^\" and one \"$\""),
+        ));
+    }
+
+    // The path may be on either end; where both are written they must agree.
+    let mut named: Vec<Vec<String>> = Vec::new();
+    for selector in [&selectors[0], &selectors[selectors.len() - 1]] {
+        if let Some(parent) = parent_of(selector) {
+            named.push(parent.clone());
+        }
+    }
+    let Some(parent) = named.first().cloned() else {
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EnvelopeNoBlock,
+            format!(
+                "\"#{raw}\": neither \"^\" nor \"$\" names a block, so there is nothing to open or close"
+            ),
+        ));
+    };
+    for other in &named[1..] {
+        if other.join("/") != parent.join("/") {
+            return Err(SectionReferenceError::coded(
+                ErrorCode::EnvelopeMismatch,
+                format!(
+                    "\"#{raw}\": \"^\" opens \"{}\" and \"$\" closes \"{}\"; they must be the same block",
+                    parent.join("/"),
+                    other.join("/")
+                ),
+            ));
+        }
+    }
+
+    let last_index = selectors.len() - 1;
+    for (index, selector) in selectors.iter_mut().enumerate() {
+        if index == 0 || index == last_index {
+            if let Selector::Path {
+                envelope: Some(envelope),
+                ..
+            } = selector
+            {
+                envelope.parent = Some(parent.clone());
+            }
+            continue;
+        }
+        // What sits between the marks is read inside the block they name. A selector that already
+        // starts with the parent's own path is left as written: it says the same thing, and prepending
+        // the prefix twice would name nothing.
+        if let Selector::Path {
+            raw: selector_raw,
+            segments,
+            ..
+        } = selector
+        {
+            let prefixed = parent
+                .iter()
+                .enumerate()
+                .all(|(at, segment)| segments.get(at) == Some(segment));
+            if !prefixed {
+                let mut rewritten = parent.clone();
+                rewritten.extend(segments.iter().cloned());
+                *segments = rewritten;
+                *selector_raw = segments.join("/");
+            }
+        }
+    }
+    Ok(())
 }
 
 impl Selector {
@@ -197,9 +377,10 @@ pub(crate) fn line_range_of(raw: &str) -> Result<Option<ParsedRange>, SectionRef
     }
 
     let malformed = || {
-        SectionReferenceError::new(format!(
-            "\"#{raw}\" is not a line range; write L<line> or L<line>:<column>"
-        ))
+        SectionReferenceError::coded(
+            ErrorCode::LineRangeNotARange,
+            format!("\"#{raw}\" is not a line range; write L<line> or L<line>:<column>"),
+        )
     };
     if split_range_modifier(raw).is_none() {
         return Err(malformed());
@@ -210,9 +391,10 @@ pub(crate) fn line_range_of(raw: &str) -> Result<Option<ParsedRange>, SectionRef
 
     let zero = |at: LinePoint| at.line < 1 || at.column.is_some_and(|column| column < 1);
     if zero(from) || to.is_some_and(zero) {
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" counts lines and columns from 1"
-        )));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::LineRangeFrom1,
+            format!("\"#{raw}\" counts lines and columns from 1"),
+        ));
     }
     if let Some(to) = to {
         let backwards = to.line < from.line
@@ -221,9 +403,10 @@ pub(crate) fn line_range_of(raw: &str) -> Result<Option<ParsedRange>, SectionRef
                 && from.column.is_some()
                 && to.column < from.column);
         if backwards {
-            return Err(SectionReferenceError::new(format!(
-                "\"#{raw}\" ends before it starts"
-            )));
+            return Err(SectionReferenceError::coded(
+                ErrorCode::LineRangeBackwards,
+                format!("\"#{raw}\" ends before it starts"),
+            ));
         }
     }
 
@@ -249,14 +432,18 @@ pub(crate) fn line_range_of(raw: &str) -> Result<Option<ParsedRange>, SectionRef
 /// one selector.
 pub fn parse_selectors(raw: &str) -> Result<Reference, SectionReferenceError> {
     if raw.is_empty() {
-        return Err(SectionReferenceError::new("\"#\" names nothing"));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EmptyReference,
+            "\"#\" names nothing",
+        ));
     }
 
     let parts: Vec<&str> = raw.split(',').collect();
     if parts.iter().any(|part| part.trim().is_empty()) {
-        return Err(SectionReferenceError::new(format!(
-            "\"#{raw}\" has an empty selector"
-        )));
+        return Err(SectionReferenceError::coded(
+            ErrorCode::EmptySelector,
+            format!("\"#{raw}\" has an empty selector"),
+        ));
     }
 
     let mut selectors: Vec<Selector> = Vec::new();
@@ -279,22 +466,40 @@ pub fn parse_selectors(raw: &str) -> Result<Reference, SectionReferenceError> {
             continue;
         }
 
+        // A mark may be written bare — `Inventory/^,toString,$` — and then it is the *other* mark's
+        // parent it refers to, so the path is named once. The bare spelling is a whole selector of one
+        // segment, which no path reaches because a mark needs a parent.
+        if let Some(mark) = envelope_mark(text) {
+            canonical_parts.push(text.to_string());
+            selectors.push(Selector::Path {
+                raw: text.to_string(),
+                segments: vec![text.to_string()],
+                scope: Scope::Declaration,
+                envelope: Some(Envelope { mark, parent: None }),
+            });
+            continue;
+        }
+
         // A path is a name. What cannot even open a name — `@x` — names nothing; anything else is read
         // by the single-selector grammar, whose own errors quote the selector and are the ones a user
         // needs to see.
         if !starts_with_path(text) {
-            return Err(SectionReferenceError::new(format!(
-                "\"#{text}\" names nothing"
-            )));
+            return Err(SectionReferenceError::coded(
+                ErrorCode::EmptySegment,
+                format!("\"#{text}\" names nothing"),
+            ));
         }
         let parsed = crate::parse_reference(text)?;
         canonical_parts.push(parsed.canonical);
         selectors.push(Selector::Path {
             raw: text.to_string(),
-            segments: parsed.segments,
+            segments: parsed.segments.clone(),
             scope: parsed.scope,
+            envelope: envelope_of(&parsed.segments),
         });
     }
+
+    apply_envelope(&mut selectors, raw)?;
 
     let canonical = canonical_parts.join(",");
 
@@ -365,6 +570,19 @@ impl std::fmt::Display for PlanError {
 
 impl std::error::Error for PlanError {}
 
+impl PlanError {
+    /// The stable code of whichever failure this is, or `None` for an internal invariant.
+    ///
+    /// The JavaScript's two error kinds both carry `code`, and a host branches on it without caring
+    /// which kind it caught — so the accessor lives here too.
+    pub fn code(&self) -> Option<ErrorCode> {
+        match self {
+            PlanError::Reference(error) => error.code(),
+            PlanError::Section(error) => error.code(),
+        }
+    }
+}
+
 impl From<SectionReferenceError> for PlanError {
     fn from(error: SectionReferenceError) -> Self {
         PlanError::Reference(error)
@@ -433,8 +651,14 @@ pub fn plan_section(text: &str, reference: &str, lexer: &dyn Lexer) -> Result<Pl
     let scan = scan_blocks(&source, lexer)?;
     let source_units = units(&scan.lex.source);
 
+    // An envelope is resolved first, and as a unit: the parent it names may be a name several blocks
+    // answer to (a Rust type with three `impl`s), and which one is meant is decided by what the marks
+    // wrap — the candidate that holds the member. That is the same retry a path uses, one level up, so
+    // it is done once for the whole reference rather than per selector.
+    let envelope = resolve_envelope(&parsed.selectors, &scan, lexer, &source_units)?;
+
     let mut parts: Vec<Part> = Vec::new();
-    for selector in &parsed.selectors {
+    for (index, selector) in parsed.selectors.iter().enumerate() {
         match selector {
             Selector::Lines { raw, from, to } => {
                 let picked = line_range_span(&scan.lex, *from, *to, raw)?;
@@ -444,11 +668,28 @@ pub fn plan_section(text: &str, reference: &str, lexer: &dyn Lexer) -> Result<Pl
                     ranges: vec![picked.range],
                 });
             }
-            Selector::Path {
-                segments, scope, ..
-            } => {
-                let found = resolve_path(segments, 0, &scan.root, false, None, &scan, lexer)?;
-                parts.push(resolve_part(&found, *scope, &scan, lexer, &source_units)?);
+            Selector::Path { .. } => {
+                // A parent's own opening or closing lines, taken verbatim around whatever sits
+                // between the marks.
+                if let Some(piece) = envelope
+                    .as_ref()
+                    .and_then(|envelope| envelope.parts.get(&index))
+                {
+                    parts.push(piece.clone());
+                    continue;
+                }
+                let scope = envelope
+                    .as_ref()
+                    .and_then(|envelope| envelope.scopes.get(&index))
+                    .cloned()
+                    .unwrap_or_else(|| scan.root.clone());
+                parts.push(selector_part(
+                    selector,
+                    &scope,
+                    &scan,
+                    lexer,
+                    &source_units,
+                )?);
             }
         }
     }
@@ -478,25 +719,50 @@ pub fn plan_section(text: &str, reference: &str, lexer: &dyn Lexer) -> Result<Pl
 }
 
 /// One selector's contribution: its text, the matcher that found it, and the lines it came from.
+#[derive(Clone)]
 struct Part {
     text: String,
     kind: String,
     ranges: Vec<LineRange>,
 }
 
-/// One path selector's contribution: render the hit under the selector's own scope, then say which
-/// lines the text came from.
+/// One path selector's contribution: resolve it inside the scope it is read under, render the hit,
+/// then say which lines the text came from.
+///
+/// The scope is the whole file for an ordinary selector, and the block an envelope names for a
+/// selector written between its marks — which is why the resolution differs: an enveloped member is
+/// searched *only* inside that block, exactly as `Cart/add` searches only inside `Cart`.
 ///
 /// The slice is not always the rendered text's own span: for a condition literal it is the header line
 /// the matcher cites, and for a comment anchor it is the anchor line — the text and the place it came
 /// from are two answers to two different questions.
-fn resolve_part(
-    found: &Hit,
-    scope: Scope,
+fn selector_part(
+    selector: &Selector,
+    scope: &BlockRef,
     scan: &Scan,
     lexer: &dyn Lexer,
     source_units: &[u16],
 ) -> Result<Part, PlanError> {
+    let Selector::Path {
+        segments,
+        scope: share,
+        ..
+    } = selector
+    else {
+        // Unreachable: a line range is rendered from the lines it names, never through a path's walk.
+        return Err(SectionError::new("a line range is not a path selector").into());
+    };
+
+    // Inside an envelope the parent is already chosen, so a failure here is the reference's own. The
+    // JavaScript relays it to add the selector it happened in; those fields are advisory and this
+    // port's errors do not carry them, so what is relayed is the diagnosis itself — its message and
+    // its stable code, both unchanged.
+    let found = if Rc::ptr_eq(scope, &scan.root) {
+        resolve_path(segments, 0, scope, false, None, scan, lexer)?
+    } else {
+        resolve_within(scope, segments, scan, lexer)?
+    };
+
     let (rendered, kind, slice) = match &found.region {
         Some(region) => {
             let from = region.start_line + 1;
@@ -517,8 +783,10 @@ fn resolve_part(
             let block = found
                 .block
                 .clone()
+                // Unreachable: a `Hit` has either a region or a block, and this arm is the block one.
+                // The JavaScript indexes `final.block` here, so there is no code to mirror.
                 .ok_or_else(|| SectionError::new("a match without a block"))?;
-            let rendered = render_block(&block, scope, &scan.lex, lexer, &found.kind);
+            let rendered = render_block(&block, *share, &scan.lex, lexer, &found.kind);
             let kind = found.kind.clone();
             let slice = if kind == "condition" {
                 // The header line the matcher cites leads the block's own first line.
@@ -671,17 +939,19 @@ fn line_range_span(
         lex.lines.len()
     };
     if from_line > total || to_line > total {
-        return Err(SectionError::new(format!(
-            "\"#{raw}\": the file has {total} line(s)"
-        )));
+        return Err(SectionError::coded(
+            ErrorCode::LineRangePastEnd,
+            format!("\"#{raw}\": the file has {total} line(s)"),
+        ));
     }
 
     let from_length = line_length(lex, from_line);
     if let Some(column) = from.column {
         if column - 1 >= from_length {
-            return Err(SectionError::new(format!(
-                "\"#{raw}\": line {from_line} has {from_length} character(s)"
-            )));
+            return Err(SectionError::coded(
+                ErrorCode::LineRangeColumnPastEnd,
+                format!("\"#{raw}\": line {from_line} has {from_length} character(s)"),
+            ));
         }
     }
 
@@ -691,9 +961,10 @@ fn line_range_span(
         Some(column) => {
             let to_length = line_length(lex, to_line);
             if column - 1 >= to_length {
-                return Err(SectionError::new(format!(
-                    "\"#{raw}\": line {to_line} has {to_length} character(s)"
-                )));
+                return Err(SectionError::coded(
+                    ErrorCode::LineRangeColumnPastEnd,
+                    format!("\"#{raw}\": line {to_line} has {to_length} character(s)"),
+                ));
             }
             // Both columns are inclusive, so the slice runs one past the character the second column
             // names.
@@ -751,10 +1022,13 @@ pub fn extract_declaration(
         .collect();
     let chosen = if classes.is_empty() { found } else { classes };
     if chosen.len() > 1 {
-        return Err(SectionError::new(format!(
-            "\"{name}\" is declared {} times; names must be unique",
-            chosen.len()
-        ))
+        return Err(SectionError::coded(
+            ErrorCode::Ambiguous,
+            format!(
+                "\"{name}\" is declared {} times; names must be unique",
+                chosen.len()
+            ),
+        )
         .into());
     }
     Ok(Some(
@@ -813,24 +1087,30 @@ fn resolve_path(
     let candidates = search_segments(&segment, scope, descended)?;
 
     if candidates.is_empty() {
-        return Err(SectionError::new(if index == 0 && last {
-            format!("no \"#region {segment}\" found, and no section named \"{segment}\"")
-        } else {
-            format!(
-                "no section named \"{segment}\" in \"{}\"",
-                prev_name.unwrap_or("")
-            )
-        })
+        return Err(SectionError::coded(
+            ErrorCode::NotFound,
+            if index == 0 && last {
+                format!("no \"#region {segment}\" found, and no section named \"{segment}\"")
+            } else {
+                format!(
+                    "no section named \"{segment}\" in \"{}\"",
+                    prev_name.unwrap_or("")
+                )
+            },
+        )
         .into());
     }
 
     // The selection itself: nothing follows, so a second candidate is a second
     // answer and the reference does not say which one it wants.
     if last && candidates.len() > 1 {
-        return Err(SectionError::new(format!(
-            "\"{segment}\" is declared {} times; names must be unique",
-            candidates.len()
-        ))
+        return Err(SectionError::coded(
+            ErrorCode::Ambiguous,
+            format!(
+                "\"{segment}\" is declared {} times; names must be unique",
+                candidates.len()
+            ),
+        )
         .into());
     }
 
@@ -852,7 +1132,11 @@ fn resolve_path(
             .unwrap_or(false);
         if candidate.region.is_some() || !container {
             failure.get_or_insert_with(|| {
-                SectionError::new(format!("\"{segment}\" is not a container")).into()
+                SectionError::coded(
+                    ErrorCode::NotAContainer,
+                    format!("\"{segment}\" is not a container"),
+                )
+                .into()
             });
             continue;
         }
@@ -876,10 +1160,13 @@ fn resolve_path(
         // one level down: the path does not choose between them. Decided after
         // the match, because the error belongs to this frame, not that one.
         if matched.is_some() {
-            return Err(SectionError::new(format!(
-                "\"{segment}\" is declared {} times; names must be unique",
-                candidates.len()
-            ))
+            return Err(SectionError::coded(
+                ErrorCode::Ambiguous,
+                format!(
+                    "\"{segment}\" is declared {} times; names must be unique",
+                    candidates.len()
+                ),
+            )
             .into());
         }
         matched = Some(resolved);
@@ -887,6 +1174,9 @@ fn resolve_path(
     if let Some(hit) = matched {
         return Ok(hit);
     }
+    // Unreachable: a candidate that is not a container, and one whose descent failed, both set
+    // `failure` above, so `failure` is `Some` whenever `matched` is `None`. The JavaScript's own
+    // `throw failure` has no code of its own either.
     Err(failure.unwrap_or_else(|| SectionError::new("no match").into()))
 }
 
@@ -928,10 +1218,13 @@ fn match_segment(scope: &BlockRef, segment: &str, descended: bool) -> Result<Vec
         .cloned()
         .collect();
     if regions.len() > 1 {
-        return Err(SectionError::new(format!(
-            "\"#region {segment}\" appears {} times; region names must be unique",
-            regions.len()
-        ))
+        return Err(SectionError::coded(
+            ErrorCode::RegionDuplicated,
+            format!(
+                "\"#region {segment}\" appears {} times; region names must be unique",
+                regions.len()
+            ),
+        )
         .into());
     }
     if let Some(region) = regions.first() {
@@ -1018,6 +1311,50 @@ fn match_segment(scope: &BlockRef, segment: &str, descended: bool) -> Result<Vec
     Ok(anchored)
 }
 
+/// Resolve a path whose **first** segment is a member of `block`, exactly as `Cart/add` resolves
+/// inside `Cart`: the rest of the path is searched in that block and nothing else is considered.
+///
+/// This is how a selector written between an envelope's marks is read: the parent is already chosen, so
+/// the member is looked up inside it rather than anywhere in the file.
+fn resolve_within(
+    block: &BlockRef,
+    segments: &[String],
+    scan: &Scan,
+    lexer: &dyn Lexer,
+) -> Result<Hit, PlanError> {
+    if segments.len() == 1 {
+        let segment = &segments[0];
+        let candidates = match_segment(block, segment, true)?;
+        if candidates.is_empty() {
+            // The JavaScript interpolates `block.name` itself, so a nameless block says `null` here —
+            // unlike `resolve_path`, whose message is written over an empty string.
+            let name = block
+                .borrow()
+                .name
+                .clone()
+                .unwrap_or_else(|| "null".to_string());
+            return Err(SectionError::coded(
+                ErrorCode::NotFound,
+                format!("no section named \"{segment}\" in \"{name}\""),
+            )
+            .into());
+        }
+        if candidates.len() > 1 {
+            return Err(SectionError::coded(
+                ErrorCode::Ambiguous,
+                format!(
+                    "\"{segment}\" is declared {} times; names must be unique",
+                    candidates.len()
+                ),
+            )
+            .into());
+        }
+        return Ok(candidates.into_iter().next().expect("one candidate"));
+    }
+    let name = block.borrow().name.clone();
+    resolve_path(segments, 1, block, true, name.as_deref(), scan, lexer)
+}
+
 fn named(scope: &BlockRef, kind: &str, segment: &str) -> Vec<BlockRef> {
     scope
         .borrow()
@@ -1039,6 +1376,174 @@ fn is_container(block: &Block) -> bool {
     !block.children.is_empty()
         || block.indented
         || matches!((block.open_line, block.close_line), (Some(open), Some(close)) if open < close)
+}
+
+/// Resolve one envelope selector: the first lines of the block its path names, or the last one.
+///
+/// The lines are taken verbatim, because that is what the envelope is *for*: a method copied out of a
+/// class reads as a fragment, and the declaration that holds it is what makes it read as code.
+///
+/// The head is the declaration's **opening lines** — where the name is written, through the line its
+/// body opens on, so a wrapped signature comes whole. The tail is the block's **closing line**. Each is
+/// a piece of its own, so a member selected between them is a third: the three are disjoint, which is
+/// what lets a host point at the declaration, the member and the end of the block separately instead of
+/// at everything between them.
+fn envelope_part(mark: char, lex: &Lex, block: &BlockRef) -> Part {
+    let is_head = mark == '^';
+    let last = last_declaration_line(block);
+    let (from, to) = if is_head {
+        let (decl_line, open_line) = {
+            let block = block.borrow();
+            (block.decl_line, block.open_line)
+        };
+        (decl_line, open_line.unwrap_or(decl_line).min(last))
+    } else {
+        (last, last)
+    };
+    // The text is exactly the range: a tail is the closing line and not the block it closes, and the
+    // caller rebuilds nothing for an envelope.
+    let text = slice(&lex.source_lines, from, to + 1).join("\n");
+    Part {
+        text,
+        kind: "envelope".to_string(),
+        ranges: vec![LineRange {
+            from: from + 1,
+            to: to + 1,
+        }],
+    }
+}
+
+/// A reference's envelope, read as a unit: the opening and closing pieces for the block the marks name,
+/// and the scope every selector between them is read inside.
+struct ResolvedEnvelope {
+    /// The head and the tail, by selector index.
+    parts: HashMap<usize, Part>,
+    /// The scope of the marks and of every selector between them, by selector index.
+    scopes: HashMap<usize, BlockRef>,
+}
+
+/// Read a reference's envelope as a unit: which block the marks open and close, and the opening and
+/// closing pieces for it.
+///
+/// Which block is meant is decided by what the marks **wrap**, not by the name — the same retry a path
+/// uses one level up. A Rust type has a `struct` and one or more `impl` blocks, all of them answering
+/// to the type's name, so `Cart/^,add,$` is the `impl` that holds `add`; a type with a single
+/// declaration has one candidate and no retry at all.
+fn resolve_envelope(
+    selectors: &[Selector],
+    scan: &Scan,
+    lexer: &dyn Lexer,
+    source_units: &[u16],
+) -> Result<Option<ResolvedEnvelope>, PlanError> {
+    if !selectors.iter().any(|selector| mark_of(selector).is_some()) {
+        return Ok(None);
+    }
+
+    let open = &selectors[0];
+    let parent = parent_of(open).cloned().unwrap_or_default();
+    let name = parent.first().cloned().unwrap_or_default();
+
+    // A one-segment parent is asked for *every* block it names, because the marks choose among them: a
+    // Rust type is a `struct` beside one or more `impl`s, and the envelope is whichever one holds the
+    // member. A path of several segments already decided, so there is one candidate.
+    //
+    // The region is kept beside the candidates rather than filtered out of them: a region is a *match*
+    // that cannot be an envelope — it has no declaration to open or close — and reporting it as "found
+    // nothing" would be a lie about what the file wrote.
+    let (blocks, matched_a_region): (Vec<BlockRef>, bool) = if parent.len() == 1 {
+        let hits = match_segment(&scan.root, &name, false)?;
+        let region = hits.iter().any(|hit| hit.region.is_some());
+        let blocks = hits.into_iter().filter_map(|hit| hit.block).collect();
+        (blocks, region)
+    } else {
+        let found = resolve_path(&parent, 0, &scan.root, false, None, scan, lexer)?;
+        if found.region.is_some() {
+            return Err(SectionReferenceError::coded(
+                ErrorCode::EnvelopeRegion,
+                format!(
+                    "\"#{}\": a region has no declaration to open or close",
+                    open.raw()
+                ),
+            )
+            .into());
+        }
+        (
+            vec![found
+                .block
+                .clone()
+                .expect("a match without a region has a block")],
+            false,
+        )
+    };
+    if blocks.is_empty() {
+        if matched_a_region {
+            return Err(SectionReferenceError::coded(
+                ErrorCode::EnvelopeRegion,
+                format!(
+                    "\"#{}\": a region has no declaration to open or close",
+                    open.raw()
+                ),
+            )
+            .into());
+        }
+        return Err(SectionError::coded(
+            ErrorCode::RegionNotFound,
+            format!("no \"#region {name}\" found, and no section named \"{name}\""),
+        )
+        .into());
+    }
+
+    let interior = &selectors[1..selectors.len() - 1];
+    let last_index = selectors.len() - 1;
+
+    let mut failure: Option<PlanError> = None;
+    for block in blocks {
+        if !is_container(&block.borrow()) {
+            continue;
+        }
+        // Every interior selector has to resolve inside this candidate, or this is not the block the
+        // envelope is about.
+        let mut holds_interior = true;
+        for selector in interior.iter() {
+            if !matches!(selector, Selector::Path { .. }) {
+                continue;
+            }
+            if let Err(error) = selector_part(selector, &block, scan, lexer, source_units) {
+                // One message, naming the selector as the *user* wrote it rather than the
+                // parent-qualified spelling the envelope reads it as — with the diagnosis the failure
+                // carried, since a host still branches on it.
+                if failure.is_none() {
+                    failure = Some(error);
+                }
+                holds_interior = false;
+                break;
+            }
+        }
+        if !holds_interior {
+            continue;
+        }
+        let mut parts: HashMap<usize, Part> = HashMap::new();
+        let mut scopes: HashMap<usize, BlockRef> = HashMap::new();
+        for index in [0usize, last_index] {
+            let mark = mark_of(&selectors[index]).unwrap_or('^');
+            parts.insert(index, envelope_part(mark, &scan.lex, &block));
+            scopes.insert(index, block.clone());
+        }
+        for (offset, _) in interior.iter().enumerate() {
+            scopes.insert(offset + 1, block.clone());
+        }
+        return Ok(Some(ResolvedEnvelope { parts, scopes }));
+    }
+    Err(failure.unwrap_or_else(|| {
+        SectionError::coded(
+            ErrorCode::NotAContainer,
+            // The JavaScript interpolates the *array* here, so a path of several segments is
+            // comma-joined in this one message. It is reproduced rather than tidied, because the
+            // corpus pins the bytes.
+            format!("\"{}\" is not a container", parent.join(",")),
+        )
+        .into()
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1063,7 +1568,10 @@ fn render_block(
             let block_ref = block.borrow();
             (
                 block_ref.decl_line,
-                block_ref.line_end.unwrap_or(block_ref.decl_line).max(block_ref.decl_line),
+                block_ref
+                    .line_end
+                    .unwrap_or(block_ref.decl_line)
+                    .max(block_ref.decl_line),
                 block_ref.equals_at,
                 block_ref.statement_to,
             )

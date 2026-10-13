@@ -18,6 +18,12 @@
  * what lets a host say how it knew). Every row has the same keys, with `null`
  * where the answer does not apply.
  *
+ * An **error** row carries two more: `error`, the exact message, and `code`, the
+ * stable failure code (RFC 1 §3.6) that a host branches on instead of parsing
+ * that message. `code` is null on a row that resolves, and the message is
+ * asserted beside it so a port that gets the band right for the wrong reason
+ * still fails.
+ *
  *   node tools/section-vectors.mjs           write/update the vectors file
  *   node tools/section-vectors.mjs --check   compare; exit 1 and diff on drift
  *
@@ -92,6 +98,10 @@ const HASH_PY = 'test/fixtures/Hash.py';
 // guesses between them — these are the rows that say so.
 const DUP_JAVA = 'test/fixtures/Duplicate.java';
 const AMBIGUOUS_JAVA = 'test/fixtures/Ambiguous.java';
+// Region directives as failure cases: a name two regions answer to, a region
+// used where an envelope needs a declaration to open, and a name that is only a
+// region matched *without* being one — a property, which cannot hold anything.
+const REGIONS = 'test/fixtures/Regions.java';
 
 const cases = [
     // Grammar — parse only: canonical form and (lack of) errors.
@@ -142,7 +152,7 @@ const cases = [
         ['L40-L44+', 'range-with-a-modifier'],
         // A reference names one file, and the file is the link's path, so `#`
         // never occurs inside a reference: a second one is a link written into
-        // the fragment by mistake (RFC §9.8).
+        // the fragment by mistake (RFC 1 §9.8).
         ['a#b', 'second-hash'], ['a#', 'trailing-hash'], ['a/#b', 'second-hash-after-slash'],
         ['add,render#x', 'second-hash-in-a-selector-list'],
     ].map(([reference, slug]) => ({ name: `grammar-error:${slug}`, mode: 'parse', reference })),
@@ -494,19 +504,60 @@ const cases = [
     { name: 'vb-function-body', input: VB_FORM, reference: 'Form/Add/-' },
     { name: 'vb-sub-in-scope', input: VB_FORM, reference: 'Form/Run' },
     { name: 'vb-missing-member', input: VB_FORM, reference: 'Form/nope' },
+
+    // Resolution — the four failures that are *not* "names nothing", each of
+    // which is a band of its own: a region name two regions answer to (an
+    // ambiguity the directive itself reports, because neither can be chosen); a
+    // region used as an envelope parent (found, and not a declaration); a
+    // region-only match used mid-path (found, and not a container); and a plain
+    // name two blocks answer to. A port that collapses any of these into
+    // `not-found` passes the message rows and fails these.
+    { name: 'region-duplicated', input: REGIONS, reference: 'dup' },
+    { name: 'region-as-envelope-parent', input: REGIONS, reference: 'solo/^,first,$' },
+    // A **one-segment** envelope parent that names nothing is its own message —
+    // the name was looked for as a region *and* as a block — while a multi-segment
+    // one reports the ordinary scope error, because the path already chose where
+    // to look. Both are failures; the wording tells the reader which search ran.
+    { name: 'envelope-parent-names-nothing', input: EXAMPLE, reference: 'nope/^,x,$' },
+    { name: 'region-is-not-a-container', input: REGIONS, reference: 'solo/x' },
+    { name: 'property-is-not-a-container', input: EXAMPLE, reference: 'items/x' },
+    { name: 'ambiguous-name', input: DUP_JAVA, reference: 'add' },
+
+    // Resolution — the lexer, not the walk, decides this one. `Nesting.zig` holds
+    // `fn decoy` inside a *nested* block comment: the Zig entry blanks the whole
+    // nesting, so the name is not a section; the built-in default mask is
+    // non-nesting, stops at the first `*/`, and leaks `decoy` out as a real
+    // declaration. A port that reads this row with the wrong engine resolves it
+    // instead of failing, which is why the row exists (mask corpus, `z-decoy-*`).
+    { name: 'lexer-hides-a-commented-out-declaration', input: ZIG, reference: 'decoy' },
+
+    // Grammar — a line range written where a *path* is read is its own error, not
+    // a name: `parseSelectors` accepts a range as a selector of its own, and
+    // `parseReference` — which reads exactly one path — rejects it by name rather
+    // than searching for `L40`. A port that reads the vectors only through the
+    // path parser has to treat the range rows as this same error.
+    { name: 'path-parse:line-range-as-a-path', mode: 'parse', reference: 'L40', parser: 'path' },
 ];
 
+/**
+ * A written row carries `parser` **only** on a parse row that is about the
+ * difference between the two parsers — `parseReference` reads one path selector
+ * and rejects a line range by name, while `parseSelectors` accepts the range as a
+ * selector of its own. A runner that reads the corpus has to call the parser the
+ * row names; every other parse row answers the same through either.
+ */
 function buildCase(c) {
     if (c.mode === 'parse') {
         let error = null;
+        let code = null;
         // The whole reference grammar: one selector, several, or a line range.
-        // `parseReference` reads one path selector only, and a port that reads
-        // the vectors through it has to treat the others as the errors they are.
-        try { parseSelectors(c.reference); } catch (e) { error = e.message; }
-        return {
+        const parse = c.parser === 'path' ? parseReference : parseSelectors;
+        try { parse(c.reference); } catch (e) { error = e.message; code = e.code ?? null; }
+        const fields = {
             name: c.name, input: null, reference: c.reference, text: null,
-            startLine: null, endLine: null, ranges: null, kind: null, error,
+            startLine: null, endLine: null, ranges: null, kind: null, error, code,
         };
+        return c.parser === undefined ? fields : { ...fields, parser: c.parser };
     }
     const source = readFileSync(join(ROOT, c.input), 'utf8');
     try {
@@ -517,11 +568,13 @@ function buildCase(c) {
             ranges: plan.ranges.map((range) => [range.from, range.to]),
             kind: plan.kind,
             error: null,
+            code: null,
         };
     } catch (e) {
         return {
             name: c.name, input: c.input, reference: c.reference, text: null,
-            startLine: null, endLine: null, ranges: null, kind: null, error: e.message,
+            startLine: null, endLine: null, ranges: null, kind: null,
+            error: e.message, code: e.code ?? null,
         };
     }
 }

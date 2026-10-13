@@ -108,6 +108,7 @@ const cases = vectors.map((c) => {
         `        .ranges = ${zigRanges(c.ranges)},`,
         `        .kind = ${zigKind(c.kind)},`,
         `        .error_message = ${zigString(c.error)},`,
+        `        .code = ${zigString(c.code)},`,
     ];
     return `    .{\n${parts.join('\n')}\n    },`;
 });
@@ -173,6 +174,11 @@ pub const Case = struct {
     /// The matcher that found it, or null for a parse-only probe.
     kind: ?PlanKind,
     error_message: ?[]const u8,
+    /// The stable failure code (RFC 1 §3.6): a \`grammar/...\` or
+    /// \`resolution/...\` string, or null on a case that resolves. A host
+    /// branches on this instead of reading the message, so the port reproduces
+    /// it beside the message.
+    code: ?[]const u8,
 };
 
 /// A 1-based inclusive line range.

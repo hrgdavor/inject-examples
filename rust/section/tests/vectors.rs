@@ -8,17 +8,24 @@
 //! and a file that cannot drift is better than one that can.
 //!
 //! Every vector is asserted: **grammar** and **grammar-error** through
-//! `parse_selectors` (exact error text), and **resolution** through
-//! `plan_section` — comparing the text, the
+//! `parse_selectors` — or, for the one row the corpus marks `"parser": "path"`,
+//! through [`parse_reference`] — and **resolution** through `plan_section` —
+//! comparing the text, the
 //! 1-based inclusive line ranges, their outermost bounds and the matcher `kind`
 //! (`lines` for a line range, `multiple` for several selectors), or the error text
-//! for the rows whose expected answer is an error. A vector that is neither
-//! asserted nor counted as pending fails the accounting check at the end, so
-//! nothing can quietly leave the gate.
+//! *and its stable `code`* for the rows whose expected answer is an error. A
+//! vector that is neither asserted nor counted as pending fails the accounting
+//! check at the end, so nothing can quietly leave the gate.
+//!
+//! The `code` is the half of the failure a host branches on (`ERROR_CODES` in
+//! `lib/section.mjs`), so it is asserted beside the message on every error row —
+//! and a row the corpus says resolves must carry no code at all.
 
+use inject_sections::parse_reference;
 use inject_sections::parse_selectors;
 use inject_sections::resolver::{plan_section, resolve_section, Plan};
 use inject_sections::syntaxes::lexer_for_path;
+use inject_sections::{ErrorCode, SectionReferenceError};
 use serde_json::Value;
 
 /// Every vector, as parsed JSON. The file lives with the JavaScript suite, so the
@@ -65,12 +72,20 @@ fn reference_grammar_matches_the_vectors() {
         let name = vector["name"].as_str().unwrap_or("<unnamed>");
         let reference = vector["reference"].as_str().unwrap_or("");
         let expected_error = vector["error"].as_str();
+        let expected_code = vector["code"].as_str();
 
         // A vector without an input fixture exercises the grammar alone; one with an
         // input resolves a section through the mask, scanner and matcher layers.
         let Some(input) = vector["input"].as_str() else {
             asserted += 1;
-            assert_grammar_vector(name, reference, expected_error, &mut failures);
+            assert_grammar_vector(
+                name,
+                reference,
+                vector["parser"].as_str(),
+                expected_error,
+                expected_code,
+                &mut failures,
+            );
             continue;
         };
 
@@ -90,8 +105,16 @@ fn reference_grammar_matches_the_vectors() {
                 if error.to_string() != expected {
                     failures.push(format!("{name}: got error {error:?}, want {expected:?}"));
                 }
+                if let Some(mismatch) = code_mismatch(error.code(), expected_code) {
+                    failures.push(format!("{name}: {mismatch}"));
+                }
             }
             (Ok(plan), None) => {
+                if let Some(expected) = expected_code {
+                    failures.push(format!(
+                        "{name}: resolved, want the error carrying code {expected:?}"
+                    ));
+                }
                 let want_text = vector["text"].as_str().unwrap_or("");
                 if plan.text != want_text {
                     failures.push(format!(
@@ -133,7 +156,12 @@ fn reference_grammar_matches_the_vectors() {
                 first_lines(&plan.text)
             )),
             (Err(error), None) => {
-                failures.push(format!("{name}: failed with {error:?}, want success"))
+                failures.push(format!("{name}: failed with {error:?}, want success"));
+                // The corpus says this row resolves, so it must carry no code at all; a code here is
+                // as much a disagreement as the error is.
+                if let Some(mismatch) = code_mismatch(error.code(), expected_code) {
+                    failures.push(format!("{name}: {mismatch}"));
+                }
             }
         }
     }
@@ -162,26 +190,66 @@ fn reference_grammar_matches_the_vectors() {
 ///
 /// The entry point is `parse_selectors`, not `parse_reference`: the corpus holds
 /// comma-separated lists and line ranges, which one path selector reads as the errors
-/// they are.
+/// they are. The exception is the one row the corpus marks `"parser": "path"` — a
+/// line range fed to the **single-path-selector** reader, which rejects it while
+/// `parse_selectors` accepts it, and which is therefore the discriminator that
+/// keeps both readers honest about what they are.
+///
+/// A grammar error carries a `code` beside its message, as the JavaScript does, and
+/// both are asserted: the message is what a user is shown, the code is what a host
+/// branches on.
 fn assert_grammar_vector(
     name: &str,
     reference: &str,
+    parser: Option<&str>,
     expected_error: Option<&str>,
+    expected_code: Option<&str>,
     failures: &mut Vec<String>,
 ) {
-    match (parse_selectors(reference), expected_error) {
+    let outcome: std::result::Result<_, SectionReferenceError> = match parser {
+        Some("path") => parse_reference(reference),
+        _ => parse_selectors(reference),
+    };
+    match (outcome, expected_error) {
         (Err(error), Some(expected)) => {
             if error.message() != expected {
                 failures.push(format!("{name}: got {error:?}, want {expected:?}"));
             }
+            if let Some(mismatch) = code_mismatch(error.code(), expected_code) {
+                failures.push(format!("{name}: {mismatch}"));
+            }
         }
-        (Ok(_), None) => {}
+        (Ok(_), None) => {
+            if let Some(expected) = expected_code {
+                failures.push(format!(
+                    "{name}: parsed, want the error carrying code {expected:?}"
+                ));
+            }
+        }
         (Ok(parsed), Some(expected)) => failures.push(format!(
             "{name}: parsed to {:?}, want error {expected:?}",
             parsed.canonical
         )),
-        (Err(error), None) => failures.push(format!("{name}: failed with {error:?}, want success")),
+        (Err(error), None) => {
+            failures.push(format!("{name}: failed with {error:?}, want success"));
+            // The corpus says this row parses, so it must carry no code at all.
+            if let Some(mismatch) = code_mismatch(error.code(), expected_code) {
+                failures.push(format!("{name}: {mismatch}"));
+            }
+        }
     }
+}
+
+/// How a row's code and the implementation's disagree, or `None` when they agree.
+///
+/// `want` is the corpus spelling (or `None` for a row that resolves); `got` is the
+/// [`ErrorCode`] the implementation attached, if any.
+fn code_mismatch(got: Option<ErrorCode>, want: Option<&str>) -> Option<String> {
+    let got = got.map(ErrorCode::as_str);
+    if got == want {
+        return None;
+    }
+    Some(format!("code {got:?}, want {want:?}"))
 }
 
 /// The line ranges a resolution row expects, as `[[from, to], …]`.

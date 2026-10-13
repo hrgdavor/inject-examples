@@ -12,9 +12,11 @@
  *   node tools/conformance-manifest.mjs --check    # exit 1 when it is stale
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { ERROR_CODES } from '../lib/section.mjs';
 
 const SECTION = 'test/vectors/section-vectors.json';
 const LEXICAL = 'test/vectors/lexical-vectors.json';
+const PROFILE = 'test/vectors/profile-vectors.json';
 const OUT = 'test/vectors/manifest.json';
 
 const read = (path) => JSON.parse(readFileSync(path, 'utf8'));
@@ -31,6 +33,7 @@ function tally(rows, field) {
 
 const section = read(SECTION);
 const lexical = read(LEXICAL);
+const profile = read(PROFILE);
 
 // A resolution row names a fixture and expects text; a parse row names only a
 // reference, so it carries no input. The generated corpus marks this by `input`
@@ -47,16 +50,87 @@ const manifest = {
         'Regenerate with `node tools/conformance-manifest.mjs`; `--check` fails when it is stale.',
     ],
     suite: 'section-mapping',
-    spec: '0.1-draft',
+    // Three specs, one suite: the resolution core is what the corpora assert, and
+    // the two use-case specs are policy layered on top of it. A port implements
+    // the core; it needs neither use-case spec to be conformant, and neither may
+    // change what a reference resolves to.
+    specs: [
+        {
+            rfc: '1',
+            title: 'section mapping — the contract and the resolution core',
+            file: 'doc/rfc/section-mapping.md',
+            version: '0.9-rc',
+            owns: 'the operations, the two error categories, the answer shape, the first line, the non-goals, the conformance obligations, the band vocabulary',
+        },
+        {
+            rfc: '2',
+            title: 'code jump — navigation as a best-effort reader',
+            file: 'doc/rfc/code-jump.md',
+            version: '0.1-draft',
+            owns: 'the jump profile: the landing line, the fallback ladder, IDE-versus-gate escalation',
+        },
+        {
+            rfc: '3',
+            title: 'inject examples — the strict reader of the core',
+            file: 'doc/rfc/inject-examples.md',
+            version: '0.1-draft',
+            owns: 'the document layer, the strict gate, --lenient',
+        },
+    ],
     rfc: 'doc/rfc/section-mapping.md',
     normative: 'doc/section-matching.md',
     reference: 'lib/section.mjs',
+    // The failure surface (RFC 1 §3.6, §5.3). A port implements the operations
+    // below; the codes are what lets a host decide a band without matching
+    // message text, and the two error categories stay distinguishable by type:
+    // a malformed reference throws SectionReferenceError, a file that cannot
+    // answer one throws a plain Error. Both carry `code`.
+    operations: [
+        {
+            name: 'parseSelectors(reference)',
+            alias: 'parseReference(reference)',
+            returns: 'Reference',
+            reads: 'a file: no',
+            asserts: 'the grammar rows: canonical spelling and the thrown message',
+        },
+        {
+            name: 'scan(source, lexer?)',
+            returns: 'Blocks',
+            reads: 'the source only',
+            asserts: 'the mask and shape rows: the lexical invariants',
+        },
+        {
+            name: 'planSection(source, reference, lexer?)',
+            returns: 'Plan | error',
+            reads: 'the target file',
+            asserts: 'the resolution rows: text, startLine, endLine, ranges, kind, error',
+        },
+        {
+            name: 'resolveSection(source, reference, lexer?)',
+            returns: 'string',
+            reads: 'the target file',
+            asserts: 'planSection(...).text, byte for byte',
+        },
+        {
+            name: 'diagnose(source, reference, lexer?)',
+            returns: '{ status, plan, firstLine, error, code, selector, scope, candidates, advice }',
+            reads: 'the target file',
+            asserts: 'never throws; status is ok | failed | invalid, and the failure carries the fields below. Implemented in the JavaScript reference; not required of a port until band rows land — a port that omits it still passes every corpus row',
+        },
+    ],
+    error_codes: {
+        comment: 'Stable codes, asserted in test.mjs and read by a host choosing a band. A code is added, never renamed; a message may be reworded without breaking a caller.',
+        grammar: 'The reference is malformed as written and no file was read. Thrown as SectionReferenceError.',
+        resolution: 'The reference is well formed and the file cannot answer it. Thrown as a plain Error.',
+        codes: { ...ERROR_CODES },
+    },
     // The order a port should implement in: cheapest layer first, each one
     // independent of the layers below it.
     layers: [
         {
             layer: 1,
             name: 'grammar',
+            owner: 'RFC 1 (core)',
             file: SECTION,
             rows: parseRows.length,
             selector: 'rows with input === null (they consult no file)',
@@ -66,6 +140,7 @@ const manifest = {
         {
             layer: 2,
             name: 'mask',
+            owner: 'RFC 1 (core)',
             file: LEXICAL,
             rows: lexical.masks.length,
             selector: 'masks[]',
@@ -75,6 +150,7 @@ const manifest = {
         {
             layer: 3,
             name: 'shapes',
+            owner: 'RFC 1 (core)',
             file: LEXICAL,
             rows: lexical.shapes.length,
             selector: 'shapes[]',
@@ -84,6 +160,7 @@ const manifest = {
         {
             layer: 4,
             name: 'blocks',
+            owner: 'RFC 1 (core)',
             file: 'test.mjs',
             rows: null,
             selector: 'tests named scanBlocks:*',
@@ -93,6 +170,7 @@ const manifest = {
         {
             layer: 5,
             name: 'resolution',
+            owner: 'RFC 1 (core)',
             file: SECTION,
             rows: resolveRows.length,
             selector: 'rows with input !== null (they name a fixture)',
@@ -102,6 +180,7 @@ const manifest = {
         {
             layer: 6,
             name: 'documents',
+            owner: 'RFC 3 (inject examples)',
             file: 'test.mjs',
             rows: null,
             selector: 'the document-rule tests',
@@ -111,11 +190,27 @@ const manifest = {
         {
             layer: 7,
             name: 'differential',
+            owner: 'RFC 1 (core)',
             file: 'tools/compare-zig.mjs',
             rows: null,
             selector: 'two implementations, over the corpus plus generated cases',
             asserts: ['byte-for-byte agreement of two implementations'],
             needs: ['a second implementation'],
+        },
+        {
+            layer: 8,
+            name: 'profile',
+            owner: 'RFC 2 (code jump)',
+            file: PROFILE,
+            rows: profile.resolutions.length + profile.documents.length,
+            selector: 'resolutions[] and documents[]',
+            asserts: [
+                'the editor\'s landing line and cause',
+                'the band the gate refuses, and that it refuses every one of them',
+                'every failing reference in one document pass',
+            ],
+            needs: ['layer 5', 'a jump profile'],
+            optional: 'Only an implementation that offers a profile is held to this layer. A port that implements the resolver alone skips it — RFC 1 §6.3 — and this is the one layer a port may pass by not having it.',
         },
     ],
     corpora: [
@@ -134,6 +229,7 @@ const manifest = {
                 ranges: '[[from, to], ...] — the spread of text as 1-based inclusive line pairs',
                 kind: 'region | declaration | property | condition | anchor | lines | multiple; null for a parse row',
                 error: 'the exact thrown message, or null',
+                errorCode: 'the stable code of the failure (RFC 1 §3.6): `grammar/*` when no file was consulted, `resolution/*` when the file cannot answer. Proposed, not yet a row field: the codes exist on every thrown failure and are asserted in test.mjs, and a row gains the field when band rows land',
             },
             counts: {
                 total: section.length,
@@ -170,6 +266,34 @@ const manifest = {
             },
             assert_all: true,
         },
+        {
+            path: PROFILE,
+            rows: profile.resolutions.length + profile.documents.length,
+            shape: 'object with resolutions[] and documents[]',
+            optional: 'A port that implements no profile does not read this file; a port that offers one must reproduce every row. It is the only corpus a port may pass by not having the feature.',
+            row_fields: {
+                'resolutions[]': {
+                    name: '`<target>:<reference>`',
+                    file: 'the jump fixture the reference resolves against, under `test/fixtures/jump`',
+                    reference: 'the `#` fragment content, without the leading `#`',
+                    editor: '{ firstLine, cause } — where `jump/editor` lands and how it got there',
+                    gate: 'the code `jump/gate` fails with, or null when the gate resolves it too',
+                    note: 'authored, and not always present: why the row exists',
+                },
+                'documents[]': {
+                    name: 'the document, without its extension',
+                    document: 'the Markdown text, embedded so a consumer needs no disk',
+                    files: '`[[path, text], …]` — every file the markers name, embedded',
+                    outcome: '{ passed, checked, failures[] } — each failure naming its `reference`, `code` and `selector`',
+                },
+            },
+            counts: {
+                resolutions: profile.resolutions.length,
+                documents: profile.documents.length,
+                total: profile.resolutions.length + profile.documents.length,
+            },
+            assert_all: true,
+        },
     ],
     obligations: {
         assert_every_row: 'Fail when a corpus row is unaccounted for. Skipping a row is how a port passes while being wrong.',
@@ -182,7 +306,9 @@ const manifest = {
     generators: {
         [SECTION]: 'node tools/section-vectors.mjs',
         [LEXICAL]: 'node tools/lexical-vectors.mjs',
+        [PROFILE]: 'node tools/profile-vectors.mjs',
         'src/section_vectors.zig': 'node tools/zig-vectors.mjs',
+        'src/error_codes.zig': 'node tools/error-codes-zig.mjs',
         [OUT]: 'node tools/conformance-manifest.mjs',
     },
 };
@@ -194,7 +320,7 @@ if (process.argv.includes('--check')) {
     let have = null;
     try { have = readFileSync(OUT, 'utf8'); } catch { /* absent */ }
     if (have === out) {
-        console.log(`conformance manifest: ok (${section.length} section rows, ${manifest.corpora[1].rows} lexical rows)`);
+        console.log(`conformance manifest: ok (${section.length} section rows, ${manifest.corpora[1].rows} lexical rows, ${manifest.corpora[2].rows} profile rows)`);
         process.exit(0);
     }
     if (have === null) {

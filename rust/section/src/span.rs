@@ -214,10 +214,7 @@ fn ends_on_a_word(text: &[u16]) -> bool {
 
 /// A unit the JavaScript's `[>)\]}\s]` accepts after a name.
 fn closes_a_trailing_name(unit: u16) -> bool {
-    matches!(
-        unit as u8 as char,
-        '>' | ')' | ']' | '}'
-    ) || is_blank_unit(unit)
+    matches!(unit as u8 as char, '>' | ')' | ']' | '}') || is_blank_unit(unit)
 }
 
 /// Whether the masked line carries `throws` followed by a name — the JavaScript's `/\bthrows\s+\w/`.
@@ -257,9 +254,9 @@ fn contains_word_then_name(text: &[u16], word: &[u8]) -> bool {
                 // Only a name, a dotted or generic type, and separators may sit between the two, so a
                 // Only a name, a dotted or generic type, and separators may sit between the two, so a
                 // word that merely occurs inside a longer expression does not read as a clause.
-                let only_a_type = tail
-                    .iter()
-                    .all(|unit| is_name_unit(*unit) || is_type_punctuation(*unit) || is_blank_unit(*unit));
+                let only_a_type = tail.iter().all(|unit| {
+                    is_name_unit(*unit) || is_type_punctuation(*unit) || is_blank_unit(*unit)
+                });
                 if ends_on_name && only_a_type {
                     return true;
                 }
@@ -276,10 +273,7 @@ fn is_name_unit(unit: u16) -> bool {
 
 /// The punctuation a supertype clause may carry — the JavaScript's `[\w$.,<>?\[\]\s]`.
 fn is_type_punctuation(unit: u16) -> bool {
-    matches!(
-        unit as u8 as char,
-        '.' | ',' | '<' | '>' | '?' | '[' | ']'
-    )
+    matches!(unit as u8 as char, '.' | ',' | '<' | '>' | '?' | '[' | ']')
 }
 
 /// A body span, or `None` when the member has no body to inject (an interface or `abstract` method).
@@ -477,7 +471,8 @@ pub fn statement_end(
     equals: Option<usize>,
 ) -> (usize, usize, Option<usize>) {
     let decl_line = line_of(starts, from);
-    let indent = indent_width_units(&source_lines[decl_line.min(source_lines.len().saturating_sub(1))]);
+    let indent =
+        indent_width_units(&source_lines[decl_line.min(source_lines.len().saturating_sub(1))]);
     // The first source line at or after `line` that has text on it, or `None`. The mask is the wrong
     // test: a line inside a multi-line string or a raw string is all spaces in the mask, and treating it
     // as a blank line would end a statement in the middle of its own literal.
@@ -544,7 +539,9 @@ pub fn statement_end(
             // an opening bracket. An `=` that ends a line is not punctuation here — the initialiser may
             // be an expression the next line carries, which the indentation decides.
             if !ends_on_an_operator(mask, line_start, line_end) {
-                let Some(next) = next_text_line(line + 1) else { break };
+                let Some(next) = next_text_line(line + 1) else {
+                    break;
+                };
                 if indent_width_units(&source_lines[next]) <= indent {
                     break;
                 }
@@ -556,7 +553,11 @@ pub fn statement_end(
     // and its initialiser's own text stops at the last real character the statement has — never at the
     // newline, and never at the end of the file.
     let block_end = last.max(content_end);
-    let initializer_end = if content_end == from { block_end } else { content_end };
+    let initializer_end = if content_end == from {
+        block_end
+    } else {
+        content_end
+    };
     (initializer_end, line_of(starts, block_end), equals)
 }
 
@@ -581,7 +582,21 @@ fn ends_on_an_operator(mask: &[u16], from: usize, to: usize) -> bool {
     }
     matches!(
         mask[at - 1] as u8 as char,
-        ',' | '+' | '-' | '*' | '/' | '%' | '&' | '|' | '?' | '<' | '(' | '[' | '{' | '!' | '~' | '^'
+        ',' | '+'
+            | '-'
+            | '*'
+            | '/'
+            | '%'
+            | '&'
+            | '|'
+            | '?'
+            | '<'
+            | '('
+            | '['
+            | '{'
+            | '!'
+            | '~'
+            | '^'
     )
 }
 

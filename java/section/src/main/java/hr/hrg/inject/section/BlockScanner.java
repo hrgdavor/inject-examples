@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /**
  * Part B of {@code lib/section.mjs}: the mask pass's consumer — a block tree over a file's text.
  *
- * <p>This is a heuristic, not a parser (contract §3.5): it counts brackets over text whose comments and
+ * <p>This is a heuristic, not a parser (RFC 1 §3.7): it counts brackets over text whose comments and
  * string literals are blanked, and it must not grow a real per-language grammar. A language is
  * <em>data plus a lexer</em> (see {@link Lexer}), so adding one is an entry and an extension line,
  * never new matching logic.
@@ -271,7 +271,8 @@ public final class BlockScanner {
     // ------------------------------------------------------------------
 
     private static final Pattern COMMENT_OPENER =
-            Pattern.compile("^(?:(?://|--|;|%|'|REM\\b|<!--|/\\*|\\*)\\s*)+", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^(?:(?://|--|;|%|'|#|REM\\b|<!--|/\\*|\\*)\\s*)+",
+                    Pattern.CASE_INSENSITIVE);
     private static final Pattern COMMENT_CLOSER = Pattern.compile("\\s*(?:-->|\\*/)$");
     // Package-private: the resolver renders declarations with them, and `index.mjs` and this scanner
     // must agree on the spellings.
@@ -389,12 +390,12 @@ public final class BlockScanner {
         String mask = lexer.mask(source);
         if (mask.length() != source.length()) {
             throw new SectionError(who + " mask must preserve length (" + mask.length() + " != "
-                    + source.length() + ")");
+                    + source.length() + ")", ErrorCodes.LEXER_MASK);
         }
         for (int i = 0; i < source.length(); i++) {
             if (source.charAt(i) == '\n' && mask.charAt(i) != '\n') {
                 throw new SectionError(who + " mask must preserve every newline offset (broken at " + i
-                        + ")");
+                        + ")", ErrorCodes.LEXER_MASK);
             }
         }
 
@@ -451,7 +452,7 @@ public final class BlockScanner {
                     } else {
                         continue;                     // nothing to inject
                     }
-                    applyAnchor(block, lex, span == null ? null : span.open);
+                    applyAnchor(block, lex, span);
                     register(list, block, blocks);
                     descend(block, i, span, lex, blocks);
                     lastEnd = Math.max(lastEnd, endLineOf(span, i));
@@ -469,7 +470,7 @@ public final class BlockScanner {
                 Span span = bodySpan(lex, i, headerFrom, nameAt);
                 Block block = new Block("class", name, i);
                 applySpan(block, span);
-                applyAnchor(block, lex, span == null ? null : span.open);
+                applyAnchor(block, lex, span);
                 register(list, block, blocks);
                 descend(block, i, span, lex, blocks);
                 i = endLineOf(span, i) + 1;
@@ -518,7 +519,7 @@ public final class BlockScanner {
                 }
                 Block block = new Block("method", methodDecl.name(), i);
                 applySpan(block, span);
-                applyAnchor(block, lex, span == null ? null : span.open);
+                applyAnchor(block, lex, span);
                 register(list, block, blocks);
                 descend(block, i, span, lex, blocks);
                 i = endLineOf(span, i) + 1;
@@ -546,7 +547,9 @@ public final class BlockScanner {
                         String conditionLine = lex.source.substring(headerStart, headerEnd);
                         block.conditions =
                                 lex.lexer.conditionLiterals(conditionLine, segment.condOffset);
-                        applyAnchor(block, lex, segment.open);
+                        Span anchorSpan = new Span();
+                        anchorSpan.open = segment.open;
+                        applyAnchor(block, lex, anchorSpan);
                         register(list, block, blocks);
                         Span childSpan = new Span();
                         childSpan.openLine = segment.openLine;
@@ -555,6 +558,39 @@ public final class BlockScanner {
                         lastCloseLine = Math.max(lastCloseLine, segment.closeLine);
                     }
                     i = lastCloseLine + 1;
+                    continue;
+                }
+
+                // The same statement, closed by indentation rather than a brace — Python's `if`,
+                // Ruby's `if`/`elsif`, VB's `If`/`ElseIf`. Only a statement block carries its header's
+                // literals, so without this a condition literal in a language that does not brace its
+                // blocks is unreachable at any depth.
+                int indent = Masker.indentWidth(maskedLine);
+                int bodyFrom = i + 1;
+                int bodyEndLine = i;
+                for (int k = bodyFrom; k < lex.lines.length; k++) {
+                    if (lex.lines[k].trim().isEmpty()) {
+                        continue;
+                    }
+                    if (Masker.indentWidth(lex.lines[k]) <= indent) {
+                        break;
+                    }
+                    bodyEndLine = k;
+                }
+                if (bodyEndLine > i) {
+                    Block block = new Block("statement", null, i);
+                    Span span = new Span();
+                    span.indented = true;
+                    span.bodyFrom = bodyFrom;
+                    span.bodyEndLine = bodyEndLine;
+                    applySpan(block, span);
+                    int headerEnd = Masker.endOfLine(lex.mask, start);
+                    block.conditions = lex.lexer.conditionLiterals(lex.source.substring(start,
+                            headerEnd), statement.start());
+                    applyAnchor(block, lex, span);
+                    register(list, block, blocks);
+                    descend(block, i, span, lex, blocks);
+                    i = bodyEndLine + 1;
                     continue;
                 }
             }
@@ -622,14 +658,16 @@ public final class BlockScanner {
 
     /**
      * The body span of a language shape that opens a body: a port of the shape branch of
-     * {@code buildScope} ({@code lib/section.mjs:2165}).
+     * {@code buildScope} ({@code lib/section.mjs:2863}).
      *
      * <p>A shape says where its body begins. An {@code =} is an expression body and is read as such.
      * A {@code {} — or an offset just past one, which is how a shape that opens a brace body states
      * it — is a brace body, scanned from the shape's own name so brackets before it cannot offset the
      * depth; that is what makes a Rust {@code impl Cart {}} a brace span rather than an indented one.
-     * Anything else carries no body of its own: the body is its own line, and is empty when nothing
-     * extends it.
+     * A shape that names no body (its match ends where the language writes the name, as Kotlin's
+     * {@code fun name} does) is followed from there instead: {@code headerFrom} is the end of the
+     * shape's own match, and the resolver reads the header on to the {@code {}, {@code ;} or {@code =}
+     * that ends it — which is how a wrapped parameter list is spanned.
      */
     private static Span shapeSpan(Lex lex, int line, int start, String maskedLine, Declared entry) {
         int nameAt = start + maskedLine.indexOf(entry.name());
@@ -649,11 +687,7 @@ public final class BlockScanner {
         if (opened != -1) {
             return bodySpan(lex, line, opened, nameAt);
         }
-        Span own = new Span();
-        own.indented = true;
-        own.bodyEndLine = line;
-        own.bodyFrom = line;
-        return own;
+        return bodySpan(lex, line, at, nameAt);
     }
 
     /** The body-span rules, once the header's own end offset and last line are known. */
@@ -1181,16 +1215,72 @@ public final class BlockScanner {
         block.blocks.addAll(children);
     }
 
-    private static void applyAnchor(Block block, Lex lex, Integer open) {
-        // No opening offset (an indented body, a keyword-delimited `end` block): there is no brace to
-        // hang a comment anchor on, and a missing offset must not be searched as if it were line 0.
-        if (open == null) {
+    /**
+     * The anchor a block carries, read the way its body is delimited. A braced block's anchor is the
+     * comment that is the first thing inside its braces. A block with no brace — an indented body (a
+     * Python {@code def}) or a keyword-delimited one ({@code End Function}) — has no {@code {} to hang
+     * one on, so the anchor is looked for on the declaration's header line and in the first line of its
+     * body. Port of {@code applyAnchor} ({@code lib/section.mjs:3159}).
+     */
+    private static void applyAnchor(Block block, Lex lex, Span span) {
+        if (span == null) {
             return;
         }
-        Anchor anchor = leadingAnchor(lex.comments, lex.source, lex.lines, lex.starts, open);
+        if (span.open != null) {
+            Anchor anchor = leadingAnchor(lex.comments, lex.source, lex.lines, lex.starts, span.open);
+            if (anchor != null) {
+                block.anchor = anchor;
+            }
+            return;
+        }
+        int from = span.bodyFrom != null ? span.bodyFrom : block.declLine + 1;
+        int to = span.bodyEndLine != null ? span.bodyEndLine : block.declLine;
+        Anchor anchor = indentAnchor(lex.comments, lex.source, lex.lines, lex.starts, block.declLine,
+                from, to);
         if (anchor != null) {
             block.anchor = anchor;
         }
+    }
+
+    /**
+     * The anchor of an <b>indented</b> block (a Python {@code def}, a Ruby {@code def}): the trailing
+     * comment on its header line, or a comment that is the first thing in its body. There is no brace to
+     * open, so the body starts at {@code bodyFrom} and the candidate must be that line or the
+     * declaration's own. Port of {@code indentAnchor} ({@code lib/section.mjs:3134}).
+     */
+    private static Anchor indentAnchor(List<Masker.Comment> comments, String source, String[] lines,
+                                       int[] starts, int declLine, int bodyFrom, int bodyTo) {
+        Masker.Comment first = null;
+        for (Masker.Comment comment : comments) {
+            int line = Masker.lineOf(starts, comment.from());
+            if (line < declLine) {
+                continue;
+            }
+            if (line > bodyTo) {
+                break;
+            }
+            if (line != declLine && line != Masker.nextNonBlank(lines, declLine + 1)) {
+                break;
+            }
+            // On the declaration's own line the comment *is* the trailing comment —
+            // `def legacy(self):  #count` — so nothing needs to precede it.
+            if (line == declLine || source.substring(starts[line], comment.from()).trim().isEmpty()) {
+                first = comment;
+            }
+            break;
+        }
+        if (first == null) {
+            return null;
+        }
+        String body = first.text().trim();
+        if (IS_REGION_LINE.matcher(body).find()) {
+            return null;
+        }
+        Matcher name = ANCHOR_NAME.matcher(body);
+        if (!name.matches()) {
+            return null;
+        }
+        return new Anchor(name.group(1), Masker.lineOf(starts, first.from()));
     }
 
     // ------------------------------------------------------------------

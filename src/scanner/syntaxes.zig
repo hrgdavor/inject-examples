@@ -497,6 +497,125 @@ pub const CSHARP_SYNTAX = Syntax{
     },
 };
 
+/// `^(?:@\w+(?:\([^)]*\))?\s*)*(?:modifiers\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w.<>?, ]+\.)?([A-Za-z_]\w*)`
+/// — Kotlin declares a function with `fun` and no `;`.
+///
+/// The generic `name(` shape reads an annotation's own arguments
+/// (`@JvmName("addOne")`) as a method named after the annotation, so `fun name`
+/// is the shape the language writes. The match ends where the language writes the
+/// name, which is the contract every shape has: the resolver follows the header
+/// from there to the `{`, `;` or `=` that ends it, so a wrapped parameter list is
+/// spanned and an expression body's `=` is found.
+///
+/// **The modifier group is mirrored with its own quirk**, because the corpus
+/// asserts it: in the JavaScript source only the *last* alternative carries the
+/// trailing `\s+` (`…|infix\s+)*`), so `private suspend fun` does **not** match
+/// while `infix fun` does — and `kotlin-fun-modifier` is the row that pins the
+/// empty answer. A shape that "fixed" this would resolve a declaration the
+/// JavaScript does not, which is a divergence rather than an improvement.
+pub fn matchKotlinFun(line: Str) ?Declaration.DeclMatch {
+    var at: usize = 0;
+    while (at < line.len and js.isWhitespace(line[at])) at += 1;
+
+    // Annotations and modifiers, in any order and any number.
+    while (true) {
+        const before = at;
+        if (at < line.len and line[at] == '@') {
+            at += 1;
+            while (at < line.len and js.isAsciiWord(line[at])) at += 1;
+            // A parameter list is skipped whole — `@JvmName("addOne")` — and no
+            // nested `)` is handled, exactly as the regex's `[^)]*` does not.
+            if (at < line.len and line[at] == '(') {
+                at += 1;
+                while (at < line.len and line[at] != ')') at += 1;
+                if (at < line.len) at += 1;
+            }
+            while (at < line.len and js.isWhitespace(line[at])) at += 1;
+            continue;
+        }
+        if (at < line.len and js.isAsciiWord(line[at])) {
+            const start = at;
+            while (at < line.len and js.isAsciiWord(line[at])) at += 1;
+            const word = line[start..at];
+            if (!isKotlinFunModifier(word)) {
+                // Not `fun`, so this is the name the shapes are looking for; the
+                // starred group gives the text back and the `fun` test fails.
+                at = before;
+                break;
+            }
+            // Only `infix` consumes the whitespace after it, as the source has it.
+            if (word.len == 5 and js.startsWithBytes(word, "infix")) {
+                while (at < line.len and js.isWhitespace(line[at])) at += 1;
+            }
+            continue;
+        }
+        break;
+    }
+
+    if (!js.startsWithBytes(line[at..], "fun")) return null;
+    at += 3;
+    if (at >= line.len or !js.isWhitespace(line[at])) return null;
+
+    // `fun <T> first(…)`: the type parameters before the name.
+    while (at < line.len and js.isWhitespace(line[at])) at += 1;
+    if (at < line.len and line[at] == '<') {
+        while (at < line.len and line[at] != '>') at += 1;
+        if (at < line.len) at += 1;
+        while (at < line.len and js.isWhitespace(line[at])) at += 1;
+    }
+
+    // `fun String.shout()`: a receiver type, whose last `.` ends it. The type may
+    // hold spaces (`Map<String, Int>.get`), which is what the regex's character
+    // class allows and why this scans rather than matching a word.
+    var scan = at;
+    var after_dot: ?usize = null;
+    while (scan < line.len) {
+        const ch = line[scan];
+        if (ch == '.') {
+            after_dot = scan + 1;
+            scan += 1;
+            continue;
+        }
+        if (ch == '<' or ch == '>' or ch == '?' or ch == ',' or ch == ' ') {
+            scan += 1;
+            continue;
+        }
+        if (js.isAsciiWord(ch)) {
+            scan += 1;
+            continue;
+        }
+        break;
+    }
+    if (after_dot) |dot| at = dot;
+
+    if (at >= line.len) return null;
+    if (!(line[at] >= 'A' and line[at] <= 'Z') and !(line[at] >= 'a' and line[at] <= 'z') and line[at] != '_') return null;
+    const start = at;
+    at += 1;
+    while (at < line.len and js.isAsciiWord(line[at])) at += 1;
+    return .{ .name = line[start..at], .header_from = at };
+}
+
+/// The words the Kotlin shape accepts before `fun`, and nothing else: an
+/// identifier that is not one of these is the name the caller is looking for, not
+/// a modifier, so the scan must stop rather than swallow it.
+fn isKotlinFunModifier(word: Str) bool {
+    const modifiers = [_][]const u8{
+        "public",   "private", "protected", "internal", "open",     "override",
+        "suspend",  "inline",  "operator",  "tailrec",  "abstract", "final",
+        "external", "expect",  "actual",    "infix",
+    };
+    for (modifiers) |modifier| {
+        if (word.len == modifier.len and js.startsWithBytes(word, modifier)) return true;
+    }
+    return false;
+}
+
+/// The Kotlin declarations, as a table of one shape.
+pub const KOTLIN_DECLARATIONS = [_]Declaration{
+    .{ .kind = .method, .match = matchKotlinFun },
+};
+
 pub const KOTLIN_SYNTAX = Syntax{
     .name = "kotlin",
     .line_comments = &C_LINE,
@@ -507,6 +626,7 @@ pub const KOTLIN_SYNTAX = Syntax{
         .{ .open = u("\""), .close = u("\"") },
         .{ .open = u("'"), .close = u("'") },
     },
+    .declarations = &KOTLIN_DECLARATIONS,
 };
 
 pub const PHP_SYNTAX = Syntax{

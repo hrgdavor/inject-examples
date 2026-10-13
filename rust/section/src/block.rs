@@ -230,6 +230,56 @@ pub fn leading_anchor(
     })
 }
 
+/// The anchor of an **indented** block (a Python `def`, a Ruby `def`): the trailing comment on its
+/// header line, or a comment that is the first thing in its body. There is no brace to open, so the
+/// candidate must be that line or the declaration's own.
+///
+/// The JavaScript's `bodyFrom` is passed and unused, so it is not a parameter here.
+pub fn indent_anchor(
+    comments: &[Comment],
+    source: &[u16],
+    lines: &[Vec<u16>],
+    starts: &[usize],
+    decl_line: usize,
+    body_to: usize,
+) -> Option<Anchor> {
+    // On the declaration's own line the comment *is* the trailing comment — `def legacy(self): #count`
+    // — so nothing needs to precede it; elsewhere it must be the first thing on its line.
+    let first_of_line = |comment: &Comment| {
+        let line = line_of(starts, comment.from);
+        line == decl_line
+            || trim_units(&source[starts.get(line).copied().unwrap_or(0)..comment.from]).is_empty()
+    };
+
+    let mut first: Option<&Comment> = None;
+    for comment in comments {
+        let line = line_of(starts, comment.from);
+        if line < decl_line {
+            continue;
+        }
+        if line > body_to {
+            break;
+        }
+        if line != decl_line && Some(line) != next_non_blank_units(lines, decl_line + 1) {
+            break;
+        }
+        if first_of_line(comment) {
+            first = Some(comment);
+        }
+        break;
+    }
+    let first = first?;
+
+    let body = first.text.trim();
+    if is_region_line(body) {
+        return None;
+    }
+    Some(Anchor {
+        name: anchor_name(body)?.to_string(),
+        line: line_of(starts, first.from),
+    })
+}
+
 /// The unit lines of a source, for a caller that has the text but not yet the split.
 pub fn lines_of(source: &str) -> Vec<Vec<u16>> {
     source.split('\n').map(units).collect()

@@ -81,11 +81,11 @@ public final class Masker {
 
         String result = new String(out);
         if (result.length() != text.length()) {
-            throw new SectionError("masked length mismatch");
+            throw new SectionError("masked length mismatch", ErrorCodes.LEXER_MASK);
         }
         for (int k = 0; k < length; k++) {
             if (text.charAt(k) == '\n' && result.charAt(k) != '\n') {
-                throw new SectionError("newline offset mismatch");
+                throw new SectionError("newline offset mismatch", ErrorCodes.LEXER_MASK);
             }
         }
         return result;

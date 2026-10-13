@@ -12,7 +12,7 @@
 //! `Vec<u16>` and the entry points take and return `&str` only where that is lossless: `masked` returns
 //! a `String` built from the blanked units, and the scanner works on that.
 
-use crate::SectionError;
+use crate::{ErrorCode, SectionError};
 
 /// A comment-only span: its body (delimiters stripped) and where it sits in the text.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,11 +105,17 @@ pub fn masked(text: &str) -> Result<String, SectionError> {
     }
 
     if out.len() != source.len() {
-        return Err(SectionError::new("masked length mismatch"));
+        return Err(SectionError::coded(
+            ErrorCode::LexerMask,
+            "masked length mismatch",
+        ));
     }
     for k in 0..length {
         if source[k] == b'\n' as u16 && out[k] != b'\n' as u16 {
-            return Err(SectionError::new("newline offset mismatch"));
+            return Err(SectionError::coded(
+                ErrorCode::LexerMask,
+                "newline offset mismatch",
+            ));
         }
     }
     Ok(from_units(&out))

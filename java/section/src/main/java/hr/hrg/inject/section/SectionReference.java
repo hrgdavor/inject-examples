@@ -32,6 +32,12 @@ import java.util.List;
  * verbatim slice of lines for a scope to widen. Nothing here warns: a reference is one spelling of
  * one thing, and what is not one is an error with the text that says why.
  *
+ * <p>A path's last segment may also be an envelope mark, {@code ^} or {@code $}
+ * ({@code Inventory/^,toString,$}). The pair says that one block's own first and last lines are taken
+ * around whatever sits between them, so the marks are validated here — one {@code ^} first, one
+ * {@code $} last, around one block — while the block they name is chosen during resolution, by what
+ * they wrap.
+ *
  * @param raw       the text as it was given, without the {@code #}
  * @param canonical the normalised spelling, e.g. {@code Cart/Line/render/++} or {@code add,L40-L44}
  * @param selectors the selectors, in the order written
@@ -60,16 +66,23 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
      * {@code segments} and the {@code scope} its own trailing modifier asks for; a line-range
      * selector carries its endpoints instead.
      *
+     * <p>A path selector may also carry an <b>envelope</b>: {@code Cart/^} and {@code Cart/$} say
+     * which block the marks around the member open and close, and the marks are whole segments of the
+     * path, kept beside the names as {@code segments}' own last entry.
+     *
      * @param kind     {@code path}, or {@code lines} for a line range
-     * @param text     the selector as written, trimmed
-     * @param segments the path's name segments, empty for a line range
+     * @param text     the selector as written, trimmed — or, for a selector between an envelope's
+     *                 marks, the parent-qualified spelling the envelope reads it as
+     * @param segments the path's name segments (a trailing envelope mark included), empty for a line
+     *                 range
      * @param scope    how much of the match the selector asks for; meaningless for a line range
      * @param from     a line range's first endpoint, {@code null} for a path selector
      * @param to       a line range's last endpoint, {@code null} for a path selector or for a range
      *                 written as a single point
+     * @param envelope the envelope mark this selector carries, or {@code null} when it carries none
      */
     public record Selector(String kind, String text, List<String> segments, Scope scope,
-                           LinePoint from, LinePoint to) {
+                           LinePoint from, LinePoint to, Envelope envelope) {
 
         /** The kind of a semantic-path selector. */
         public static final String PATH = "path";
@@ -81,17 +94,68 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
             segments = List.copyOf(segments);
         }
 
+        /** A selector that carries no envelope — the ordinary case. */
+        public Selector(String kind, String text, List<String> segments, Scope scope,
+                        LinePoint from, LinePoint to) {
+            this(kind, text, segments, scope, from, to, null);
+        }
+
         static Selector path(String text, List<String> segments, Scope scope) {
-            return new Selector(PATH, text, segments, scope, null, null);
+            return new Selector(PATH, text, segments, scope, null, null, null);
+        }
+
+        static Selector path(String text, List<String> segments, Scope scope, Envelope envelope) {
+            return new Selector(PATH, text, segments, scope, null, null, envelope);
+        }
+
+        /** A mark written bare — {@code Inventory/^,toString,$} — which inherits the other's parent. */
+        static Selector bareMark(String text, String mark) {
+            return new Selector(PATH, text, List.of(text), Scope.DECLARATION, null, null,
+                    new Envelope(mark, null));
         }
 
         static Selector lines(String text, LinePoint from, LinePoint to) {
-            return new Selector(LINES, text, List.of(), Scope.DECLARATION, from, to);
+            return new Selector(LINES, text, List.of(), Scope.DECLARATION, from, to, null);
         }
 
         /** Whether this selector is a line range rather than a semantic path. */
         public boolean isLines() {
             return LINES.equals(kind);
+        }
+    }
+
+    /**
+     * The envelope mark a path selector carries: {@code ^} is the parent block's head, {@code $} its
+     * tail, and {@code parent} is the path before the mark.
+     *
+     * <p>The mark is a whole segment and only ever the last one, which is what keeps it out of every
+     * name: a sentinel is never the only segment of its path (there would be no parent to open or
+     * close), and a {@code $} that is part of a name is not a sentinel because the segment is longer
+     * than it. So {@code foo$} is the name {@code foo$} while {@code foo/$} is the last line of
+     * {@code foo}.
+     *
+     * <p>{@code parent} is {@code null} for a mark written bare ({@code ^} or {@code $} as a whole
+     * selector): its parent is the one the <em>other</em> mark names, and
+     * {@link SectionReference#parse(String)} fills it in once both ends are known.
+     *
+     * @param mark   {@code ^} or {@code $}
+     * @param parent the path before the mark, or {@code null} when the mark was written bare
+     */
+    public record Envelope(String mark, List<String> parent) {
+
+        /** The head mark: the parent's declaration line through the line its body opens on. */
+        public static final String OPEN = "^";
+
+        /** The tail mark: the line the parent block ends on. */
+        public static final String CLOSE = "$";
+
+        public Envelope {
+            parent = parent == null ? null : List.copyOf(parent);
+        }
+
+        /** Whether this is the head mark, {@code ^}, rather than the tail. */
+        public boolean isHead() {
+            return OPEN.equals(mark);
         }
     }
 
@@ -128,23 +192,35 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
      * single path selector parses to the same canonical spelling, the same segments and the same
      * scope it always has.
      *
+     * <p>A reference carrying envelope marks is validated here, because the pair is a property of the
+     * spelling rather than of the file: {@code Cart/^,toString,$} parses, a lone {@code Cart/^} and a
+     * pair whose ends disagree do not. Those failures are the {@code resolution/envelope-…} family —
+     * the reference is well formed and the pair is what cannot be read — but they need no file, and
+     * the JavaScript raises its grammar error type for them, so they are a
+     * {@link SectionReferenceException} thrown before any file is consulted. {@link SectionResolver}
+     * is what resolves the block the marks name.
+     *
      * @param raw the reference, without the {@code #}
      * @return the parsed reference
      * @throws SectionReferenceException when the reference is malformed: nothing named, an empty
      *                                   selector, an empty path segment, more than eight segments,
      *                                   more than one modifier, a modifier where it may not go, a
-     *                                   name carrying {@code +}, or a malformed line range. The
-     *                                   message is part of the contract.
+     *                                   name carrying {@code +}, or a malformed line range; and when
+     *                                   the reference carries envelope marks that are not one
+     *                                   {@code ^} first and one {@code $} last around a single block,
+     *                                   whose code is then {@code resolution/envelope-…}. The message
+     *                                   is part of the contract.
      */
     public static SectionReference parse(String raw) {
         if (raw == null || raw.isEmpty()) {
-            throw new SectionReferenceException("\"#\" names nothing");
+            throw grammarError(ErrorCodes.EMPTY_REFERENCE, "\"#\" names nothing", null);
         }
 
         List<String> parts = split(raw, ',');
         for (String part : parts) {
             if (part.trim().isEmpty()) {
-                throw new SectionReferenceException("\"#" + raw + "\" has an empty selector");
+                throw grammarError(ErrorCodes.EMPTY_SELECTOR,
+                        "\"#" + raw + "\" has an empty selector", raw);
             }
         }
 
@@ -164,17 +240,31 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
                 continue;
             }
             if (LINE_RANGE_PREFIX.matcher(text).find()) {
-                throw new SectionReferenceException("\"#" + text
-                        + "\" is not a line range; write L<line> or L<line>:<column>");
+                throw grammarError(ErrorCodes.LINE_RANGE_NOT_A_RANGE, "\"#" + text
+                        + "\" is not a line range; write L<line> or L<line>:<column>", text);
+            }
+            // A mark may be written bare — `Inventory/^,toString,$` — and then it is the *other*
+            // mark's parent it refers to, so the path is named once. The bare spelling is a whole
+            // selector of one segment, which no path reaches because a mark needs a parent.
+            String bare = envelopeMark(text);
+            if (bare != null) {
+                canonicalParts.add(text);
+                selectors.add(Selector.bareMark(text, bare));
+                continue;
             }
             if (!OPENS_A_NAME.matcher(text).find()) {
-                throw new SectionReferenceException("\"#" + text + "\" names nothing");
+                throw grammarError(ErrorCodes.EMPTY_SEGMENT, "\"#" + text + "\" names nothing", text);
             }
 
             SectionReference parsed = parseReference(text);
             canonicalParts.add(parsed.canonical());
-            selectors.add(Selector.path(text, parsed.segments(), parsed.scope()));
+            selectors.add(Selector.path(text, parsed.segments(), parsed.scope(),
+                    envelopeOf(parsed.segments())));
         }
+
+        // A reference that carries marks is read as one envelope: which block they open and close is
+        // settled here, and what sits between them is qualified by that parent, before any resolution.
+        selectors = applyEnvelope(selectors, raw);
 
         String canonical = String.join(",", canonicalParts);
 
@@ -207,21 +297,23 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
      */
     public static SectionReference parseReference(String raw) {
         if (raw == null || raw.isEmpty()) {
-            throw new SectionReferenceException("\"#\" names nothing");
+            throw grammarError(ErrorCodes.EMPTY_REFERENCE, "\"#\" names nothing", null);
         }
         if (raw.indexOf(',') >= 0) {
-            throw new SectionReferenceException("\"#" + raw + "\" has an empty selector");
+            throw grammarError(ErrorCodes.EMPTY_SELECTOR,
+                    "\"#" + raw + "\" has an empty selector", raw);
         }
         // A reference names a section of one file, and the file is the path the marker's link already
         // carries, so `#` never occurs inside a reference: a second one is a link written into the
         // fragment by mistake.
         if (raw.indexOf('#') >= 0) {
-            throw new SectionReferenceException(
-                    "\"#" + raw + "\" has a second \"#\"; a reference names one file");
+            throw grammarError(ErrorCodes.SECOND_HASH,
+                    "\"#" + raw + "\" has a second \"#\"; a reference names one file", raw);
         }
         if (LINE_RANGE_PREFIX.matcher(raw).find()) {
             lineRangeOf(raw);                   // throws when the spelling is malformed
-            throw new SectionReferenceException("\"#" + raw + "\" is a line range, not a section path");
+            throw grammarError(ErrorCodes.LINE_RANGE_AS_PATH,
+                    "\"#" + raw + "\" is a line range, not a section path", raw);
         }
         return parsePath(raw);
     }
@@ -235,11 +327,12 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
         List<String> parts = split(raw, '/');
         for (String part : parts) {
             if (part.isEmpty()) {
-                throw new SectionReferenceException("\"#" + raw + "\" has an empty path segment");
+                throw grammarError(ErrorCodes.EMPTY_SEGMENT,
+                        "\"#" + raw + "\" has an empty path segment", raw);
             }
         }
         if (parts.size() > MAX_SEGMENTS) {
-            throw new SectionReferenceException("\"#" + raw + "\" is deeper than 8 sections");
+            throw grammarError(ErrorCodes.TOO_DEEP, "\"#" + raw + "\" is deeper than 8 sections", raw);
         }
 
         List<String> modifiers = new ArrayList<>();
@@ -250,8 +343,8 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
             String modifier = segmentModifier(segment);
             if (modifier != null) {
                 if (index != lastPart) {
-                    throw new SectionReferenceException("\"" + modifier
-                            + "\" may only modify the last path segment of \"#" + raw + "\"");
+                    throw grammarError(ErrorCodes.MODIFIER_NOT_LAST, "\"" + modifier
+                            + "\" may only modify the last path segment of \"#" + raw + "\"", segment);
                 }
                 modifiers.add(modifier);
                 continue;
@@ -259,18 +352,21 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
             // A segment of nothing but modifier characters (`+++`, `---`) is two of them on one
             // segment. `--` and `--brand` are names: a CSS custom property is one.
             if (MODIFIER_RUN.matcher(segment).matches() && !"--".equals(segment)) {
-                throw new SectionReferenceException("\"#" + raw + "\" carries more than one modifier");
+                throw grammarError(ErrorCodes.TOO_MANY_MODIFIERS,
+                        "\"#" + raw + "\" carries more than one modifier", segment);
             }
-            assertName(segment, raw);
+            assertName(segment, raw, index == lastPart);
             names.add(segment);
         }
 
         if (names.isEmpty()) {
             // A path of modifiers has no subject: `-` is the old body scope, and `++`/`+` name nothing
             // at all. Say that rather than "more than one modifier" about a single one.
-            throw new SectionReferenceException(segmentModifier(raw) == null
-                    ? "\"#" + raw + "\" carries more than one modifier"
-                    : "\"#" + raw + "\" names nothing");
+            throw segmentModifier(raw) == null
+                    ? grammarError(ErrorCodes.TOO_MANY_MODIFIERS,
+                            "\"#" + raw + "\" carries more than one modifier", raw)
+                    : grammarError(ErrorCodes.EMPTY_SEGMENT,
+                            "\"#" + raw + "\" names nothing", raw);
         }
 
         String merged = mergeModifiers(modifiers, raw);
@@ -305,11 +401,19 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
      * nothing". A {@code +} that <em>opens</em> a segment is the old prefix form ({@code +toString}),
      * whose replacement has the path before it.
      *
-     * @param segment a segment already known not to be a whole modifier
-     * @param raw     the reference as written, for the message
+     * <p>A whole envelope mark ({@code ^}, {@code $}) is not a name but is a legal last segment, which
+     * {@code carriesMark} allows; {@code ^} anywhere earlier is the "names nothing" error, because
+     * there is no parent for it to open.
+     *
+     * @param segment     a segment already known not to be a whole modifier
+     * @param raw         the reference as written, for the message
+     * @param carriesMark whether this segment may be an envelope mark
      */
-    private static void assertName(String segment, String raw) {
+    private static void assertName(String segment, String raw, boolean carriesMark) {
         if (NAME.matcher(segment).matches()) {
+            return;
+        }
+        if (carriesMark && envelopeMark(segment) != null) {
             return;
         }
         int at = segment.indexOf('+');
@@ -320,12 +424,13 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
             }
             String run = segment.substring(at, end);
             String before = segment.substring(0, at);
-            throw new SectionReferenceException(before.isEmpty()
+            throw grammarError(ErrorCodes.MODIFIER_OLD_SPELLING, before.isEmpty()
                     ? "\"" + run + "\" is a path segment now; it follows the path, as \"#<path>/"
                             + run + "\""
-                    : "\"" + run + "\" is a path segment now; write \"#" + before + "/" + run + "\"");
+                    : "\"" + run + "\" is a path segment now; write \"#" + before + "/" + run + "\"",
+                    segment);
         }
-        throw new SectionReferenceException("\"#" + raw + "\" names nothing");
+        throw grammarError(ErrorCodes.EMPTY_SEGMENT, "\"#" + raw + "\" names nothing", segment);
     }
 
     /**
@@ -344,7 +449,181 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
         if (modifiers.size() == 1) {
             return modifiers.get(0);
         }
+        // Unreachable from the path reader — only the last segment may be a modifier, so at most one is
+        // ever collected — and `lib/section.mjs` attaches no code here, so neither does this.
         throw new SectionReferenceException("\"#" + raw + "\" carries more than one modifier");
+    }
+
+    // ------------------------------------------------------------------
+    // Envelope marks
+    // ------------------------------------------------------------------
+
+    /** The whole segments that are marks: {@code ^} is a parent's head, {@code $} its tail. */
+    private static final List<String> ENVELOPE_MARKS = List.of(Envelope.OPEN, Envelope.CLOSE);
+
+    /** Is this segment a whole envelope mark? */
+    private static String envelopeMark(String segment) {
+        return ENVELOPE_MARKS.contains(segment) ? segment : null;
+    }
+
+    /**
+     * The path before an envelope mark, or {@code null} when the segment does not carry one.
+     *
+     * <p>{@code Inventory/^} opens {@code Inventory} and {@code Inventory/Item/$} closes the
+     * {@code Item} inside it; a bare {@code ^} has no parent and is not a mark of its own.
+     */
+    private static Envelope envelopeOf(List<String> segments) {
+        if (segments.size() < 2) {
+            return null;
+        }
+        String mark = envelopeMark(segments.get(segments.size() - 1));
+        if (mark == null) {
+            return null;
+        }
+        return new Envelope(mark, segments.subList(0, segments.size() - 1));
+    }
+
+    /**
+     * Read a reference that carries envelope marks: a parent declaration's own first and last lines,
+     * wrapped around the members selected from inside it.
+     *
+     * <p>{@code Inventory/^,toString,$} is the class's opening line, the {@code toString} method, and
+     * the class's closing line. The marks say which block is being opened and closed, and the path may
+     * be written on <b>either</b> of them: a bare mark refers to the parent the other one names, so the
+     * path is written once rather than on every selector. What sits <b>between</b> the marks is read
+     * inside that block, and a selector that already names the parent is left alone, so the long form
+     * ({@code Inventory/^,Inventory/toString,Inventory/$}) means the same thing.
+     *
+     * <p>A mark is a whole segment of a path, so it cannot be confused with a name. What has to be
+     * checked is that the pair makes sense: both ends present, one parent between them, and in the
+     * {@code ^} then {@code $} order. Anything else is an error rather than a silent reading of
+     * something the user did not write.
+     *
+     * <p>These failures carry {@code resolution/} codes — the reference is well formed and the pair is
+     * what cannot be read — but they are raised while the reference is read and no file is consulted,
+     * so they are a {@link SectionReferenceException}, the type the JavaScript raises for them. The
+     * namespace and the type are two different facts: the code says which category the failure belongs
+     * to, while the type says when it can be raised.
+     *
+     * @param selectors the parsed selectors, in the order written
+     * @param raw       the reference as written, for the messages
+     * @return the selectors with both ends' parents filled in and the interior ones qualified
+     */
+    private static List<Selector> applyEnvelope(List<Selector> selectors, String raw) {
+        boolean any = false;
+        for (Selector selector : selectors) {
+            if (selector.envelope() != null) {
+                any = true;
+                break;
+            }
+        }
+        if (!any) {
+            return selectors;
+        }
+
+        Selector first = selectors.get(0);
+        Selector last = selectors.get(selectors.size() - 1);
+        if (selectors.size() == 1) {
+            throw grammarError(ErrorCodes.ENVELOPE_ALONE, "\"#" + raw + "\": a lone \""
+                    + first.envelope().mark()
+                    + "\" has nothing to " + (first.envelope().isHead() ? "close" : "open"), raw);
+        }
+        if (first.envelope() == null || last.envelope() == null
+                || !first.envelope().isHead() || last.envelope().isHead()) {
+            throw grammarError(ErrorCodes.ENVELOPE_ORDER,
+                    "\"#" + raw + "\": an envelope is \"^\" first and \"$\" last, "
+                            + "around what they open and close", raw);
+        }
+        for (int index = 1; index < selectors.size() - 1; index++) {
+            if (selectors.get(index).envelope() != null) {
+                throw grammarError(ErrorCodes.ENVELOPE_MARKS,
+                        "\"#" + raw + "\": an envelope has one \"^\" and one \"$\"", raw);
+            }
+        }
+
+        // The path may be on either end; where both are written they must agree.
+        List<List<String>> named = new ArrayList<>();
+        if (first.envelope().parent() != null) {
+            named.add(first.envelope().parent());
+        }
+        if (last.envelope().parent() != null) {
+            named.add(last.envelope().parent());
+        }
+        if (named.isEmpty()) {
+            throw grammarError(ErrorCodes.ENVELOPE_NO_BLOCK,
+                    "\"#" + raw + "\": neither \"^\" nor \"$\" names a block, so there "
+                            + "is nothing to open or close", raw);
+        }
+        List<String> parent = named.get(0);
+        for (List<String> other : named.subList(1, named.size())) {
+            if (!String.join("/", other).equals(String.join("/", parent))) {
+                throw grammarError(ErrorCodes.ENVELOPE_MISMATCH,
+                        "\"#" + raw + "\": \"^\" opens \"" + String.join("/", parent)
+                                + "\" and \"$\" closes \"" + String.join("/", other)
+                                + "\"; they must be the same block", raw);
+            }
+        }
+
+        List<Selector> applied = new ArrayList<>(selectors.size());
+        applied.add(withParent(first, parent));
+        // What sits between the marks is read inside the block they name. A selector that already
+        // starts with the parent's own path is left as written: it says the same thing, and prepending
+        // the prefix twice would name nothing.
+        for (int index = 1; index < selectors.size() - 1; index++) {
+            Selector selector = selectors.get(index);
+            applied.add(selector.isLines() || startsWith(selector.segments(), parent)
+                    ? selector : qualified(selector, parent));
+        }
+        applied.add(withParent(last, parent));
+        return applied;
+    }
+
+    /** The same mark, with its parent filled in — the one the other end named. */
+    private static Selector withParent(Selector selector, List<String> parent) {
+        return new Selector(selector.kind(), selector.text(), selector.segments(), selector.scope(),
+                selector.from(), selector.to(), new Envelope(selector.envelope().mark(), parent));
+    }
+
+    /** Does this path already open with the parent's own path? */
+    private static boolean startsWith(List<String> segments, List<String> parent) {
+        if (segments.size() < parent.size()) {
+            return false;
+        }
+        for (int index = 0; index < parent.size(); index++) {
+            if (!parent.get(index).equals(segments.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * An interior selector, qualified by the parent the marks name: the parent's path is prepended,
+     * and the selector's own text follows, because that is the spelling the resolver reads.
+     */
+    private static Selector qualified(Selector selector, List<String> parent) {
+        List<String> segments = new ArrayList<>(parent);
+        segments.addAll(selector.segments());
+        return new Selector(Selector.PATH, String.join("/", segments), segments, selector.scope(),
+                null, null, null);
+    }
+
+    /**
+     * A failure raised while the reference is read, with the code and the selector at fault.
+     *
+     * <p>The Java counterpart of {@code grammarError} in {@code lib/section.mjs}: thrown as a
+     * {@link SectionReferenceException} because no file has been read yet, whatever the code's own
+     * namespace says. Most callers pass a {@code grammar/} code; the envelope pair is validated here
+     * too and carries {@code resolution/envelope-…}, exactly as the JavaScript raises its grammar
+     * error type for it.
+     *
+     * @param code     one of {@link ErrorCodes}' codes
+     * @param message  the contract text
+     * @param selector the selector at fault as written, or {@code null} when the whole reference is
+     */
+    private static SectionReferenceException grammarError(String code, String message,
+                                                          String selector) {
+        return new SectionReferenceException(message, code, selector);
     }
 
     // ------------------------------------------------------------------
@@ -394,30 +673,32 @@ public record SectionReference(String raw, String canonical, List<Selector> sele
             return null;
         }
         if (!isWholeLineRange(raw)) {
-            throw new SectionReferenceException("\"#" + raw
-                    + "\" is not a line range; write L<line> or L<line>:<column>");
+            throw grammarError(ErrorCodes.LINE_RANGE_NOT_A_RANGE, "\"#" + raw
+                    + "\" is not a line range; write L<line> or L<line>:<column>", raw);
         }
 
         // A spelling that consumes the whole text is still one of four forms; re-read it to pull the
         // numbers out. The scan above is the grammar, so this cannot fail on a shape it accepted.
         java.util.regex.Matcher match = LINE_RANGE_FULL.matcher(raw);
         if (!match.matches()) {
-            throw new SectionReferenceException("\"#" + raw
-                    + "\" is not a line range; write L<line> or L<line>:<column>");
+            throw grammarError(ErrorCodes.LINE_RANGE_NOT_A_RANGE, "\"#" + raw
+                    + "\" is not a line range; write L<line> or L<line>:<column>", raw);
         }
 
         LinePoint from = point(match.group(1), match.group(2));
         LinePoint to = match.group(3) == null ? null : point(match.group(3), match.group(4));
 
         if (zero(from) || (to != null && zero(to))) {
-            throw new SectionReferenceException("\"#" + raw + "\" counts lines and columns from 1");
+            throw grammarError(ErrorCodes.LINE_RANGE_FROM_1,
+                    "\"#" + raw + "\" counts lines and columns from 1", raw);
         }
         if (to != null) {
             boolean backwards = to.line() < from.line()
                     || (to.line() == from.line() && to.column() != null && from.column() != null
                             && to.column() < from.column());
             if (backwards) {
-                throw new SectionReferenceException("\"#" + raw + "\" ends before it starts");
+                throw grammarError(ErrorCodes.LINE_RANGE_BACKWARDS,
+                        "\"#" + raw + "\" ends before it starts", raw);
             }
         }
         return new LineRange(from, to);

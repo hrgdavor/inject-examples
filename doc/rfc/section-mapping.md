@@ -1,14 +1,16 @@
-# RFC 1 — Section mapping syntax
+# RFC 1 — Section mapping: the contract and the resolution core
 
-|                              |                                                                            |
-| ---------------------------- | -------------------------------------------------------------------------- |
+|                              |                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------ |
 | **Status**                   | Release candidate for 1.0 — **not** 1.0 yet. The design questions are settled ([§9](#9-decisions)); what remains is to exercise the document against a fresh port. |
-| **Version**                  | `0.9-rc` (see [Document status](#10-document-status-and-versioning))       |
-| **Supersedes**               | nothing                                                                    |
-| **Normative detail**         | [`doc/section-matching.md`](../section-matching.md) — the resolution rules |
+| **Version**                  | `0.9-rc` (see [Document status](#10-document-status-and-versioning))           |
+| **Supersedes**               | nothing                                                                        |
+| **Normative detail**         | [`doc/section-matching.md`](../section-matching.md) — how a reference resolves |
+| **This document**            | what a section mapper *is*, the one contract both use cases call, the execution profiles that read it, and the suite that measures it |
+| **Use-case specs**           | [RFC 2 — code jump](code-jump.md) (navigation, best-effort) and [RFC 3 — inject examples](inject-examples.md) (injection, strict) |
 | **Conformance data**         | [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json), [`test/vectors/lexical-vectors.json`](../../test/vectors/lexical-vectors.json), [`test/vectors/manifest.json`](../../test/vectors/manifest.json) |
 | **Reference implementation** | [`lib/section.mjs`](../../lib/section.mjs) (matcher), [`index.mjs`](../../index.mjs) (document rules) |
-| **Discussion**               | the eight settled questions are in [§9](#9-decisions)                      |
+| **Discussion**               | the settled questions are in [§9](#9-decisions)                                |
 
 ---
 
@@ -38,9 +40,7 @@ composition rules are the same; what differs is only what a segment *names*. A
 reference cannot reach into a second file, and a second `#` is a broken link
 rather than a nested reference ([§9.8](#98-cross-file-references-are-out-of-scope)).
 
-This RFC defines the problem, the two use cases it must serve, the boundary
-between what a section mapper is and is not, and the conformance suite a new
-implementation is measured against. The precise resolution algorithm lives in
+The precise resolution algorithm lives in
 [`doc/section-matching.md`](../section-matching.md); this document is the
 umbrella contract that names it, versions it and bounds it.
 
@@ -48,6 +48,49 @@ umbrella contract that names it, versions it and bounds it.
 conformant implementation either returns *the exact text and its 1-based
 inclusive line ranges* or raises an error naming the selector that failed. It
 never returns an approximation.
+
+### 1.1 There is one resolver, and two ways to read it
+
+The design mistake this document exists to prevent is a second resolver. There is
+exactly **one** resolution contract — one grammar, one walk, one message set, one
+suite — and everything a caller does differently it does *after* the call.
+
+What genuinely differs between the two products built on it is not the algorithm
+but the **profile**: when a failure fails the run, and how much of a useful answer
+an imperfect reference still yields. A resolver that returns something different
+depending on who asked is the drift this split removes.
+
+|                                 | [RFC 2 — code jump](code-jump.md)               | [RFC 3 — inject examples](inject-examples.md)                   |
+| ------------------------------- | ----------------------------------------------- | --------------------------------------------------------------- |
+| Product                         | IDE, editor plugin, doc-site link, code review  | documentation pipeline (this project)                           |
+| Wants from a resolution         | the **first line**, to put a cursor on          | the **exact text**, byte for byte, plus ranges                  |
+| When the reference is imperfect | best effort: a useful place, with a warning     | fail: a hard error, no approximation                            |
+| As a gate (`--check`, CI)       | any non-exact resolve **is** an error           | any non-exact resolve **is** an error                           |
+| What only it tolerates          | the editor reading — a warning, never at a gate | a *skipped* marker under `--lenient`, never a substituted block |
+
+So the layers are: the **resolution core** in this document (never
+approximates), [RFC 2](code-jump.md) on top of it (an outcome profile that may
+be best-effort in an editor and strict in a gate), and
+[RFC 3](inject-examples.md) on top of both (the strict end, where nothing but an
+exact answer is ever accepted). The three are normative in that order, and a
+disagreement between them is resolved here, not by whichever is read last.
+
+### 1.2 What is normative where
+
+Three short rules keep the layering from blurring as the documents grow:
+
+- **[`doc/section-matching.md`](../section-matching.md)** is normative for *how a
+  reference resolves* — the grammar, the walk, the modifiers, the envelopes and
+  the messages.
+- **This document** is normative for *what a mapper is*: the operations, the two
+  error categories, the non-goals, the conformance obligations, and the fact that
+  one resolver serves every profile.
+- **[RFC 2](code-jump.md)** and **[RFC 3](inject-examples.md)** are normative
+  **only** for what their use case does with a resolution — the acceptance and
+  escalation policy, and the fallback ladder. **Neither may redefine resolution.**
+  Where a use-case spec and this document disagree about *what a reference
+  resolves to*, this document wins; where they disagree about *when a failure
+  ends the run*, the use-case spec wins.
 
 ---
 
@@ -64,246 +107,60 @@ Three properties make it worth specifying rather than leaving to each host:
    number does not. This is the whole point.
 2. **One reference syntax over many languages and formats.** Java, Go, Rust,
    Python, C#, Kotlin, PHP, Ruby, SQL, Shell, VB, Haskell, Zig — plus YAML, TOML,
-   INI and JSON. A documentation author should not learn eighteen lookup rules.
+   INI, JSON and CSS. A documentation author should not learn nineteen lookup
+   rules.
 3. **A verifiable answer.** Because the reference resolves to a *range*, two
    implementations can be compared byte for byte, and a documentation build can
    fail loudly instead of silently embedding the wrong code.
 
----
+Two products want that, and they were always the reason the contract had to be
+written down. **A jump:** an editor, a documentation site or a review tool has a
+reference in hand and wants to put the reader *at the right line*. It needs the
+line number and nothing else, and it can survive an imperfect reference — a
+reader who lands on the enclosing type is still better served than one who lands
+at the top of the file. **An injection:** this project's own use case, putting the
+named block *into* a document, verbatim, so the document cannot drift from the
+source. Here an imperfect answer is not a smaller answer, it is a lie — a block
+copied out of the wrong `add` method reads as fact.
 
-## 3. Use cases, and the boundary
-
-There are two, and they are genuinely different products with a shared core. The
-RFC exists mainly to draw the line between them precisely, because every past
-design mistake here came from blurring it.
-
-### 3.1 Use case A — *navigation* ("take me as close as feasible")
-
-**Who:** an IDE, an editor plugin, a documentation site that wants a clickable
-reference, a code-review tool.
-
-**Need:** the reader wants to *be taken* to the right place. It is acceptable for
-the destination to be approximate; it is not acceptable to be dropped at the top
-of the file, or at a wrong-but-plausible place.
-
-**The mapper's job:** resolve the reference and return the line range. Nothing
-else. Navigation needs **only** a range; it does not need the text, and it must
-not need to modify anything.
-
-**Why this is the easier case:** the failure mode is shallow. If the reference
-does not resolve, the host can fall back — the file's first line, a search for
-the name, the previous location — and the reader still lands *somewhere*. A
-stale named reference is still better than a stale line number, because the name
-is the thing a human can check.
-
-**Where the mapper must not help:** it must not *invent* a destination. If
-`Cart/renderr` is a typo, returning "the class `Cart`, near enough" is worse than
-an error, because it is silently wrong and the reader will trust it. Closeness is
-the **host's** policy, not the mapper's: the mapper either finds the exact range
-or says it cannot.
-
-### 3.2 Use case B — *injection* (the primary case)
-
-**Who:** this project. A documentation pipeline that puts the code *into* the
-document, so the doc cannot drift from the source.
-
-**Need:** the section's **exact text**, byte for byte, plus its line range in the
-source (for the "open in editor" affordance and for highlighting). One named
-block, or several in a written order, injected into a fenced code block.
-
-**Why this is the demanding case:**
-
-- The text must be *exact* — it is pasted, not linked. An off-by-one is a bug
-  someone will copy.
-- **Several selections must compose in the order written**, because prose
-  narrates an order (`toString/++,config.port`) that need not be source order.
-- It must work for files that are **not code** — YAML, TOML, INI, JSON — where
-  "declaration" has no meaning and the answer is a key, a value or a verbatim
-  line range.
-- A failure must **fail the build**, not degrade: a doc that silently injects
-  nothing is a doc that lies.
-
-### 3.3 The boundary, stated once
-
-|                                     | **A — navigation**                                   | **B — injection (primary)**       |
-| ----------------------------------- | ---------------------------------------------------- | --------------------------------- |
-| Consumer                            | IDE, editor, site link                               | documentation pipeline            |
-| Needs the text                      | no                                                   | **yes, byte-exact**               |
-| Needs ranges                        | yes                                                  | yes                               |
-| Several selectors                   | usually one                                          | **composed, in order**            |
-| Non-code files (YAML/TOML/INI/JSON) | not necessarily                                      | **must work**                     |
-| Failure policy                      | host falls back                                      | **hard error**                    |
-| May modify the target               | never                                                | never (it only reads)             |
-| Precision                           | exact range or error; *closeness* is the host's call | exact, no approximation tolerated |
-
-**The dividing rule.** Both use cases call the *same* resolution function and get
-the same answer object. They differ only in what they do *afterwards*: A may
-apply a fallback of its own when the call errors; B must not. Therefore:
-
-> **The mapper's contract is identical for A and B, and it is the B contract.**
-> A is a special case of B in which the caller is allowed to ignore the text and
-> to handle the error itself.
-
-This is the boundary the RFC fixes. It means there is exactly one thing to
-specify, one conformance suite, and no "lenient mode" inside the mapper — a
-`--lenient` spelling exists in the CLI, but it is a *document* policy that
-reports rather than rewrites, not a different resolution.
-
-### 3.4 Explicitly out of scope
-
-Not section mapping, and no implementation should grow these inside the mapper:
-
-- **Semantic code intelligence.** No type inference, no symbol tables, no
-  reference-finding, no call graphs. The mapper matches *declaration shapes* over
-  masked text. This is the line: a mapper answers *where is this written*, never
-  *what does this mean*.
-- **Writing or refactoring — today.** The mapper as specified is **read-only**:
-  it never modifies a target. A rename, a quick-fix or a refactor needs a writer,
-  and no writer is part of this contract. **This is a boundary of the current
-  version, not of the project** — see the forward goal in
-  [§3.6](#36-forward-goal-refactoring-that-updates-references).
-- **Being an AST parser.** See [§6](#6-what-a-mapper-is-not): no syntax tree, no
-  grammar, no parser dependency — this is the single most important non-goal, and
-  the reason the answer is a *range* rather than an AST node. AST-based
-  implementations are a future *second kind* of engine
-  ([§7.5](#75-ast-based-implementations-later-and-what-they-change)), not a
-  change to this one.
-- **Executing or evaluating.** Config values are read as text; nothing is
-  interpreted.
-- **Finding a *good* place.** Ranking, "closest match", fuzzy matching: host
-  policy, never the mapper's.
-
-**Language servers are not on this list — they are a consumer.** See
-[§3.5](#35-what-a-language-server-consumes): a language server is use case A with
-high call frequency, and the mapper is deliberately shaped to serve it. What is
-out of scope is doing the *server's* work inside the mapper, not being used by
-one.
-
-### 3.5 What a language server consumes
-
-A language server is the most demanding form of use case A: it runs *while a
-person types*, on a document that is usually broken, and it must never block the
-editor. It is a first-class consumer, and every feature below is built from the
-mapper's operations — none of them requires the mapper to do anything more.
-
-**An IDE or LSP host usually has an AST already, and should use it.** That is the
-preferred arrangement and not a workaround: the parse has been paid for, the
-host's parser knows its own language better than a shape heuristic can, and no
-second parser has to be installed or kept current. So the shape of an IDE
-integration is:
-
-- the **grammar** ([§5.1](#51-parse)) is always the mapper's — a reference must
-  mean the same thing in every host, and parsing a fragment needs no AST at all;
-- **resolution** ([§5.3](#53-plan-the-whole-contract)) uses the host's AST where
-  the host has one for the language, passed in as the engine
-  ([§7.5 rule 5](#75-ast-based-implementations-later-and-what-they-change));
-- the **standalone engine** covers languages the host has no parser for, and any
-  host that is not an IDE — which is why both paths must produce the same range
-  and the same messages.
-
-That division is what the table below assumes; where the host's AST is used, the
-rows are satisfied by the host plus the mapper's grammar, and the mapper's own
-scan is not involved at all.
-
-| The server wants                                                | Built from                        | What the mapper supplies                                                                   |
-| --------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
-| completion of a reference (after `#`, after `/`, after `,`)     | `parseSelectors`/`parseReference` | a pure, context-free parse that reads no file, so it is safe to call on every keystroke    |
-| a preview of a completion item                                  | `parseSelectors`                  | the structured `Reference`: `segments`, `scope`, `selectors[]`, and the canonical spelling |
-| go-to-definition, and document highlight                        | `planSection`, or the host's AST  | `startLine`/`endLine`, and one range per selector so each piece is highlighted separately  |
-| a diagnostic for a broken fragment                              | `planSection`                     | a specific message that names the selector at fault; a reference either resolves or fails, so there is nothing halfway to report |
-| semantic tokens, folding, "find all references to this section" | `planSection`, or the host's AST  | `reference.selectors[]` and `ranges`                                                       |
-
-**Two properties make this work, and both are already in the interface.**
-
-1. **Parsing is pure and cheap.** `parseSelectors` reads no file and takes about
-   a microsecond, so a server can call it on every keystroke. `planSection` reads
-   the target, so a server calls it when the document or the target changes and
-   caches per file version — exactly the invalidation a host already has. Cost is
-   a *contract-level* concern here, not an optimisation detail: an engine whose
-   scan is not near-linear in the file is unusable for this consumer, and
-   [§7.5](#75-ast-based-implementations-later-and-what-they-change) makes the
-   comparison a gate.
-2. **Failure is a value, not an approximation.** The mapper never guesses. A
-   server can therefore show *"no section named render in Cart"* confidently, and
-   apply its own fuzzy policy while the user is still typing — a policy the RFC
-   deliberately keeps out of the mapper ([§9.5](#95-no-fallback-in-the-mapper)).
-
-**What the server does, and the mapper does not.** Editing, undoing, ranking
-candidates, fuzzy matching, applying a rename, and diagnosing anything that needs
-a *type* rather than a *shape*. Two honest limits follow from the non-goals:
-
-- **No symbol table.** The mapper cannot tell whether `render` is reachable in the
-  sense a compiler means; it only knows whether a declaration shaped like it is
-  written there.
-- **Shape, not type.** A name that a type system would reject may still resolve,
-  because the mapper matches declaration *shapes* over masked text. That is the
-  trade the non-goals make, and it is why a validator that needs types must
-  re-check the mapper's answer rather than trust it.
-
-### 3.6 Forward goal: refactoring that updates references
-
-**Out of scope for 1.0 — in scope for the project.** A reference is a *name*, and
-a name is exactly what a refactor changes. Today a rename in the target silently
-breaks every document that referenced it, and the mapper's job stops at reporting
-that. The goal is to close that loop: **a refactor that changes a declaration
-should be able to find and update the references that pointed at it.**
-
-The stated direction is to investigate **OpenRewrite** integration — an
-OpenRewrite recipe detects the declaration change, and something must then
-rewrite the `#` fragments across the documents that used them. Nothing about that
-is designed yet, and this section is a statement of direction, not a
-specification.
-
-What 1.0 does to keep that door open, cheaply:
-
-1. **The grammar stays machine-rewritable.** A reference is a `,`-separated list
-   of `/`-separated paths whose last segment may be a modifier (`render/++`);
-   there is no syntax whose meaning depends on context outside the fragment. A
-   writer can regenerate a fragment from a parsed `Reference` without asking
-   anything else — which is already true, because `Reference.canonical` exists.
-2. **A fragment is locatable.** References live in link fragments
-   (`path#reference`) and are found by the document layer, not by guessing at
-   prose. A rewriter needs to find them reliably; it does not need to understand
-   them.
-3. **Failure is explicit.** A rewriter must know which references it could *not*
-   resolve, because those are the ones it must not touch. The mapper already
-   distinguishes "malformed", "names nothing" and "not found", and names the
-   selector at fault in each case.
-
-**What is deliberately not promised.** That the mapper will ever write; that a
-rename can be applied by editing fragments alone (it cannot — the target's own
-declaration changes too, which is the recipe engine's half); and that a reference
-and a declaration can be matched with certainty from text alone. The mapper
-supplies *where the references are and what they asked for*; deciding whether a
-given declaration change invalidates them is the writer's problem.
+The two are the same call and different policies, which is the whole of
+[§1.1](#11-there-is-one-resolver-and-two-ways-to-read-it).
 
 ---
 
-## 4. Terminology
+## 3. The resolution core
 
-| Term           | Meaning                                                                                      |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| **source**     | the bytes being mapped (one file), LF-normalised for scanning                                |
-| **mask**       | the source with comments and string literals blanked to spaces, same length, every newline at its own offset |
-| **block**      | a braced or indented span: a class-like body, a method body, a statement body, or a block introduced by an anchor comment |
-| **scope**      | the file (scope 0), or a block (its members are the next scope down)                         |
-| **selector**   | one element of a reference: a path, or a line range                                          |
-| **reference**  | a `,`-separated list of selectors, in the order written                                      |
-| **modifier**   | `-`, `+`, `++` — chooses *how much* of a match to take, never *which*                        |
-| **scope name** | the four renderings a modifier selects: `declaration`, `body`, `annotated`, `documented`     |
-| **selection**  | one resolved selector: its text and its line range                                           |
-| **answer**     | the whole result: composed text, outermost range, one range per selector, per-selection kind |
-| **lexer**      | the language-specific half: masking, comment spans, and optionally the declaration shapes and annotation spelling a language adds |
-
----
-
-## 5. The interface
+### 3.1 The operations, one answer shape
 
 The interface is small on purpose. Implementations are not required to mirror
-internal structure, but they **must** expose these four operations, because the
+internal structure, but they **must** expose these operations, because the
 conformance suite is defined in their terms.
 
-### 5.1 Parse
+```text
+parseSelectors(reference: string) -> Reference | error     // grammar only; reads no file
+parseReference(reference: string) -> Reference | error     // an alias of the same parse
+scan(source: string, lexer?: Lexer) -> Blocks              // the block tree
+planSection(source: string, reference: string, lexer?: Lexer) -> Plan | error
+resolveSection(source: string, reference: string, lexer?: Lexer) -> string   // planSection(...).text
+diagnose(source: string, reference: string, lexer?: Lexer) -> Diagnosis      // never throws (§5.3)
+deepestResolvablePrefix(source: string, reference: string, lexer?: Lexer)    // the ladder's probe (§5.3)
+  -> { reference, firstLine, segments } | null
+```
+
+`parseReference` and `parseSelectors` are one operation under two names, kept
+because hosts adopted both spellings; `resolveSection` is the one-field shorthand
+for a caller that wants only the bytes. **A host that needs less must not get a
+different answer**: `resolveSection(t, r)` is byte-identical to
+`planSection(t, r).text`, and `parseSelectors(r)` is byte-identical to
+`parseReference(r)`. `diagnose` is `planSection` with the throw turned into a
+value, and resolves nothing of its own.
+
+The first five are the contract a port implements. `diagnose` and
+`deepestResolvablePrefix` serve a best-effort host ([RFC 2](code-jump.md)) and are
+**not required of a port** until the corpus gains band rows
+([§6.2](#62-row-shapes)).
+
+### 3.2 Parse
 
 ```text
 parse(reference: string) -> Reference | error
@@ -311,9 +168,10 @@ parse(reference: string) -> Reference | error
 
 Reads the reference into selectors and a canonical spelling, consulting no file.
 Asserted by the `grammar:*` rows, which compare the **canonical** spelling and
-the thrown message.
+the thrown message. It is pure and takes about a microsecond, so a host may call
+it on every keystroke.
 
-### 5.2 Scan
+### 3.3 Scan
 
 ```text
 scan(source: string, lexer?: Lexer) -> Blocks
@@ -328,7 +186,7 @@ lexical invariants are:
 
 Both are asserted by the lexical corpus.
 
-### 5.3 Plan (the whole contract)
+### 3.4 Plan (the whole contract)
 
 ```text
 plan(source: string, reference: string, lexer?: Lexer) -> Plan | error
@@ -374,40 +232,96 @@ Selector := { kind: 'path',  raw: string, segments: string[], scope: Scope,
   that silently became a different range reintroduces the drift the whole design
   exists to remove.
 
-A lighter parser is also public, and a host that only needs the grammar uses it:
+**Who reads which field.** One answer, several consumers, and the split exists
+because they want different parts of it — so the part each one reads is written
+down rather than left to a reader of the code. The two consumers of note are the
+use-case specs ([RFC 2](code-jump.md), [RFC 3](inject-examples.md)):
 
-```text
-parseSelectors(reference: string) -> Reference | error
-```
+| Field                 | What it is                                                    | Jump reads it                                          | Injection reads it                                           |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------ |
+| `ranges[0].from`      | the first line of the first selector — the landing line       | **yes** ([RFC 2 §3.1](code-jump.md#31-the-first-line)) | for highlighting                                             |
+| `text`                | the bytes the section stands for, selections joined with `\n` | **no**                                                 | **yes**, written verbatim                                    |
+| `ranges`              | one range per selector, ascending, adjacent pieces merged     | to highlight the piece                                 | to highlight the piece, and to compare a block for staleness |
+| `startLine`/`endLine` | the outermost bounds of `text`                                | not for the cursor                                     | the span the selection occupies                              |
+| `reference.selectors` | the per-selector detail: kind, scope, segments                | to describe a target ("`render`, in `Line`, body")     | to report which selector failed, and to render each piece    |
+| `kind`                | the matcher that found a single selector, or `multiple`       | to explain a target                                    | to explain a resolve                                         |
 
-### 5.4 Errors
+**No consumer may derive a field another one owns.** A jump that needs the landing
+line reads `ranges[0].from`; it does not split `text` to find it. An injection that
+needs the bytes reads `text`; it does not re-slice the file from `ranges`. The
+table is the agreement, and the reason it is normative rather than descriptive is
+that two readers deriving the same number two ways is how they start to disagree.
 
-One error type (a `SectionReferenceError`, or a language equivalent that carries
-the same message text). Messages are part of the contract — the conformance
-suite asserts them — and they always quote the reference or selector at fault:
+### 3.5 The first line
 
-| Situation                               | Message shape                                                    |
-| --------------------------------------- | ---------------------------------------------------------------- |
-| empty reference                         | `"#" names nothing`                                              |
-| empty selector                          | `"#a," has an empty selector`                                    |
-| malformed range                         | `"#L40-" is not a line range; write L<line> or L<line>:<column>` |
-| zero/negative                           | `"#L0" counts lines and columns from 1`                          |
-| reversed                                | `"#L44-L40" ends before it starts`                               |
-| past the end                            | `"#L31": the file has 30 line(s)`                                |
-| too deep                                | `"#a/b/c/d/e/f/g/h/i" is deeper than 8 sections`                 |
-| a modifier that is not the last segment | `"++" may only modify the last path segment of "#a/++/b"`        |
-| the old suffix or prefix spelling       | `"++" is a path segment now; write "#a/++"`                      |
-| not found                               | `no section named "render" in "Cart"`                            |
+Both use cases need one derived number, and it is the same number, so it is
+defined here once rather than derived twice:
+
+> **The first line of a selection is the `from` of its first range** — that is,
+> the first line of the *first selector as written*, not the lowest line number
+> in the selection.
+
+For a reference of several selectors the two readings differ: `L40,toString`
+written at a file where `toString` is near the top has `startLine` 3 and a first
+range that starts at 40, and a cursor belongs on **40**, because that is what the
+author wrote first. `ranges` is ascending, and `startLine`/`endLine` are the
+outermost bounds — so `ranges[0].from` is the only field that means "where a
+reader starts", and a host that jumps must read it rather than recompute it.
+
+The concrete jump contract — which line, what it means for an envelope or a
+region, and what a host may do when the resolve fails — is
+[RFC 2 §3](code-jump.md#3-where-a-jump-lands).
+
+### 3.6 Errors, in two categories
+
+One error type per category, and the category is part of the contract, because
+the two use cases route the categories differently
+([§5](#5-acceptance-and-escalation)):
+
+| Category       | Meaning                                                      | Thrown as                                                                                      | When                                                                |
+| -------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Grammar**    | the reference is malformed as written; no file was consulted | a `SectionReferenceError` (or a language equivalent carrying the same `name` and message text) | by `parse`/`parseSelectors`, and by `plan` before it reads anything |
+| **Resolution** | the reference is well-formed but the file cannot answer it   | an `Error` whose message is the contract text (a `SectionReferenceError` where the failure needs no file, e.g. an envelope whose ends contradict) | by `plan`/`resolve` |
+
+**Every failure also carries a stable code**, which is how a profile tells one
+band from another without matching prose (implemented in the reference
+implementation; see [§5.3](#53-the-diagnosis-surface-structured-failure) for the
+fields and the registry):
+
+| Situation                               | Category   | Code                                  | Message shape                                                    |
+| --------------------------------------- | ---------- | ------------------------------------- | ---------------------------------------------------------------- |
+| empty reference                         | grammar    | `grammar/empty-reference`             | `"#" names nothing`                                              |
+| empty selector                          | grammar    | `grammar/empty-selector`              | `"#a," has an empty selector`                                    |
+| malformed range                         | grammar    | `grammar/line-range-not-a-range`      | `"#L40-" is not a line range; write L<line> or L<line>:<column>` |
+| zero/negative                           | grammar    | `grammar/line-range-from-1`           | `"#L0" counts lines and columns from 1`                          |
+| reversed                                | grammar    | `grammar/line-range-backwards`        | `"#L44-L40" ends before it starts`                               |
+| past the end                            | resolution | `resolution/line-range-past-end`      | `"#L31": the file has 30 line(s)`                                |
+| too deep                                | grammar    | `grammar/too-deep`                    | `"#a/b/c/d/e/f/g/h/i" is deeper than 8 sections`                 |
+| a modifier that is not the last segment | grammar    | `grammar/modifier-not-last`           | `"++" may only modify the last path segment of "#a/++/b"`        |
+| the old suffix or prefix spelling       | grammar    | `grammar/modifier-old-spelling`       | `"++" is a path segment now; write "#a/++"`                      |
+| not found                               | resolution | `resolution/not-found`                | `no section named "render" in "Cart"`                            |
+| one level, several candidates           | resolution | `resolution/ambiguous`                | `"add" is declared 2 times; names must be unique`                |
+
+The full registry is the `ERROR_CODES` table of `lib/section.mjs`, and
+`test/vectors/manifest.json` lists it for a porter. **A code is added, never
+renamed**: rewording a message must not break a host that branches on one.
 
 **Nothing in this grammar is a warning.** A reference either resolves or fails, so
 there is no third answer to carry: a modifier written twice on one path is
 malformed (`a/++/-`) rather than two readings to choose between, and a modifier on
 a `#region` or a line range is ignored because neither is a path that could carry
-one.
+one. A warning is a **profile** word ([§5](#5-acceptance-and-escalation)), never a
+resolver word.
 
----
+**The failure path is structurally readable.** A resolution failure must say
+*which selector* failed and *which block* it was looking in — that is in the
+message text — and a host must be able to recover it without parsing prose. The
+offending selector, the scope it was searched in, the candidates a name answered
+to and the stable code are the **diagnosis surface** of
+[§5.3](#53-the-diagnosis-surface-structured-failure): additive, advisory, and
+outside the 1.0 freeze ([§9.1](#91-what-10-freezes)).
 
-## 6. What a mapper is *not*
+### 3.7 The mapper is not a parser
 
 The load-bearing non-goal, stated as a rule an implementer must respect:
 
@@ -430,24 +344,7 @@ to be apologised for:
   five-line heuristic that resolves in microseconds beats a full parse of the
   file, and the sizes are not comparable.
 - **Its contract is a range, not a node.** A tree would let an implementation
-  answer questions the contract does not ask, and the boundary in
-  [§3.3](#33-the-boundary-stated-once) exists to prevent exactly that.
-
-**AST-based implementations will be added later, and are not a contradiction.**
-See [§7.5](#75-ast-based-implementations-later-and-what-they-change): an AST
-variant is an additional implementation of the same contract, allowed to use a
-real grammar for its language. When one exists it becomes the **source of truth
-for that language**, and the standalone engine becomes the thing it is measured
-against — on correctness *and* on time and memory. Two rules follow, and both are
-binding:
-
-> **A standalone implementation must be correct and leaner or faster than the AST
-> variant, or the custom implementation has no reason to exist.**
-
-> **An AST variant must agree with the conformance suite.** Becoming the source
-> of truth for a language means being better *within the same contract*, never
-> redefining it — a variant that resolves something the suite says must fail is
-> wrong, however well it parses.
+  answer questions the contract does not ask.
 
 Consequences of the heuristic design that an implementation must reproduce rather
 than "improve":
@@ -468,125 +365,21 @@ than "improve":
 6. **A wrapped call stays a call.** `return map(\n 1, 2);` must not resolve as a
    declaration of `map`.
 
----
+### 3.8 Engines: the standalone scan, or the host's own AST
 
-## 7. Conformance
-
-The conformance suite is the second deliverable of this project, and it is
-**data**, not code: an implementation reads the JSON and asserts every row. The
-corpora are generated from the reference implementation, so a disagreement is a
-bug in the *port* by definition.
-
-### 7.1 The three corpora
-
-| Corpus                                         | Rows | Asserts                                                                                            | Read by             |
-| ---------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------- | ------------------- |
-| `test/vectors/section-vectors.json`            | 195  | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust |
-| — of which grammar-only (`input: null`)        | 58   | canonical spelling and the thrown message; no file, no lexer                                       | do.                 |
-| — of which resolution                          | 137  | text and ranges against a fixture                                                                  | do.                 |
-| — of which expect an **error**                 | 65   | the failure path: a missing name, an ambiguous name, a malformed selector, a range past the end, a second `#`, a misplaced modifier | do. |
-| `test/vectors/lexical-vectors.json` → `masks`  | 46   | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust |
-| `test/vectors/lexical-vectors.json` → `shapes` | 43   | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line`     | JS, Zig, Java, Rust |
-| `test/vectors/manifest.json`                   | —    | the machine-readable map of the above (see §7.3)                                                   | tooling, humans     |
-
-The `kind` a resolution row reports, as a census of the suite:
-`declaration` 68, `property` 10, `anchor` 9, `lines` 6, `region` 5,
-`multiple` 5, `condition` 2, and `null` 90 (the error rows and the rows whose
-answer is a whole-file or body-less selection).
-
-A fourth suite is not in the corpus but is equally required: the **differential
-harness** (`tools/compare-zig.mjs` is the template). It runs two implementations
-over the same corpus *plus generated fuzz cases* and compares bytes. That is how
-the `->` header bug and an assigned-name scan bug were found, neither of which any
-hand-written vector had covered.
-
-### 7.2 Row shapes
-
-```jsonc
-// section-vectors.json — a grammar-only row: no fixture, nothing to resolve
-{ "name": "grammar:add/-,render/++", "input": null, "reference": "add/-,render/++",
-  "text": null, "startLine": null, "endLine": null,
-  "ranges": null, "kind": null, "error": null }
-
-// section-vectors.json — a resolution row
-{ "name": "wrapped-method", "input": "test/fixtures/Wrapped.java",
-  "reference": "render", "text": "    public String render(\n…",
-  "startLine": 6, "endLine": 10, "ranges": [[6, 10]], "kind": "declaration",
-  "error": null }
-```
-
-The two kinds are told apart by `input`: a grammar-only row consults no file, so
-it has none. (`mode` appears in the *generator* as a case declaration; it is not
-written into the row.)
-
-Rules for the data, which exist to keep it trustworthy:
-
-- **Never hand-edit a corpus.** Regenerate with `node tools/section-vectors.mjs`
-  and `node tools/lexical-vectors.mjs`, then `node tools/zig-vectors.mjs` for the
-  Zig copy.
-- **Assert every row**, and fail when a row is unaccounted for. Silently skipping
-  a row is how a port passes while being wrong.
-- **Every row must discriminate**: an input whose wrong answer looks different
-  from its right answer. A row that passes with either a right or a wrong matcher
-  is not worth having.
-- **Hand-check any row a change touches.** Because the corpus is generated from
-  the implementation, an implementation that is wrong *consistently* bakes its
-  own bug into the contract. This happened once (`rs-retry-past-the-first-impl`
-  was committed without the closing `}`), so a changed row is reviewed, not
-  trusted.
-- **Error rows matter most.** They are what catch an over-eager matcher: a port
-  can pass every resolution row and still over-match, and the rows expecting an
-  *error* are where it fails.
-
-### 7.3 Making the suite usable by a new implementation
-
-For a new port, the path must be obvious and mechanical:
-
-1. Read [`test/vectors/manifest.json`](../../test/vectors/manifest.json) — it
-   lists every corpus, its row count, its row shape and what each field means,
-   without the implementer having to reverse-engineer a generator.
-2. Implement the four operations of [§5](#5-the-interface).
-3. Write a conformance runner that reads the corpora **directly from the
-   repository** (do not copy them into the port; every existing port does this,
-   and it is why a corpus change reaches all of them at once).
-4. Run it. Every failing row names itself, its field and the expected value, so
-   the report is the bug list.
-5. Add the port to the differential harness if the language allows it.
-
-The existing ports are the worked examples: `java/section` (reads the corpora
-directly, `mvn test`), `rust/section` (same, `cargo test`, with hand-written
-matchers because it ships no regex engine), `src/` (Zig, with a generated
-`src/section_vectors.zig` copy because Zig cannot read JSON at test time).
-
-### 7.4 Adding a language
-
-Two halves, both needed:
-
-1. **Lexical**: one row in the mask corpus, so the blanking is verified.
-2. **Shapes**: probe rows for the discriminating declaration spellings the
-   language has that the generic matcher misses, plus at least one resolution row
-   so the seams are exercised end to end.
-
-`doc/languages.md` carries the per-language inventory; `AGENTS.md` carries the
-mechanical checklist.
-
-### 7.5 AST-based implementations (later), and what they change
-
-A second *kind* of implementation is expected, and this section fixes the rules
-before the first one exists so that adding it is not a debate.
+A second *kind* of implementation is expected, and the rules are fixed here before
+the first one exists so that adding it is not a debate.
 
 **What it is.** An implementation that resolves a language by parsing it with a
 real grammar — an AST library, or a parser generated from the language's own
 specification — rather than by the shape heuristics of
-[§6](#6-what-a-mapper-is-not). It implements the *same* interface
-([§5](#5-the-interface)) and answers the *same* questions: a `Plan`, the same
-error messages, the same conformance rows.
-
-**What changes when one exists.**
+[§3.7](#37-the-mapper-is-not-a-parser). It implements the *same* interface
+([§3.1](#31-the-operations-one-answer-shape)) and answers the *same* questions: a
+`Plan`, the same error messages, the same conformance rows.
 
 |                              | Standalone (heuristic) engine                                                  | AST variant                                                                               |
 | ---------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Correctness for its language | best-effort by shape, per §6                                                   | **source of truth for that language**                                                     |
+| Correctness for its language | best-effort by shape, per §3.7                                                 | **source of truth for that language**                                                     |
 | Which constructs it resolves | the shapes it recognises                                                       | everything the grammar defines                                                            |
 | Cost                         | no parse; microseconds                                                         | a parse of the file, or **none, when the host has already parsed it**                     |
 | Dependencies                 | none, vendorable                                                               | the language's parser                                                                     |
@@ -598,7 +391,7 @@ error messages, the same conformance rows.
    the heuristic engine — that is the point — but it may not resolve something the
    conformance suite says must fail, and it may not rename a message or a field.
    Being the source of truth for a language means being better *inside* the
-   contract, never redefining it.
+   contract, never redefining it ([§9.5](#95-one-resolver-strictness-is-a-profile)).
 2. **The standalone engine remains the fallback and the baseline.** It is what
    serves languages with no AST variant, and what a variant is measured against.
 3. **Correctness is not the only gate — cost is too.** For the project to justify
@@ -628,18 +421,15 @@ error messages, the same conformance rows.
    The target usages include an **IDE or a language server**, and those
    environments usually *already hold an AST* for the language being edited. In
    such an environment, **a mapper that uses the host's built-in AST is
-   preferred** over the standalone heuristic engine — the parse has already been
-   paid for, the host's knowledge of its own language is better than any shape
-   heuristic, and it needs no second parser to ship. The rule:
+   preferred** over the standalone heuristic engine. The rule:
    > Resolve with the best engine the host already has. Where the host has an AST
    > for the language, use it. The standalone engine is for hosts that do not,
    > and for languages the host does not cover.
    Two things this does **not** mean: it does not weaken the conformance
-   requirement (an AST-backed resolution must still agree with the suite,
-   [§7.5 rule 1](#75-ast-based-implementations-later-and-what-they-change)), and
-   it does not make the standalone engine pointless — it is the portable
-   baseline that works everywhere, including the CI job that builds the docs,
-   which has no IDE and no AST.
+   requirement (an AST-backed resolution must still agree with the suite, rule 1
+   above), and it does not make the standalone engine pointless — it is the
+   portable baseline that works everywhere, including the CI job that builds the
+   docs, which has no IDE and no AST.
 6. **Selection is a policy, and it has to be visible.** Whichever engines are
    available, which one a document is resolved with must be a stated choice
    (a default, a flag, or a rule override) — never an accident of what happens to
@@ -653,24 +443,423 @@ error messages, the same conformance rows.
    what lets an IDE pass an AST-backed engine and a CLI pass the standalone one
    without either knowing about the other.
 
-**The two environments, side by side.** The same contract, served two ways:
-
-|                          | IDE / LSP host                                      | Documentation pipeline (this project) |
-| ------------------------ | --------------------------------------------------- | ------------------------------------- |
-| AST available            | usually, for the edited language                    | no                                    |
-| Preferred engine         | **the host's AST**                                  | the standalone engine                 |
-| Standalone engine's role | fallback, and coverage for languages the host lacks | the only engine                       |
-| Cost that matters        | per keystroke, inside an already-warm document      | per build, over many files            |
-| What must not differ     | the resolved range and the messages                 | the same                              |
+The two environments, side by side — the same contract, served two ways — are the
+two use-case specs: the IDE column is [RFC 2](code-jump.md), the pipeline column
+is [RFC 3](inject-examples.md).
 
 **Nothing here is scheduled**, and none of it is needed for 1.0. The point of
 writing it down now is that 1.0 does not have to be redesigned to allow it: the
 contract is already engine-agnostic, the conformance suite is already the
 arbiter, and the engine is already a parameter.
 
+### 3.9 Explicitly out of scope
+
+Not section mapping, and no implementation should grow these inside the mapper:
+
+- **Semantic code intelligence.** No type inference, no symbol tables, no
+  reference-finding, no call graphs. The mapper matches *declaration shapes* over
+  masked text. This is the line: a mapper answers *where is this written*, never
+  *what does this mean*.
+- **Writing or refactoring — today.** The mapper as specified is **read-only**:
+  it never modifies a target. A rename, a quick-fix or a refactor needs a writer,
+  and no writer is part of this contract. **This is a boundary of the current
+  version, not of the project** — see the forward goal in
+  [§4](#4-forward-goal-refactoring-that-updates-references).
+- **Being an AST parser.** See [§3.7](#37-the-mapper-is-not-a-parser): no syntax
+  tree, no grammar, no parser dependency — this is the single most important
+  non-goal, and the reason the answer is a *range* rather than an AST node.
+- **Executing or evaluating.** Config values are read as text; nothing is
+  interpreted.
+- **Finding a *good* place.** Ranking, "closest match", fuzzy matching: host
+  policy, never the mapper's. A mapper either finds the exact range or says it
+  cannot ([§5](#5-acceptance-and-escalation)).
+
+**Language servers are not on this list — they are a consumer.** Their contract
+is [RFC 2 §6](code-jump.md#6-the-language-server-and-ide-integration): a language
+server is a jump consumer with high call frequency, and the mapper is deliberately
+shaped to serve it. What is out of scope is doing the *server's* work inside the
+mapper, not being used by one.
+
+### 3.10 The vendorable module boundary
+
+`lib/section.mjs` is a single, dependency-free ES module that exports the matching
+algorithm only — the core of [§3.1](#31-the-operations-one-answer-shape), and
+nothing else. It **must not** import or reference `node:fs`, `node:path`,
+`process`, `cli.mjs`, the `src/js/scanner/` lexers, or anything that reads the
+disk or the environment, because a consumer project vendors this one file.
+
+The per-type lexers are *injected* — a `lexer` argument threaded in by the caller
+— so the module stays dependency-free while still resolving through a language
+engine, and a lexer that is not supplied leaves the built-in default engine
+([§3.8](#38-engines-the-standalone-scan-or-the-hosts-own-ast)).
+
+**Where the boundary runs, now that the RFC is split.** The document layer —
+markers, fences, rule dispatch, the extension→lexer selection, gitignore and
+document rewriting — is [`index.mjs`](../../index.mjs), and it is the subject of
+[RFC 3 §4](inject-examples.md#4-the-document-layer), not of this document. It
+delegates section resolution and owns nothing about it. The jump product
+([RFC 2](code-jump.md)) has no document layer at all: it takes a path and a
+fragment, which is why it can be called on every cursor move without touching a
+document.
+
+A project adds a rule for another type with `options.regionRules` (see
+[`doc/usage.md`](../usage.md)); a custom rule calls the core for its type and
+otherwise reuses the same matchers. A test asserts this boundary, so it cannot
+rot.
+
 ---
 
-## 8. Test-suite organization
+## 4. Forward goal: refactoring that updates references
+
+**Out of scope for 1.0 — in scope for the project.** A reference is a *name*, and
+a name is exactly what a refactor changes. Today a rename in the target silently
+breaks every document that referenced it, and the mapper's job stops at reporting
+that. The goal is to close that loop: **a refactor that changes a declaration
+should be able to find and update the references that pointed at it.**
+
+The stated direction is to investigate **OpenRewrite** integration — an
+OpenRewrite recipe detects the declaration change, and something must then
+rewrite the `#` fragments across the documents that used them. Nothing about that
+is designed yet, and this section is a statement of direction, not a
+specification.
+
+What 1.0 does to keep that door open, cheaply:
+
+1. **The grammar stays machine-rewritable.** A reference is a `,`-separated list
+   of `/`-separated paths whose last segment may be a modifier (`render/++`);
+   there is no syntax whose meaning depends on context outside the fragment. A
+   writer can regenerate a fragment from a parsed `Reference` without asking
+   anything else — which is already true, because `Reference.canonical` exists.
+2. **A fragment is locatable.** References live in link fragments
+   (`path#reference`) and are found by the document layer, not by guessing at
+   prose. A rewriter needs to find them reliably; it does not need to understand
+   them.
+3. **Failure is explicit.** A rewriter must know which references it could *not*
+   resolve, because those are the ones it must not touch. The mapper already
+   distinguishes "malformed", "names nothing" and "not found", and names the
+   selector at fault in each case — and the diagnosis surface of
+   [§5.3](#53-the-diagnosis-surface-structured-failure) is what makes that
+   machine-readable rather than prose.
+
+**What is deliberately not promised.** That the mapper will ever write; that a
+rename can be applied by editing fragments alone (it cannot — the target's own
+declaration changes too, which is the recipe engine's half); and that a reference
+and a declaration can be matched with certainty from text alone. The mapper
+supplies *where the references are and what they asked for*; deciding whether a
+given declaration change invalidates them is the writer's problem.
+
+**Why this is a core concern and not a use-case one.** Both use cases need the
+same three properties — a rewritable grammar, a findable fragment, an explicit
+failure — and both need them to agree, because a refactor that updates a fragment
+one product reads and the other does not is exactly the drift
+[§1.1](#11-there-is-one-resolver-and-two-ways-to-read-it) removes.
+
+---
+
+## 5. Acceptance and escalation
+
+This section is the **contract between the core and the profiles**, and it is the
+reason the RFC was split. A profile says what a failure *means to a run*; the
+resolver says what the failure *is*.
+
+### 5.1 The three outcomes
+
+A profile sorts every resolve into exactly one of three outcomes, and never
+invents a fourth:
+
+| Outcome          | What the profile does                                                     | The band it belongs to                                                    |
+| ---------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Resolved**     | the exact answer is used as-is                                            | the reference named a block, and there was one candidate                  |
+| **Approximated** | a *different* answer may be used, and the profile must record that it did | the reference did not resolve exactly, but the core said what it was near |
+| **Failed**       | no answer is used; the profile's policy decides whether the run continues | the reference is malformed, or nothing near it could be named             |
+
+**An approximation is always attributable.** A profile that returns an
+approximated answer must carry the reason and the exact failure it came from, so
+that the same situation can be an error under the other profile without either
+having to re-resolve anything. A profile that cannot say why an answer is
+approximate is not implementing this section.
+
+**What "near" means is the core's answer, not the profile's.** The resolver
+reports the candidates a name answered to, and the scope a path failed in; it
+never ranks them and never picks one. The ladder that turns "near" into "use it"
+is the profile's ([RFC 2 §4](code-jump.md#4-the-best-effort-ladder)).
+
+### 5.2 The band table
+
+The profile word for each band, per spec. "Error" ends the run as a failure;
+"warn" reports and continues; "ok" is a normal answer.
+
+| Band (core)                                          | **inject/gate** ([RFC 3](inject-examples.md)) | **inject/tolerant** (`--lenient`) | **jump/editor** ([RFC 2](code-jump.md))  | **jump/gate** (`--check`) |
+| ---------------------------------------------------- | --------------------------------------------- | --------------------------------- | ---------------------------------------- | ------------------------- |
+| grammar (malformed reference)                        | error                                         | error                             | warn, fall back                          | **error**                 |
+| not found                                            | error                                         | warn, skip the marker             | warn, fall back                          | **error**                 |
+| ambiguous (one level, several candidates)            | error                                         | error                             | warn, pick per the ladder                | **error**                 |
+| not a container / wrong scope                        | error                                         | warn, skip the marker             | warn, fall back                          | error                     |
+| out of range (`L31` in a 30-line file)               | error                                         | warn, skip the marker             | warn, fall back to the last line         | error                     |
+| duplicate key / table / section                      | error                                         | error                             | warn, fall back                          | error                     |
+| unresolved by drift (the file no longer declares it) | error                                         | error                             | warn, fall back **and report the drift** | **error**                 |
+
+Three readings of the table are deliberate, and they are the whole point of the
+split:
+
+- **The gates agree.** `inject/gate` and `jump/gate` are the same on every band:
+  anything that is not an exact resolve fails. A CI job that jumps through a
+  document and a CI job that injects into it must not disagree about whether the
+  document is broken.
+- **The editor is the only tolerant reading.** Best effort exists in exactly one
+  column, and it exists there because a reader is sitting in front of it. Nothing
+  in the editor may *silently* approximate: every fallback is attributable
+  ([§5.1](#51-the-three-outcomes)).
+- **`--lenient` is not a jump-like mode.** It tolerates a failure by leaving the
+  block as written and reporting it; it never chooses a different block. A
+  tolerant *injection* is still an injection, so it may skip — it may not
+  substitute.
+
+### 5.3 The diagnosis surface: structured failure
+
+**Status: implemented in the JavaScript reference implementation; the band rows
+are not yet in the corpus.** Both failure categories are readable without parsing
+prose, the strict path is byte-for-byte unchanged, and every field below exists
+today — the codes are asserted by `test.mjs`, and a port gains them when the
+corpus gains band rows (RFC 1 §6.2). The shape:
+
+```text
+SectionReferenceError {
+  name:    'SectionReferenceError',
+  message: string,                 // unchanged: the contract text
+  code:    string,                 // stable category, e.g. 'grammar/empty-selector',
+                                   //   'resolution/not-found', 'resolution/ambiguous'
+  selector: string | null,         // the selector as written, when one is at fault
+  scope:    string | null,         // the block it was searched in, for a resolution failure
+  candidates: { name, startLine, endLine, kind }[] | null   // what the name answered to
+}
+```
+
+**There is deliberately no `near` field.** A "did you mean" needs a *ranking*, and
+ranking is the profile's, never the core's
+([§9.5](#95-one-resolver-strictness-is-a-profile)). The core reports the
+candidates a name answered to and the prefix of the path that still resolves
+([`deepestResolvablePrefix`](#53-the-diagnosis-surface-structured-failure)); a host
+that wants edit-distance suggestions computes them itself, from what it was given.
+
+**A resolution failure is a plain `Error` with the same fields**, because the
+category split of [§3.6](#36-errors-in-two-categories) is by *type*: a malformed
+reference throws a `SectionReferenceError`, and a reference the file cannot answer
+throws an `Error`. Both carry `code`.
+
+**The codes.** `ERROR_CODES` in `lib/section.mjs` is the registry: every code is
+namespaced by the category it belongs to (`grammar/…` when no file was read,
+`resolution/…` when the file cannot answer), and a code is **added, never
+renamed** — rewording a message must not break a host that branches on the code.
+The registry is exported so a tool can read it, and `test/vectors/manifest.json`
+lists it for a porter.
+
+**`diagnose(source, reference, lexer)` is the non-throwing entry point**, and the
+only operation a best-effort host needs. It returns the same `Plan` on success —
+byte for byte, not a second resolution — or the structured failure otherwise:
+
+```text
+diagnose(text, reference, lexer) -> {
+  status:   'ok' | 'failed' | 'invalid',   // resolved / the file cannot answer / malformed
+  plan:     Plan | null,                   // present only when status === 'ok'
+  firstLine: number | null,                // ranges[0].from, the landing line (§3.5)
+  error:    Error | null,                  // the failure itself, with the fields above
+  code, selector, scope, candidates,       // the failure's own diagnosis
+  advice:   string | null                  // a repair hint; non-null only for grammar/*
+}
+```
+
+Four rules make it additive rather than a redesign:
+
+1. **`message` and the thrown type never change.** Existing consumers, the corpus
+   and the four ports keep working untouched; the fields are extra.
+2. **The fields are advisory and never used for resolution.** A profile reads them
+   to choose a fallback; the resolver's own answer does not depend on them.
+3. **`plan()` keeps throwing, in the same categories.** `diagnose` is the same
+   call with the throw turned into a value; there is no third operation that
+   resolves differently.
+4. **A row pins every field a profile may branch on.** If a profile can read
+   `code` or `candidates` to decide a fallback, the corpus asserts them, so a port
+   that guesses differently fails the gate. Until those rows land, the codes and
+   the candidate lists are asserted in `test.mjs`, and a port that omits
+   `diagnose` still passes every corpus row.
+
+**Where the ladder gets its "near".** The core supplies two things and ranks
+neither: the `candidates` a name answered to (the ambiguity band), and
+`deepestResolvablePrefix(text, reference, lexer)` — the longest prefix of the
+reference the user wrote that still resolves, with the line it starts on, or null.
+Both are probes: they report, the host decides
+([RFC 2 §4.3](code-jump.md#43-not-found)).
+
+### 5.4 Drift guards
+
+The reason both use cases care about strictness is the same: **a reference that
+silently stops meaning what it meant is the failure the whole design exists to
+remove.** Drift arrives in four shapes, and each profile names what it does about
+each — the band table is the answer, and these are the shapes it answers about:
+
+| Shape of drift                                                     | How it shows up                | Who must catch it hardest                                                     |
+| ------------------------------------------------------------------ | ------------------------------ | ----------------------------------------------------------------------------- |
+| the target no longer declares the name                             | a not-found failure            | the injector at the gate: the document is wrong, and a reader will believe it |
+| the name now answers twice                                         | an ambiguity failure           | the injector first — it cannot choose — and the gate of either product        |
+| the block moved, so the written line range is stale                | a range that no longer matches | the injector, which compares bytes; the jump can only be approximate here, since it has no text to compare |
+| the reference was rewritten to a different block that *does* exist | a resolve that succeeds        | **nobody catches this from text alone** — see below                           |
+
+The last row is the honest limit, stated once for both specs: a resolver matches
+*shapes and names*, so a reference edited to name a real but wrong block resolves
+cleanly. Only a reader, or a test that pins the *intent*, can catch it. What the
+suite can do is pin that the **profile difference is deliberate** rather than
+accidental — the corpus answers the same reference the same way for every
+consumer, and a port that makes jump and inject disagree anywhere fails.
+
+---
+
+## 6. Conformance
+
+The conformance suite is the second deliverable of this project, and it is
+**data**, not code: an implementation reads the JSON and asserts every row. The
+corpora are generated from the reference implementation, so a disagreement is a
+bug in the *port* by definition.
+
+### 6.1 The three corpora
+
+| Corpus                                         | Rows | Asserts                                                                                            | Read by             |
+| ---------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------- | ------------------- |
+| `test/vectors/section-vectors.json`            | 272  | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust |
+| — of which grammar-only (`input: null`)        | 67   | canonical spelling and the thrown message; no file, no lexer                                       | do.                 |
+| — of which resolution                          | 205  | text and ranges against a fixture                                                                  | do.                 |
+| — of which expect an **error**                 | 85   | the failure path: a missing name, an ambiguous name, a malformed selector, a range past the end, a second `#`, a misplaced modifier | do. |
+| `test/vectors/lexical-vectors.json` → `masks`  | 46   | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust |
+| `test/vectors/lexical-vectors.json` → `shapes` | 53   | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line`     | JS, Zig, Java, Rust |
+| `test/vectors/manifest.json`                   | —    | the machine-readable map of the above (see §6.3)                                                   | tooling, humans     |
+
+The `kind` a resolution row reports, as a census of the suite:
+`declaration` 77, `property` 39, `multiple` 13, `anchor` 12, `lines` 6,
+`region` 6, `condition` 4, and `null` 48 (the error rows and the rows whose
+answer is a whole-file or body-less selection).
+
+A fourth suite is not in the corpus but is equally required: the **differential
+harness** (`tools/compare-zig.mjs` is the template). It runs two implementations
+over the same corpus *plus generated fuzz cases* and compares bytes. That is how
+the `->` header bug and an assigned-name scan bug were found, neither of which any
+hand-written vector had covered.
+
+**The profile layer, as data.** The policy is pinned in its **own corpus**,
+`test/vectors/profile-vectors.json`, generated by `tools/profile-vectors.mjs` and
+asserted by `lib/jump.test.mjs`:
+
+- **`resolutions[]`** — one row per case where the policy shows: the **editor's**
+  landing line and `cause`, and the **band the gate refuses** (or `null` when it
+  resolves too). A row is discriminating only where the two readings disagree, or
+  where the editor's answer is one the resolver corpus does not record — the
+  generator **refuses** a row that both readings answer exactly, because that row
+  belongs in the resolution corpus.
+- **`documents[]`** — a whole document through the gate: `checked`, `passed`, and
+  **every** failure with its `code` and the selector at fault. The document text
+  and every file it reads are **embedded**, so a consumer needs no disk.
+
+It is a separate file on purpose. A profile is a product's policy, not the
+resolver's contract, so a port that implements the resolver alone **skips this
+layer entirely** ([§6.3](#63-making-the-suite-usable-by-a-new-implementation));
+folding it into `section-vectors.json` would silently change what every existing
+port assertion means. This is the one layer a port may pass by not having the
+feature. The `code` a resolution row carries ([§5.3](#53-the-diagnosis-surface-structured-failure))
+is what makes the two corpora meet: the band the gate refuses is the same string
+the resolver already reports.
+
+### 6.2 Row shapes
+
+```jsonc
+// section-vectors.json — a grammar-only row: no fixture, nothing to resolve
+{ "name": "grammar:add/-,render/++", "input": null, "reference": "add/-,render/++",
+  "text": null, "startLine": null, "endLine": null,
+  "ranges": null, "kind": null, "error": null }
+
+// section-vectors.json — a resolution row
+{ "name": "wrapped-method", "input": "test/fixtures/Wrapped.java",
+  "reference": "render", "text": "    public String render(\n…",
+  "startLine": 6, "endLine": 10, "ranges": [[6, 10]], "kind": "declaration",
+  "error": null }
+
+// section-vectors.json — a failure row, once band rows land: the code the
+// profile branches on, beside the message it must not parse
+{ "name": "missing-name", "input": "test/fixtures/Example.java",
+  "reference": "renderr", "text": null, "startLine": null, "endLine": null,
+  "ranges": null, "kind": null,
+  "error": "no \"#region renderr\" found, and no section named \"renderr\"",
+  "code": "resolution/not-found" }
+```
+
+The two kinds are told apart by `input`: a grammar-only row consults no file, so
+it has none. (`mode` appears in the *generator* as a case declaration; it is not
+written into the row.) The `code` field is **proposed, not yet written** — the one
+addition the band table needs; a row without it still asserts everything it
+asserts today.
+
+Rules for the data, which exist to keep it trustworthy:
+
+- **Never hand-edit a corpus.** Regenerate with `node tools/section-vectors.mjs`
+  and `node tools/lexical-vectors.mjs`, then `node tools/zig-vectors.mjs` for the
+  Zig copy.
+- **Assert every row**, and fail when a row is unaccounted for. Silently skipping
+  a row is how a port passes while being wrong.
+- **Every row must discriminate**: an input whose wrong answer looks different
+  from its right answer. A row that passes with either a right or a wrong matcher
+  is not worth having.
+- **Hand-check any row a change touches.** Because the corpus is generated from
+  the implementation, an implementation that is wrong *consistently* bakes its
+  own bug into the contract. This happened once (`rs-retry-past-the-first-impl`
+  was committed without the closing `}`), so a changed row is reviewed, not
+  trusted.
+- **Error rows matter most.** They are what catch an over-eager matcher: a port
+  can pass every resolution row and still over-match, and the rows expecting an
+  *error* are where it fails.
+- **A profile difference is a row, not a paragraph.** When the band table or
+  [§5.3](#53-the-diagnosis-surface-structured-failure) lands, the discriminating
+  rows are the ones where the two columns of the table disagree — a fallback that
+  a strict profile must refuse. A row both profiles answer the same way proves
+  nothing about the split.
+
+### 6.3 Making the suite usable by a new implementation
+
+For a new port, the path must be obvious and mechanical:
+
+1. Read [`test/vectors/manifest.json`](../../test/vectors/manifest.json) — it
+   lists every corpus, its row count, its row shape and what each field means,
+   without the implementer having to reverse-engineer a generator.
+2. Implement the operations of [§3.1](#31-the-operations-one-answer-shape).
+3. Write a conformance runner that reads the corpora **directly from the
+   repository** (do not copy them into the port; every existing port does this,
+   and it is why a corpus change reaches all of them at once).
+4. Run it. Every failing row names itself, its field and the expected value, so
+   the report is the bug list.
+5. Add the port to the differential harness if the language allows it.
+6. **A port implements the resolver only.** It is not required to expose a profile
+   — a jump host and an injector can both sit on the same resolver a port
+   supplies — but if it does offer one, it must reproduce the band table of
+   [§5.2](#52-the-band-table) for the profiles it offers.
+
+The existing ports are the worked examples: `java/section` (reads the corpora
+directly, `mvn test`), `rust/section` (same, `cargo test`, with hand-written
+matchers because it ships no regex engine), `src/` (Zig, with a generated
+`src/section_vectors.zig` copy because Zig cannot read JSON at test time).
+
+### 6.4 Adding a language
+
+Two halves, both needed:
+
+1. **Lexical**: one row in the mask corpus, so the blanking is verified.
+2. **Shapes**: probe rows for the discriminating declaration spellings the
+   language has that the generic matcher misses, plus at least one resolution row
+   so the seams are exercised end to end.
+
+`doc/languages.md` carries the per-language inventory; `AGENTS.md` carries the
+mechanical checklist. A new language changes **nothing** about a band: it adds
+answers to the same contract, and the two profiles read them the same way.
+
+---
+
+## 7. Test-suite organization
 
 The suite is deliberately layered, cheapest first. An implementer should work
 down this list and expect to stop at the first layer that fails.
@@ -701,19 +890,50 @@ row names it.
 
 ---
 
+## 8. Glossary
+
+| Term           | Meaning                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| **source**     | the bytes being mapped (one file), LF-normalised for scanning                                    |
+| **mask**       | the source with comments and string literals blanked to spaces, same length, every newline at its own offset |
+| **block**      | a braced or indented span: a class-like body, a method body, a statement body, or a block introduced by an anchor comment |
+| **scope**      | the file (scope 0), or a block (its members are the next scope down)                             |
+| **selector**   | one element of a reference: a path, or a line range                                              |
+| **reference**  | a `,`-separated list of selectors, in the order written                                          |
+| **modifier**   | `-`, `+`, `++` — chooses *how much* of a match to take, never *which*                            |
+| **scope name** | the four renderings a modifier selects: `declaration`, `body`, `annotated`, `documented`         |
+| **selection**  | one resolved selector: its text and its line range                                               |
+| **answer**     | the whole result: composed text, outermost range, one range per selector, per-selection kind     |
+| **first line** | the `from` of the first range — where a reader starts, and what a jump returns ([§3.5](#35-the-first-line)) |
+| **lexer**      | the language-specific half: masking, comment spans, and optionally the declaration shapes and annotation spelling a language adds |
+| **band**       | what a failure means to a run: resolved, approximated or failed ([§5.1](#51-the-three-outcomes)) |
+| **profile**    | the acceptance and escalation policy of one product — `inject/gate`, `inject/tolerant`, `jump/editor`, `jump/gate` ([§5.2](#52-the-band-table)) |
+| **drift**      | a reference that no longer means what it meant — the failure both profiles exist to catch ([§5.4](#54-drift-guards)) |
+
+---
+
 ## 9. Decisions
 
 The draft left eight questions open. All eight are now settled, and **none of
 them changed resolution behaviour** — each one either recorded what the
 implementation already did or drew a boundary. They are normative from here on.
+The layering questions that follow the split are
+[§9.5](#95-one-resolver-strictness-is-a-profile) and
+[§9.6](#96-the-rfc-is-split-into-a-core-and-two-use-case-specs).
 
 ### 9.1 What 1.0 freezes
 
 **The reference grammar, the thrown messages, and the field names of `Plan` and
-`Reference` as given in [§5.3](#53-plan-the-whole-contract).** Additions are
-minor: a new `kind` member, a new field, a new language, a new corpus row. A
-removal, a rename, a changed message or a changed resolution is major. This
-settles *how much* is stable without freezing the vocabulary forever.
+`Reference` as given in [§3.4](#34-plan-the-whole-contract).** Additions are
+minor: a new `kind` member, a new field, a new language, a new corpus row, a new
+optional error field. A removal, a rename, a changed message or a changed
+resolution is major. This settles *how much* is stable without freezing the
+vocabulary forever.
+
+The freeze is on the **resolution** contract. A profile — the band table, the
+fallback ladder — is deliberately *not* frozen at 1.0: it is a policy each
+product owns, and a product that changes when it errors has changed a policy, not
+a resolution ([§9.5](#95-one-resolver-strictness-is-a-profile)).
 
 ### 9.2 One modifier syntax, and no long form
 
@@ -728,85 +948,77 @@ is closed.
 ### 9.3 The per-selection detail already exists
 
 A mixed reference reports `kind: 'multiple'` on the plan, and each piece carries
-its own kind, scope and segments in `reference.selectors[]`. Nothing needs to be
-added; what was missing was the *documentation* of it, which §5.3 now gives.
+its own kind, scope and segments in `reference.selectors[]`. Nothing needed to be
+added; what was missing was the *documentation* of it, which §3.4 now gives — and
+the one number both use cases need, the first line, is defined once in
+[§3.5](#35-the-first-line).
 
 ### 9.4 A key is a section, under the same grammar
 
-**One reference grammar. Four rules that read it.** `/` separates segments for
-every rule alike — code, JSON, YAML, TOML and INI — and a rule decides what a
-segment *names*: a declaration path for code, a key path for the data formats.
-There is no second grammar for config files, and the separator question is
-therefore closed rather than merely decided per format. (The CSS rule added
-after this release is a fifth reader of the same path and the same `,`-list:
-what a segment names there is a style rule's rightmost simple selector or an
-at-rule's keyword, and the sigils a CSS name is written with — `.`, `#`, `@` —
-are that rule's vocabulary, never a second separator.)
-
-The formats' own spellings still appear in the *output*, because they are the
-format's: a TOML table is rendered as `[a.b]` with its dots, a YAML key path is
-re-indented. The reference's spelling is always `/`. A key that itself contains a
-dot is reached as `#a/b.c`; where the format allows a quoted key, `#a/"b.c"`
-says the same thing explicitly.
+**One reference grammar. Five rules that read it.** `/` separates segments for
+every rule alike — code, JSON, YAML, TOML, INI and CSS — and a rule decides what
+a segment *names*: a declaration path for code, a key path for the data formats,
+a rule's rightmost simple selector or an at-rule keyword for CSS. There is no
+second grammar for config files, and the separator question is therefore closed
+rather than merely decided per format. The formats' own spellings still appear in
+the *output*, because they are the format's: a TOML table is rendered as `[a.b]`
+with its dots, a YAML key path is re-indented. A key that itself contains a dot is
+reached as `#a/b.c`; where the format allows a quoted key, `#a/"b.c"` says the
+same thing explicitly.
 
 What a missing selector reports also differs by rule, deliberately: code says
 `no section named "render" in "Cart"`, the data rules name the key or the path
-(`"server/nope": no key "nope"`), because that is the vocabulary of the file the
-reader is looking at.
+(`"server/nope": no key "nope"`). Every message belongs to one of the two
+categories of [§3.6](#36-errors-in-two-categories), which is what lets a profile
+route it without re-reading the format's vocabulary.
 
-**A path may name a key or the container that holds one, and the reading is
-ordered.** The formats make these two things look alike, so the rule is stated
-once and applied by each:
+### 9.5 One resolver; strictness is a profile
 
-1. **the last segment is a key of the container the earlier segments name** —
-   `#a/b/c` is the key `c` of `[a.b]`. This wins when both readings exist,
-   because it is the more specific claim.
-2. **otherwise the whole path is a container** — `#server/tls` is `[server.tls]`.
-   In TOML this resolves whether or not `[server]` is declared too, because a
-   child table may stand alone.
-3. **otherwise a single segment is a key that sits above every container** —
-   `#title`, or a key before any `[section]` in INI.
+**This is the decision the split exists to record.**
 
-JSON and YAML are only case 1 and 3 (a mapping is not a "table" to be selected
-whole by a path that also names its child), TOML and INI have all three, and INI
-stops at two segments because a section holds keys and nothing deeper.
+> There is one resolution function. It never approximates: it returns the exact
+> range or an error. A host that wants an approximation builds it *on top* of the
+> error, from the diagnosis the error carries — the mapper does not guess on its
+> behalf, because it cannot know which host is asking.
 
-### 9.5 No fallback in the mapper
+Three consequences, each of which was a design question before the split:
 
-**A mapper MUST NOT approximate.** It returns the exact range or an error. A
-host **MAY** apply a fallback of its own when the call errors — that is use case
-A's whole latitude — but the search, the ranking and the "close enough" judgement
-belong to the host, never to the mapper. Writing this down converts the boundary
-of [§3.3](#33-the-boundary-stated-once) from an explanation into an obligation.
-
-**A tie is an error, not a tie-break.** This is the same rule seen from the other
-side, and it is the one place where a lenient reading of the mapper is tempting:
-when two blocks at one level both answer to the name a reference selected, the
-mapper fails with `"<name>" is declared <n> times; names must be unique` rather
-than returning the first in walk order. Two reasons:
-
-1. **The document use case cannot tolerate it.** An injected block is copied into
-   a document and read as fact, so choosing one of two `add` methods produces a
-   lie no reader can detect — and CI, which is the only thing that could have
-   caught it, saw a clean resolve.
-2. **The best-effort belongs to the caller.** A notebook navigator that wants
-   *some* answer is a host with its own ranking, and this section already gives it
-   that: it catches the error and applies its policy, exactly as it does for a
-   name that matched nothing. What it cannot do is make the mapper guess on its
-   behalf, because the mapper has no way to know which host is asking.
+1. **A tie is an error, not a tie-break** — in the resolver, for every consumer.
+   When two blocks at one level both answer to the name a reference selected, the
+   mapper fails with `"<name>" is declared <n> times; names must be unique` rather
+   than returning the first in walk order. The injector cannot tolerate a silent
+   choice (it would copy a lie into a document), and the editor must not be handed
+   one either, because the choice it *would* make is its own policy and not the
+   mapper's ([RFC 2 §4](code-jump.md#4-the-best-effort-ladder)).
+2. **The best-effort belongs to the caller.** An editor that wants *some* answer
+   catches the failure and applies its ladder. What it cannot do is make the
+   mapper guess, because the mapper has no way to know which host is asking.
+3. **"Error" is a profile word.** The same failed resolve is an error in a gate
+   and a warning in an editor, without resolution being redefined — because the
+   resolver's answer is identical in both cases and only the policy differs.
 
 Qualifying the name with its holder (`Cart/add`) is the fix, and it is what a
 path is for. The key formats answer the same way, with a message that names the
 format's own thing: `"server": key "server" appears 2 times; names must be
 unique`.
 
-### 9.6 No version negotiation
+### 9.6 The RFC is split into a core and two use-case specs
 
-A reference does not declare the version of the syntax it was written against,
-and 1.0 does not add one. The grammar is small, its changes are additive, and a
-declaration would be carried by every marker in every document for a benefit that
-has not been demonstrated. This is a deliberate *no*: if a real document ever
-breaks under a syntax change, the question reopens with evidence.
+**One document held two things, and they diverge.** The single text fixed the
+resolver (shared, strict, frozen) *and* the two products' failure policy (unshared
+and deliberately different). The split names the three layers and their order of
+authority ([§1.2](#12-what-is-normative-where)):
+
+| Document                                          | Owns                                                                                     | Does not own                                 |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------- |
+| **RFC 1** (this document)                         | the operations, the two error categories, the answer shape, the first line, the non-goals, the conformance obligations, the band vocabulary | any product's failure policy |
+| **[RFC 2 — code jump](code-jump.md)**             | the jump profile: what a cursor gets, the fallback ladder, IDE-versus-gate escalation    | resolution, or any byte a resolution returns |
+| **[RFC 3 — inject examples](inject-examples.md)** | the injection profile: the document layer, markers, fences, the strict gate, `--lenient` | resolution, or the jump ladder               |
+
+The rule that keeps them from drifting apart: **a document may never make the
+resolver answer differently.** Divergence is permitted only in the band table,
+and a band a product disagrees with is a stated policy with a row behind it, not
+a private reading of the grammar.
 
 ### 9.7 The corpus is the regression suite; fuzzing is the discovery tool
 
@@ -826,7 +1038,7 @@ still held to everything those runs ever found.
 A reference names a section of **one** file, and the file is named by the link's
 path. A reference does not walk out of the current document, and nesting one
 reference inside another (`path#a#b`) is not syntax. Everything in
-[§3.4](#34-explicitly-out-of-scope) applies; this makes it explicit that
+[§3.9](#39-explicitly-out-of-scope) applies; this makes it explicit that
 transclusion — pulling one document into another — is a different feature with a
 different failure mode (which version of the other file?), and is not smuggled in
 through the fragment.
@@ -835,39 +1047,69 @@ through the fragment.
 
 ## 10. Document status and versioning
 
-- **Status: release candidate for 1.0 (`0.9-rc`).** The eight questions of the
-  draft are settled in [§9](#9-decisions) and none of them changed resolution
-  behaviour. What remains before 1.0 is *exercise*, not design: a port written
-  from this document alone, and a release in which no question reopens.
+- **Status: release candidate for 1.0 (`0.9-rc`).** The questions of the draft are
+  settled in [§9](#9-decisions) and none of them changed resolution behaviour.
+  What remains before 1.0 is *exercise*, not design: a port written from this
+  document alone, and a release in which no question reopens. The two use-case
+  specs are at `0.1-draft` — their policy is settled by the table in
+  [§5.2](#52-the-band-table), and theirs is the work still to be exercised.
 - **The reference implementation is authoritative** where this document and the
   behaviour disagree; the conformance corpora are generated from it. A
   disagreement is a bug in the document or in the port, never in the corpus.
 - **The `doc/section-matching.md` specification is normative** for resolution.
-  This RFC is normative for *scope, boundary and conformance obligations*.
+- **This RFC is normative for *scope, boundary and conformance obligations***,
+  and for the **band vocabulary** — the names and meanings of the three outcomes
+  and the failure bands. A use-case spec is normative for which band its product
+  escalates.
 - **The RFC version is independent of the package version.** The npm package is
   `@hrg/inject-examples` and versions on its own semver; the version here is the
-  *syntax* version, and the two must not be read as one number.
-- **What a version means.** Before 1.0: any change. At 1.0 ([§9.1](#91-what-10-freezes)):
-  the grammar, the error messages and the `Plan`/`Reference` field names stop
-  changing incompatibly. New languages, lexer entries, conformance rows, `kind`
-  members and fields are **minor**; a removal, a rename, a changed message or a
-  changed resolution is **major**.- **Change log.**
-  - `0.9-rc` (this revision) — **an envelope holds a member in its declaration.**
-    A new *additive* grammar feature for use case B: `Cart/^,toString,$` injects
-    `Cart`'s declaration line, the `toString` method, and `Cart`'s closing line, so
-    a method copied out of a class reads as code rather than as a fragment. `^`
-    (the head: the declaration line through the line the body opens on) and `$`
-    (the tail: the line the block ends on) are whole path segments at the ends of
-    the reference, the parent is named on either end, and everything between them
-    is read inside it. Nothing existing resolves differently — an envelope needs a
-    whole segment that used to be a name, and no corpus reference or fixture named
-    `^` or `$` — and use case A is unaffected, which is what this addition is for:
-    the range is *useful to inject and not to open*, and a host that only navigates
-    ignores the extra pieces. The `Selector` gains an optional `envelope` field
-    ([§5.3](#53-plan-the-whole-contract)); the corpus gains 29 rows carrying a mark
-    (9 grammar, 4 resolution rows for a type whose members live in several `impl`
-    blocks, and 16 error paths).
-  - `0.9-rc` (this revision) — **a comment is any spelling, and a block need not
+  *syntax* version, and the two must not be read as one number. Each use-case spec
+  carries its own version, because a policy can move without the syntax moving.
+- **What a version means.** Before 1.0: any change. At 1.0
+  ([§9.1](#91-what-10-freezes)): the grammar, the error messages and the
+  `Plan`/`Reference` field names stop changing incompatibly. New languages, lexer
+  entries, conformance rows, `kind` members, fields and optional error fields are
+  **minor**; a removal, a rename, a changed message or a changed resolution is
+  **major**. A band-table change is a **minor** change to a use-case spec, and a
+  **major** one only to the product that made it.
+- **Change log.**
+  - `0.9-rc` (this revision) — **the RFC is split into a core and two use-case
+    specs** ([§9.6](#96-the-rfc-is-split-into-a-core-and-two-use-case-specs)).
+    This document keeps the contract, the resolution core, the non-goals and the
+    conformance obligations; the navigation product moves to
+    [`code-jump.md`](code-jump.md) (RFC 2) and the injection product to
+    [`inject-examples.md`](inject-examples.md) (RFC 3). Two things are *new*
+    rather than moved: **the first line is defined once** for both products
+    ([§3.5](#35-the-first-line) — the first range's `from`, not the lowest line
+    number in the selection), and **the band table**
+    ([§5.2](#52-the-band-table)) states which failure is a warning and which is
+    an error per product, so a jump in an editor may be best-effort while the
+    same failure fails a gate, and an injection always fails it. The structured
+    **diagnosis surface is implemented** ([§5.3](#53-the-diagnosis-surface-structured-failure)):
+    every failure carries a stable `code` (the `ERROR_CODES` registry) plus the
+    selector, the scope it was searched in and the candidates a name answered to;
+    `diagnose()` is the non-throwing entry point that returns the same `Plan` or
+    the structured failure; and `deepestResolvablePrefix()` is the ladder's probe.
+    What is **not** yet done is the corpus half: no band row was added, so a port
+    that omits `diagnose` and the codes still passes every row, and the codes are
+    asserted in `test.mjs` instead. No resolution behaviour changes and no corpus
+    row moves.
+  - `0.9-rc` (previous revision) — **an envelope holds a member in its
+    declaration.** A new *additive* grammar feature for use case B: `Cart/^,toString,$`
+    injects `Cart`'s declaration line, the `toString` method, and `Cart`'s closing
+    line, so a method copied out of a class reads as code rather than as a
+    fragment. `^` (the head: the declaration line through the line the body opens
+    on) and `$` (the tail: the line the block ends on) are whole path segments at
+    the ends of the reference, the parent is named on either end, and everything
+    between them is read inside it. Nothing existing resolves differently — an
+    envelope needs a whole segment that used to be a name, and no corpus reference
+    or fixture named `^` or `$` — and the range is useful to inject and not to
+    open, so a host that only navigates ignores the extra pieces. The `Selector`
+    gains an optional `envelope` field
+    ([§3.4](#34-plan-the-whole-contract)); the corpus gains 29 rows carrying a
+    mark (9 grammar, 4 resolution rows for a type whose members live in several
+    `impl` blocks, and 16 error paths).
+  - `0.9-rc` (continued) — **a comment is any spelling, and a block need not
     brace.** Three matchers were reachable only through C-style spellings, and are
     now reachable through the language's own: a region directive accepts a `#`
     prefix (`# #region add` in Python, Ruby, Shell, YAML and INI, where `#` is the
@@ -880,14 +1122,14 @@ through the fragment.
     because only a statement block carries its header's literals. Both readers
     (`index.mjs` and `lib/section.mjs`) change together. Existing resolutions are
     unchanged — the corpus gains rows for the new spellings and moves none.
-  - `0.9-rc` (this revision) — **an ambiguous name is an error.** When two blocks
+  - `0.9-rc` (continued) — **an ambiguous name is an error.** When two blocks
     at one level both answer to the name a reference selected, the mapper fails
     (`"add" is declared 2 times; names must be unique`) instead of returning the
     first in walk order, which it did until now: the document use case cannot
     tolerate a silent choice, and a host that wants one has its own ranking
-    ([§9.5](#95-no-fallback-in-the-mapper)). The key formats follow the same rule
-    for a duplicated key, table or section.
-  - `0.9-rc` (previous revision) — **the modifier is a path segment.** The grammar now
+    ([§9.5](#95-one-resolver-strictness-is-a-profile)). The key formats follow the
+    same rule for a duplicated key, table or section.
+  - `0.9-rc` (continued) — **the modifier is a path segment.** The grammar now
     reads `selector := path | line-range` and `path := segment ('/' segment)*`,
     where a segment is a name or one of `++`, `+`, `-`, and a modifier is legal
     **only as the last segment**: `toString/++`, `Cart/Line/render/-`,
@@ -899,41 +1141,42 @@ through the fragment.
     longer land on one selector: `a/++/-` is malformed rather than two readings
     to choose between. The `Reference` shape loses its `warning` field, and the
     corpus rows lose it too.
-  - `0.9-rc` — the eight open questions settled ([§9](#9-decisions)), and two
-    errors corrected: the answer shape in §5.3 named a `selections` field that
-    does not exist (the per-selection detail is `reference.selectors[]`, and
-    `warning` lives on the reference, not the plan), and the config rules'
-    separator was documented as `.` in several places. **The separator is `/` for
-    every rule alike**, which is a breaking change to any document that spelled a
-    config reference with dots; there is no compatibility path, because this is
-    the syntax's first release.
+  - `0.9-rc` (continued) — the eight open questions settled, and two errors
+    corrected: the answer shape in §3.4 named a `selections` field that does not
+    exist (the per-selection detail is `reference.selectors[]`, and `warning`
+    lived on the reference, not the plan), and the config rules' separator was
+    documented as `.` in several places. **The separator is `/` for every rule
+    alike**, which is a breaking change to any document that spelled a config
+    reference with dots; there is no compatibility path, because this is the
+    syntax's first release.
   - `0.9-rc` (continued) — three clarifications after review:
-    - **Language servers are a consumer, not out of scope** ([§3.5](#35-what-a-language-server-consumes)).
-      The removed item was a category error, and §3.4 now excludes *semantic code
-      intelligence* — what the mapper must not do — rather than the hosts that use
-      it.
-    - **"Not a parser" means not an AST parser** ([§6](#6-what-a-mapper-is-not)),
-      with [§7.5](#75-ast-based-implementations-later-and-what-they-change) fixing
-      the rules for the AST-based implementations that will follow: they become
-      the source of truth for their language, and the standalone engine must stay
+    - **Language servers are a consumer, not out of scope** — now
+      [RFC 2 §6](code-jump.md#6-the-language-server-and-ide-integration). The
+      removed item was a category error, and [§3.9](#39-explicitly-out-of-scope)
+      now excludes *semantic code intelligence* — what the mapper must not do —
+      rather than the hosts that use it.
+    - **"Not a parser" means not an AST parser** ([§3.7](#37-the-mapper-is-not-a-parser)),
+      with [§3.8](#38-engines-the-standalone-scan-or-the-hosts-own-ast) fixing the
+      rules for the AST-based implementations that will follow: they become the
+      source of truth for their language, and the standalone engine must stay
       correct and leaner or faster, or it has no reason to exist.
     - **Refactoring that updates references is a forward goal**
-      ([§3.6](#36-forward-goal-refactoring-that-updates-references)), with
+      ([§4](#4-forward-goal-refactoring-that-updates-references)), with
       OpenRewrite integration named as the direction. Read-only is a boundary of
       this version, not of the project.
     - **In an IDE or LSP host, the host's AST is the preferred engine** when it
-      has one for the language — the parse is already paid for, the host knows its
-      own language better than a heuristic, and it ships no new dependency. The
-      standalone engine keeps the grammar, covers what the host cannot, and serves
-      the hosts that have no AST at all
-      ([§3.5](#35-what-a-language-server-consumes),
-      [§7.5](#75-ast-based-implementations-later-and-what-they-change)).
-    - Row counts in [§7.1](#71-the-three-corpora) corrected to the corpus as it
+      has one for the language — the parse is already paid for, the host knows
+      its own language better than a heuristic, and it ships no new dependency.
+      The standalone engine keeps the grammar, covers what the host cannot, and
+      serves the hosts that have no AST at all
+      ([§3.8](#38-engines-the-standalone-scan-or-the-hosts-own-ast),
+      [RFC 2 §6](code-jump.md#6-the-language-server-and-ide-integration)).
+    - Row counts in [§6.1](#61-the-three-corpora) corrected to the corpus as it
       stands.
   - `0.1-draft` — first draft, extracted from the implementation and the
     resolution spec after the wrapped-header, expression-body and enum work.
-    Section 3 (the boundary) and section 8 (test layering) are the new material;
-    5, 6 and 7 restate what the implementation already does, and 7.3 records how
+    Section 3 (the boundary) and section 7 (test layering) are the new material;
+    5, 6 and 7 restate what the implementation already does, and 6.3 records how
     a new port is expected to consume the suite.
 
 ---
@@ -941,6 +1184,10 @@ through the fragment.
 ## 11. References
 
 - [`doc/section-matching.md`](../section-matching.md) — the resolution rules.
+- [RFC 2 — code jump](code-jump.md) — the navigation use case: first line, best
+  effort, IDE-versus-gate escalation.
+- [RFC 3 — inject examples](inject-examples.md) — the injection use case: the
+  document layer, the strict gate, `--lenient`.
 - [`doc/usage.md`](../usage.md) — how a document uses references.
 - [`doc/languages.md`](../languages.md) — the per-language inventory.
 - [`README.md`](../../README.md) — the project, and the CLI.

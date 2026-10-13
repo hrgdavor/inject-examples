@@ -12,6 +12,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+const error_codes = @import("error_codes.zig");
 const js = @import("js.zig");
 const Str = js.Str;
 const Failure = @import("section.zig").Failure;
@@ -35,7 +36,7 @@ pub fn keyPaths(alloc: Allocator, reference: Str, failure: *Failure) Error![]Pat
     if (tail.len != 0) try parts.append(alloc, tail);
 
     if (parts.items.len == 0) {
-        return failure.set(try js.format(alloc, "\"#{s}\" names no keys", .{reference}));
+        return failure.set(error_codes.empty_key, try js.format(alloc, "\"#{s}\" names no keys", .{reference}));
     }
 
     var paths = std.ArrayList(Path).empty;
@@ -49,7 +50,7 @@ pub fn keyPaths(alloc: Allocator, reference: Str, failure: *Failure) Error![]Pat
         try segments.append(alloc, unquote(js.trim(path[at..])));
         for (segments.items) |segment| {
             if (segment.len == 0) {
-                return failure.set(try js.format(alloc, "\"{s}\" has an empty key", .{path}));
+                return failure.set(error_codes.empty_key, try js.format(alloc, "\"{s}\" has an empty key", .{path}));
             }
         }
         try paths.append(alloc, .{ .path = path, .segments = try segments.toOwnedSlice(alloc) });
@@ -213,7 +214,7 @@ fn yamlSelection(
 ) Error!void {
     const key = segments[0];
     const at = yamlKeyAt(lines, key, from, to, indent) orelse {
-        return failure.set(try js.format(alloc, "\"{s}\": no key \"{s}\"", .{ path, key }));
+        return failure.set(error_codes.not_found, try js.format(alloc, "\"{s}\": no key \"{s}\"", .{ path, key }));
     };
     const end = yamlBlockEnd(lines, at, indent);
 
@@ -236,10 +237,10 @@ fn yamlSelection(
         break;
     }
     const child = child_indent orelse {
-        return failure.set(try js.format(alloc, "\"{s}\": \"{s}\" has no nested keys", .{ path, key }));
+        return failure.set(error_codes.not_found, try js.format(alloc, "\"{s}\": \"{s}\" has no nested keys", .{ path, key }));
     };
     if (child <= indent) {
-        return failure.set(try js.format(alloc, "\"{s}\": \"{s}\" has no nested keys", .{ path, key }));
+        return failure.set(error_codes.not_found, try js.format(alloc, "\"{s}\": \"{s}\" has no nested keys", .{ path, key }));
     }
 
     var header = std.ArrayList(u16).empty;
@@ -472,7 +473,7 @@ pub fn extractTomlRegion(alloc: Allocator, text: Str, reference: Str, failure: *
             }
         }
 
-        return failure.set(try js.format(alloc, "\"{s}\": no key or table \"{s}\"", .{ entry.path, dotted }));
+        return failure.set(error_codes.not_found, try js.format(alloc, "\"{s}\": no key or table \"{s}\"", .{ entry.path, dotted }));
     }
     return js.joinLines(alloc, out.items);
 }
@@ -571,7 +572,7 @@ pub fn extractIniRegion(alloc: Allocator, text: Str, reference: Str, failure: *F
     for (try keyPaths(alloc, reference, failure)) |entry| {
         const segments = entry.segments;
         if (segments.len > 2) {
-            return failure.set(try js.format(
+            return failure.set(error_codes.not_found, try js.format(
                 alloc,
                 "\"{s}\": INI has sections and keys, not deeper paths",
                 .{entry.path},
@@ -582,7 +583,7 @@ pub fn extractIniRegion(alloc: Allocator, text: Str, reference: Str, failure: *F
             const section_name = segments[0];
             const key = segments[1];
             const section = iniSectionAt(lines, section_name) orelse {
-                return failure.set(try js.format(
+                return failure.set(error_codes.not_found, try js.format(
                     alloc,
                     "\"{s}\": no section \"[{s}]\"",
                     .{ entry.path, section_name },
@@ -590,7 +591,7 @@ pub fn extractIniRegion(alloc: Allocator, text: Str, reference: Str, failure: *F
             };
             const end = iniSectionEnd(lines, section);
             const at = iniKeyAt(lines, key, section + 1, if (end == 0) 0 else end - 1) orelse {
-                return failure.set(try js.format(
+                return failure.set(error_codes.not_found, try js.format(
                     alloc,
                     "\"{s}\": no key \"{s}\" in [{s}]",
                     .{ entry.path, key, section_name },
@@ -608,7 +609,7 @@ pub fn extractIniRegion(alloc: Allocator, text: Str, reference: Str, failure: *F
             continue;
         }
         const at = iniKeyAt(lines, segments[0], 0, lines.len - 1) orelse {
-            return failure.set(try js.format(
+            return failure.set(error_codes.not_found, try js.format(
                 alloc,
                 "\"{s}\": no section \"[{s}]\" and no key \"{s}\"",
                 .{ entry.path, segments[0], segments[0] },

@@ -102,7 +102,10 @@ pub fn csharp() -> Syntax {
         .string(StringKind::new("'", "'"))
 }
 
-/// Kotlin: nested block comments, like Rust's.
+/// Kotlin: nested block comments, like Rust's, and the `fun name` shape.
+///
+/// The shape is what keeps the generic `name(` matcher from reading an annotation's own arguments
+/// (`@JvmName("addOne")`) as a method named after the annotation.
 pub fn kotlin() -> Syntax {
     Syntax::new("kotlin")
         .line_comments(&["//"])
@@ -110,6 +113,7 @@ pub fn kotlin() -> Syntax {
         .string(StringKind::raw("\"\"\"", "\"\"\"").multiline())
         .string(StringKind::new("\"", "\""))
         .string(StringKind::new("'", "'"))
+        .shape(Shape::KotlinFun)
 }
 
 /// PHP: `//` and `#` (but `#[Attribute]` stays readable), and heredocs.

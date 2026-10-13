@@ -142,14 +142,14 @@ block below is not typed by hand; `inject-examples` rewrites it from the file:
 
 Any of the usual comment prefixes is accepted, in any language:
 
-| Spelling | Seen in |
-| --- | --- |
-| `#region name` / `#endregion` | C#, Razor |
-| `// #region name` / `// #endregion` | VS Code folding |
-| `//region name` / `//endregion` | JetBrains IDEs |
-| `<!-- #region name -->` | HTML, Markdown |
-| `/* #region name */` | C-style block comments |
-| `-- #region`, `; #region`, `% #region`, `' #region`, `REM #region` | SQL, INI, VB, TeX |
+| Spelling                                                           | Seen in                |
+| ------------------------------------------------------------------ | ---------------------- |
+| `#region name` / `#endregion`                                      | C#, Razor              |
+| `// #region name` / `// #endregion`                                | VS Code folding        |
+| `//region name` / `//endregion`                                    | JetBrains IDEs         |
+| `<!-- #region name -->`                                            | HTML, Markdown         |
+| `/* #region name */`                                               | C-style block comments |
+| `-- #region`, `; #region`, `% #region`, `' #region`, `REM #region` | SQL, INI, VB, TeX      |
 
 Rules:
 
@@ -199,11 +199,11 @@ code needs no region comments added to it:
 A `-`, `+` or `++` **segment** after the path selects how much of the
 declaration comes with it:
 
-| Reference | Injected text |
-| --- | --- |
-| `#add` | the declaration: signature through closing brace |
-| `#add/-` | the body only, without the signature |
-| `#add/+` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| Reference | Injected text                                                                          |
+| --------- | -------------------------------------------------------------------------------------- |
+| `#add`    | the declaration: signature through closing brace                                       |
+| `#add/-`  | the body only, without the signature                                                   |
+| `#add/+`  | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
 | `#add/++` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
 
 The modifier is the last segment of the path and nothing else: `#Cart/Line/-` is
@@ -327,11 +327,11 @@ therefore be a **line range** instead of a name. `L<line>` is one line,
 and columns count from 1, both ends are inclusive, and an endpoint with no
 column runs to the end of its line:
 
-| Reference | Injected text |
-| --- | --- |
-| `#L12-L14` | lines 12, 13 and 14, verbatim |
-| `#L13` | line 13 alone |
-| `#L13:9` | line 13 from its ninth character to the end of the line |
+| Reference     | Injected text                                            |
+| ------------- | -------------------------------------------------------- |
+| `#L12-L14`    | lines 12, 13 and 14, verbatim                            |
+| `#L13`        | line 13 alone                                            |
+| `#L13:9`      | line 13 from its ninth character to the end of the line  |
 | `#L4:8-L4:22` | from the eighth character of line 4 to its twenty-second |
 
 ```markdown
@@ -393,11 +393,11 @@ uses — and the selection is rendered with the ancestors that hold it, so the
 block is valid source on its own — a bare `port: 8080` is not a YAML document,
 `server:` above it makes one:
 
-| Reference | `.yaml` | `.toml` | `.ini` |
-| --- | --- | --- | --- |
-| `#server` | the `server:` mapping | the whole `[server]` table | the whole `[server]` section |
-| `#server/port` | `server:` and its `port:` entry | `[server]` and `port = 8080` | `[server]` and `port = 8080` |
-| `#a/b/c` | every ancestor, re-indented to two spaces per level | `[a.b]` and its key | an error — INI has sections and keys, no deeper |
+| Reference      | `.yaml`                                             | `.toml`                      | `.ini`                                          |
+| -------------- | --------------------------------------------------- | ---------------------------- | ----------------------------------------------- |
+| `#server`      | the `server:` mapping                               | the whole `[server]` table   | the whole `[server]` section                    |
+| `#server/port` | `server:` and its `port:` entry                     | `[server]` and `port = 8080` | `[server]` and `port = 8080`                    |
+| `#a/b/c`       | every ancestor, re-indented to two spaces per level | `[a.b]` and its key          | an error — INI has sections and keys, no deeper |
 
 A `/` separates the keys of the *reference*, for every rule alike. A key that
 itself contains a dot is therefore still addressable — `#a/b.c` selects the key
@@ -420,13 +420,13 @@ keyword (`@media`, `@keyframes`). `/` descends the nesting CSS already has — a
 rule inside a media query is a child of it — so no combinator or descendant
 syntax is needed:
 
-| Reference | Injected text |
-| --- | --- |
-| `#.card` | the rule: selector through closing brace |
-| `#.card-` | its declarations alone, without the selector |
-| `#@media` | the whole media block |
+| Reference           | Injected text                                                                |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `#.card`            | the rule: selector through closing brace                                     |
+| `#.card-`           | its declarations alone, without the selector                                 |
+| `#@media`           | the whole media block                                                        |
 | `#@keyframes:pulse` | the at-rule whose parameter is `pulse` (`#@media:screen` reads the same way) |
-| `#@media/.card` | the `.card` rule inside the media block |
+| `#@media/.card`     | the `.card` rule inside the media block                                      |
 
 Two rules may share a name — a base rule and a variant — so a bare name that
 matches more than one block is an error, exactly as two `#region`s of one name
@@ -531,27 +531,27 @@ any of them produced.
 Marker paths resolve relative to the directory holding each document, unless
 `--root` says otherwise.
 
-| Option | Meaning |
-| --- | --- |
-| `-c`, `--check` | Write nothing; exit `1` if any block is stale |
-| `-n`, `--dry-run` | Write nothing; report what would change |
-| `-o`, `--out <file>` | Write the processed document to `<file>` instead of updating the input in place; the input is never modified, and exactly one input file is required |
-| `-r`, `--root <dir>` | Base directory for the paths the markers name (default: the document's directory) |
+| Option                     | Meaning                                                                           |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| `-c`, `--check`            | Write nothing; exit `1` if any block is stale                                     |
+| `-n`, `--dry-run`          | Write nothing; report what would change                                           |
+| `-o`, `--out <file>`       | Write the processed document to `<file>` instead of updating the input in place; the input is never modified, and exactly one input file is required |
+| `-r`, `--root <dir>`       | Base directory for the paths the markers name (default: the document's directory) |
 | `-g`, `--gitignore <file>` | Skip markers whose target file is ignored by this `.gitignore` file (default: the walk-up search above) |
-| `--no-gitignore` | Do not apply any `.gitignore` rules |
-| `-q`, `--quiet` | Print only the closing summary |
-| `--allow-empty` | Succeed when the document has no markers |
-| `-l`, `--lenient` | Tolerate broken includes: report and leave as written any marker that cannot be resolved (see below) |
-| `-h`, `--help` | Show help |
-| `-V`, `--version` | Show the version |
+| `--no-gitignore`           | Do not apply any `.gitignore` rules                                               |
+| `-q`, `--quiet`            | Print only the closing summary                                                    |
+| `--allow-empty`            | Succeed when the document has no markers                                          |
+| `-l`, `--lenient`          | Tolerate broken includes: report and leave as written any marker that cannot be resolved (see below) |
+| `-h`, `--help`             | Show help                                                                         |
+| `-V`, `--version`          | Show the version                                                                  |
 
 ### Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Every block is up to date, or was rewritten |
-| `1` | A block is stale in `--check` mode, a document or directory is unreadable, a directory holds no Markdown, a marker is malformed, or (with `--lenient`) a marker could not be resolved |
-| `2` | The command line itself was wrong |
+| Code | Meaning                                     |
+| ---- | ------------------------------------------- |
+| `0`  | Every block is up to date, or was rewritten |
+| `1`  | A block is stale in `--check` mode, a document or directory is unreadable, a directory holds no Markdown, a marker is malformed, or (with `--lenient`) a marker could not be resolved |
+| `2`  | The command line itself was wrong           |
 
 ### Output
 
@@ -740,34 +740,78 @@ const files = { 'fixtures/a.md': 'hello\n' };
 const { text } = updateDocument(doc, { readFile: (p) => files[p] });
 ```
 
-| Export | Purpose |
-| --- | --- |
-| `updateDocument(text, options)` | Rewrite every block in a document; `options` may set `root`, `readFile`, `gitignore`, `isIgnored`, `regionRules` and `lenient` |
-| `injectInto(lines, marker, content, startIndex?, language?)` | Replace one block; a bare fence is given `language`; returns `{ lines, changed }` |
-| `findMarkers(lines)` / `parseMarker(line)` | Discover markers |
-| `fenceRanges(lines)` | The fenced blocks in a document |
-| `resolveMarker(marker, read, rule?)` | The text a marker stands for, resolved by the file's type |
-| `planMarker(marker, read, rule?)` | That text plus the `ranges` each selector came from |
-| `extractRegion(text, name)` / `regionDirective(line)` | Region directive parsing |
-| `ruleFor(path, rules?)` | The region rule that resolves a reference in `path` |
-| `REGION_RULES` / `CODE_RULE` / `JSON_RULE` / `YAML_RULE` / `TOML_RULE` / `INI_RULE` / `CSS_RULE` | The built-in rules; `code` is the fallback for every unclaimed type |
-| `extractCodeRegion(text, region)` | The default rule: a region directive, a named declaration, or a line range |
-| `extractDeclaration(text, name, scope?)` | The text of one declaration, or `null`; `scope` is the `-`/`+`/`++` |
-| `extractJsonRegion(text, region)` | The `.json` rule: dotted key paths, rendered as valid JSON |
-| `extractYamlRegion(text, region)` | The `.yaml` rule: a dotted key path, rendered with its ancestors |
-| `extractTomlRegion(text, region)` | The `.toml` rule: a key with its `[table]`, or a whole table |
-| `extractIniRegion(text, region)` | The `.ini` rule: `section.key`, a whole section, or a leading key |
-| `extractCssRuleRegion(text, region)` | The `.css` rule: a rule by its rightmost simple selector, an at-rule, or a predicate |
-| `planCssMarker(text, region)` | The lines a CSS selection came from, one range per selector |
-| `codeReference(reference)` | Split a `-`/`+`/`++` modifier from the name it applies to |
-| `normalize(text)` | LF endings, one trailing newline removed |
-| `fileLanguage(path)` | The fence language a file's extension implies, or `null` |
-| `fileReader(root)` | A `readFile` that resolves against a root |
-| `parseIgnoreFile(text)` | Parse one `.gitignore` into rules |
-| `loadIgnoreRules(root, read)` | Walk up from `root` collecting `.gitignore` rules |
-| `isIgnoredPath(root, path, ruleFiles)` | Test one path against collected rules |
-| `IncludeError` | The error type for a broken include — the one `--lenient` tolerates |
-| `FENCE` | The fence prefix (` ``` `) |
+| Export                                                                                           | Purpose                                                                              |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `updateDocument(text, options)`                                                                  | Rewrite every block in a document; `options` may set `root`, `readFile`, `gitignore`, `isIgnored`, `regionRules` and `lenient` |
+| `injectInto(lines, marker, content, startIndex?, language?)`                                     | Replace one block; a bare fence is given `language`; returns `{ lines, changed }`    |
+| `findMarkers(lines)` / `parseMarker(line)`                                                       | Discover markers                                                                     |
+| `fenceRanges(lines)`                                                                             | The fenced blocks in a document                                                      |
+| `resolveMarker(marker, read, rule?)`                                                             | The text a marker stands for, resolved by the file's type                            |
+| `planMarker(marker, read, rule?)`                                                                | That text plus the `ranges` each selector came from                                  |
+| `extractRegion(text, name)` / `regionDirective(line)`                                            | Region directive parsing                                                             |
+| `ruleFor(path, rules?)`                                                                          | The region rule that resolves a reference in `path`                                  |
+| `REGION_RULES` / `CODE_RULE` / `JSON_RULE` / `YAML_RULE` / `TOML_RULE` / `INI_RULE` / `CSS_RULE` | The built-in rules; `code` is the fallback for every unclaimed type                  |
+| `extractCodeRegion(text, region)`                                                                | The default rule: a region directive, a named declaration, or a line range           |
+| `extractDeclaration(text, name, scope?)`                                                         | The text of one declaration, or `null`; `scope` is the `-`/`+`/`++`                  |
+| `extractJsonRegion(text, region)`                                                                | The `.json` rule: dotted key paths, rendered as valid JSON                           |
+| `extractYamlRegion(text, region)`                                                                | The `.yaml` rule: a dotted key path, rendered with its ancestors                     |
+| `extractTomlRegion(text, region)`                                                                | The `.toml` rule: a key with its `[table]`, or a whole table                         |
+| `extractIniRegion(text, region)`                                                                 | The `.ini` rule: `section.key`, a whole section, or a leading key                    |
+| `extractCssRuleRegion(text, region)`                                                             | The `.css` rule: a rule by its rightmost simple selector, an at-rule, or a predicate |
+| `planCssMarker(text, region)`                                                                    | The lines a CSS selection came from, one range per selector                          |
+| `codeReference(reference)`                                                                       | Split a `-`/`+`/`++` modifier from the name it applies to                            |
+| `normalize(text)`                                                                                | LF endings, one trailing newline removed                                             |
+| `fileLanguage(path)`                                                                             | The fence language a file's extension implies, or `null`                             |
+| `fileReader(root)`                                                                               | A `readFile` that resolves against a root                                            |
+| `parseIgnoreFile(text)`                                                                          | Parse one `.gitignore` into rules                                                    |
+| `loadIgnoreRules(root, read)`                                                                    | Walk up from `root` collecting `.gitignore` rules                                    |
+| `isIgnoredPath(root, path, ruleFiles)`                                                           | Test one path against collected rules                                                |
+| `IncludeError`                                                                                   | The error type for a broken include — the one `--lenient` tolerates                  |
+| `FENCE`                                                                                          | The fence prefix (` ``` `)                                                           |
+
+### Jumping to a reference: `lib/jump.mjs`
+
+A reference is also a **cursor**. `lib/jump.mjs` is the code-jump profile
+([RFC 2](./doc/rfc/code-jump.md)): the same resolver, read the way an editor reads
+it. It is the *policy* half, so it is not vendorable like `lib/section.mjs` — the
+gate reads a whole document, which means the document layer in `index.mjs`.
+
+```js
+import { jump } from '@hrg/inject-examples/lib/jump.mjs';
+import { lexerFor } from '@hrg/inject-examples/src/js/scanner/lexers.js';
+
+const answer = jump(source, 'Cart/Line/render', { lexer: lexerFor('Cart.java') });
+answer.target.firstLine;  // where the cursor goes
+answer.target.cause;      // 'resolved' — the only cause that means "exactly this"
+answer.ok;                // false only in the gate profile, or when there is nowhere to land
+```
+
+| Export                            | Purpose                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| `jump(text, reference, options?)` | A `JumpTarget`: `firstLine`, `lineCount`, `cause`, the plan when the resolve was exact, the candidates when a name answered twice |
+| `jumpGate(documentText, options)` | Resolve every marker in a document and report **each** failure in one pass: `{ passed, checked, failures }`, each failure naming its `code`, `selector` and `scope` |
+| `PROFILES` / `isProfile(name)`    | `jump/editor` (land usefully) and `jump/gate` (refuse anything not exact) |
+
+**Every target carries its `cause`**, and that is the contract: `resolved` is the
+only one that means the reference named exactly this. `nearest` is the deepest
+prefix that still resolves (a renamed `render` lands on the enclosing `Line`, one
+keystroke from the new name), `ambiguous` picked between candidates the reader can
+be shown, `file-start` is the last rung, and `uncertain` is reserved for a host
+that searched on its own. A host that hides the difference is not implementing the
+spec.
+
+`--gate` is the same reading on the command line: it writes nothing, compares no
+block against the file, and exits `1` after reporting **every** reference that does
+not resolve — one run, one fix list.
+
+The policy is **data**, not prose:
+[`test/vectors/profile-vectors.json`](./test/vectors/profile-vectors.json) is
+generated by [`tools/profile-vectors.mjs`](./tools/profile-vectors.mjs) and
+asserted by [`lib/jump.test.mjs`](./lib/jump.test.mjs). Its `resolutions[]` rows
+carry the editor's landing line and `cause` beside the band a gate refuses, and its
+`documents[]` rows carry a whole document's failure list with every file it reads
+embedded. The generator **refuses** a row both readings answer exactly — such a row
+belongs in the resolver corpus — so every row is a case where the policy shows.
 
 ## The tokenizer corpus and the oracle
 
@@ -896,13 +940,13 @@ dependency-free ES module another project can import or copy. Two ports of *that
 module* (not of the CLI) live beside it, for consumers that cannot import an ES
 module:
 
-| Port | Where | Gate | State |
-| --- | --- | --- | --- |
-| Rust | [`rust/section`](./rust/section) | `cargo test` | complete — the grammar and resolution layers, every resolution vector, every mask and every declaration shape |
-| Java | [`java/section`](./java/section) | `mvn test` | complete — all 182 vectors, the language table and the lexical corpus included |
+| Port | Where                            | Gate         | State                                                                          |
+| ---- | -------------------------------- | ------------ | ------------------------------------------------------------------------------ |
+| Rust | [`rust/section`](./rust/section) | `cargo test` | complete — every one of the 280 resolution vectors, every mask and every declaration shape, envelopes included |
+| Java | [`java/section`](./java/section) | `mvn test`   | complete — all 280 vectors, the language table and the lexical corpus included |
 
 Both read [`test/vectors/section-vectors.json`](./test/vectors/section-vectors.json)
-— the same 182 vectors the JavaScript gate uses — directly, rather than keeping a
+— the same 280 vectors the JavaScript gate uses — directly, rather than keeping a
 generated copy, and both fail if a vector is neither asserted nor counted, so a
 layer still to come stays visible instead of silently skipped. Both read the
 lexical corpus too — [`test/vectors/lexical-vectors.json`](./test/vectors/lexical-vectors.json),
@@ -914,13 +958,19 @@ mirrors rather than leads**.
 
 Writing a fourth port starts with
 [`doc/rfc/section-mapping.md`](./doc/rfc/section-mapping.md) (RFC 1 — *section
-mapping syntax*, status `0.9-rc`): it states the two use cases and the boundary
-between them, the interface a port must expose, what a mapper deliberately is not,
-and the obligations the conformance suite imposes. Its companion is
+mapping*, status `0.9-rc`): it states the contract both use cases call, the
+operations a port must expose, the two error categories, the first line a
+selection starts on, what a mapper deliberately is not, and the obligations the
+conformance suite imposes. The two **use cases** on top of it have specs of their
+own, and a port needs neither to be conformant:
+[`doc/rfc/code-jump.md`](./doc/rfc/code-jump.md) (RFC 2 — navigation, best-effort
+in an editor and strict as a gate) and
+[`doc/rfc/inject-examples.md`](./doc/rfc/inject-examples.md) (RFC 3 — injection,
+strict). Its companion is
 [`test/vectors/manifest.json`](./test/vectors/manifest.json), the machine-readable
-map of the suite — every corpus, its row count, its row shape and what each field
-means — so a port does not have to reverse-engineer a generator to know what to
-assert.
+map of the suite — every corpus, its row count, its row shape, what each field
+means and which spec owns each layer — so a port does not have to
+reverse-engineer a generator to know what to assert.
 
 The Java one is a Maven artifact (`hr.hrg.inject:inject-examples`) whose POM
 carries the metadata Maven Central asks for and attaches the sources and javadoc
@@ -968,13 +1018,13 @@ JavaScript package, a `v*` tag ships the binaries.
 Five JavaScript details decide byte equality, so the Zig code mirrors them
 exactly instead of approximating:
 
-| JS behaviour                        | how the Zig port mirrors it                                                                                       |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| JS behaviour                          | how the Zig port mirrors it                                              |
+| ------------------------------------- | ------------------------------------------------------------------------ |
 | every index and length is a code unit | text is handled as UTF-16 code units, not bytes, so `.length`, slices and regex scans agree on astral characters |
-| `String.prototype.trim` and `/\s/`  | the same 25-code-unit set V8 uses — tab through U+FEFF, and *not* U+0085                                          |
-| `JSON.parse` / `JSON.stringify`     | V8's own messages (position, line, column, the embedded input), escaping, number spelling and key order           |
-| `readFileSync(path, 'utf8')`        | the WHATWG utf-8 decoder: one U+FFFD per invalid maximal subpart, and one for an unpaired surrogate on the way out |
-| `node:path`, `resolve` especially   | `std.fs.path`, with the working directory named explicitly, because Zig's `resolve` will not anchor a relative path |
+| `String.prototype.trim` and `/\s/`    | the same 25-code-unit set V8 uses — tab through U+FEFF, and *not* U+0085 |
+| `JSON.parse` / `JSON.stringify`       | V8's own messages (position, line, column, the embedded input), escaping, number spelling and key order |
+| `readFileSync(path, 'utf8')`          | the WHATWG utf-8 decoder: one U+FFFD per invalid maximal subpart, and one for an unpaired surrogate on the way out |
+| `node:path`, `resolve` especially     | `std.fs.path`, with the working directory named explicitly, because Zig's `resolve` will not anchor a relative path |
 
 Two JavaScript quirks that a "clean" port would have smoothed over are
 reproduced instead, because they are observable: `.constructor` and `.__proto__`

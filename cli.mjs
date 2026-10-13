@@ -22,6 +22,7 @@ import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'n
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalize, parseIgnoreFile, updateDocument } from './index.mjs';
+import { jumpGate } from './lib/jump.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FILE = 'README.md';
@@ -94,6 +95,10 @@ Options:
                        or block cannot be resolved is reported with its line
                        number and its block is left as written; the exit code
                        is still ${FAILED} when any such marker occurs
+  -G, --gate           Jump gate: resolve every marker and report **each**
+                       reference that does not resolve exactly, in one run —
+                       the same strictness as --check, without comparing any
+                       block's bytes. Exit ${FAILED} if any reference fails
   -h, --help           Show this help
   -V, --version        Show the version
 
@@ -122,6 +127,7 @@ export function parseArgs(argv) {
         quiet: false,
         allowEmpty: false,
         lenient: false,
+        gate: false,
         help: false,
         version: false,
     };
@@ -148,6 +154,7 @@ export function parseArgs(argv) {
             case '-o': case '--out': options.out = takesValue(arg); break;
             case '-q': case '--quiet': options.quiet = true; break;
             case '-l': case '--lenient': options.lenient = true; break;
+            case '-G': case '--gate': options.gate = true; break;
             case '--allow-empty': options.allowEmpty = true; break;
             case '-h': case '--help': options.help = true; break;
             case '-V': case '--version': options.version = true; break;
@@ -288,9 +295,81 @@ export function main(argv) {
     for (const document of documents) {
         // Every document is processed, including the ones after a failure: one
         // broken page must not hold the healthy ones hostage.
-        exitCode = Math.max(exitCode, processDocument(document, options, gitignore));
+        exitCode = Math.max(exitCode,
+            options.gate
+                ? processGate(document, options, gitignore)
+                : processDocument(document, options, gitignore));
     }
     return exitCode;
+}
+
+/**
+ * The **jump gate** for one document: report every reference that does not
+ * resolve exactly, and compare nothing.
+ *
+ * This is the RFC's `jump/gate` reading (`doc/rfc/code-jump.md` §5.1): one run is
+ * one fix list, so it never stops at the first failing reference. It is
+ * deliberately the same strictness as `--check` — a reference CI refuses to jump
+ * through is one it must not inject either — while answering the narrower
+ * question, which is what lets a documentation author run it on a document whose
+ * blocks are not written yet.
+ *
+ * @param {string} file absolute path of the document
+ * @param {object} options parsed command line
+ * @param {false|true|Array} gitignore the resolved gitignore setting
+ * @returns {number} the exit code for this document
+ */
+function processGate(file, options, gitignore) {
+    const root = options.root === null ? dirname(file) : resolve(options.root);
+
+    let original;
+    try {
+        original = readFileSync(file, 'utf8');
+    } catch (err) {
+        const reason = err.code === 'ENOENT' ? 'no such file' : err.message;
+        console.error(`inject-examples: cannot read ${display(file)}: ${reason}`);
+        return FAILED;
+    }
+
+    let result;
+    try {
+        result = jumpGate(original, {
+            root,
+            gitignore,
+            readFile: (path) => readFileSync(resolve(root, path), 'utf8'),
+        });
+    } catch (err) {
+        console.error(`inject-examples: ${display(file)}: ${err.message}`);
+        return FAILED;
+    }
+
+    if (result.checked === 0) {
+        if (!options.allowEmpty) {
+            console.error(`inject-examples: no injection markers found in ${display(file)}.`);
+            console.error('A marker is a line that is nothing but a link to a file it names; see --help.');
+            return FAILED;
+        }
+        console.log(`${display(file)}: no markers, nothing to jump to.`);
+        return OK;
+    }
+
+    if (!options.quiet) {
+        for (const failure of result.failures) {
+            const where = `${failure.path}#${failure.reference ?? ''}`;
+            console.error(`failed  ${where}  [${failure.code ?? 'no code'}]`);
+            if (failure.selector !== null) {
+                console.error(`        selector ${JSON.stringify(failure.selector)}${failure.scope === null ? '' : `, searched in ${JSON.stringify(failure.scope)}`}`);
+            }
+            console.error(`        ${failure.message}`);
+        }
+    }
+
+    if (!result.passed) {
+        console.error(`\n${display(file)}: ${result.failures.length} of ${result.checked} reference(s) do not resolve.`);
+        return FAILED;
+    }
+    console.log(`\n${display(file)}: all ${result.checked} reference(s) resolve.`);
+    return OK;
 }
 
 /**

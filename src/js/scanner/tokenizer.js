@@ -67,6 +67,8 @@ export { JS_SYNTAX, JAVA_SYNTAX, ZIG_SYNTAX } from './syntaxes.js';
  * @property {string} [body]      `'end'` when the body is closed by a terminator keyword line
  * @property {string} [end]       that terminator word (`end`, `End`)
  * @property {boolean} [line]     the declaration line is itself a complete selection
+ * @property {RegExp} [suffix]    a suffix the language allows after a *bare* name, which is
+ *                                part of the name and not a modifier (Ruby's `!`, `?`, `=`)
  */
 /**
  * The normalized syntax the engine walks: every field present.

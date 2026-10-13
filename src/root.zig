@@ -1810,6 +1810,7 @@ const LANGUAGES = [_]Language{
     .{ .extension = "xml", .language = &lit("xml") },
     .{ .extension = "yaml", .language = &lit("yaml") },
     .{ .extension = "yml", .language = &lit("yaml") },
+    .{ .extension = "zig", .language = &lit("zig") },
 };
 
 /// The two inherited members of the language table, as the strings they
@@ -2391,6 +2392,147 @@ pub fn updateDocument(
         .changed = !eql(updated, text),
         .markers = markers,
         .results = results.items,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// The jump gate (RFC 2 §5.1)
+// ---------------------------------------------------------------------------
+
+/// `diagnose`: resolve a reference **without throwing** — RFC 1 §5.3's
+/// diagnosis surface, and the one entry point a best-effort host needs.
+///
+/// It is `planSection` with the throw turned into a value, exactly as
+/// `lib/section.mjs` defines it. Only the failure half is modelled here: the
+/// gate writes nothing and compares no block, so the plan itself is not carried.
+pub const Diagnosis = struct {
+    status: Status = .ok,
+    /// The stable code of RFC 1 §3.6, or null when the failure carries none.
+    code: ?Str = null,
+    /// The selector at fault, as written, and the block it was searched in.
+    ///
+    /// `section.Failure` carries `message` and `code` only (see the note on it),
+    /// so a failure from the resolver leaves both null and the CLI prints no
+    /// `selector` line — the one place the gate is still short of `cli.mjs`.
+    /// The fields are here so the gate's answer has the shape `jump.mjs`
+    /// documents for `JumpFailure`, and so the gap is a value and not only a
+    /// comment.
+    selector: ?Str = null,
+    scope: ?Str = null,
+    /// The failure's own message: `error.message` in JavaScript.
+    message: Str = &.{},
+
+    /// `'ok' | 'failed' | 'invalid'`, as `diagnose` reports them.
+    pub const Status = enum { ok, failed, invalid };
+};
+
+pub fn diagnose(
+    alloc: Allocator,
+    text: Str,
+    reference: Str,
+    lexer: ?lexers.Lexer,
+) JsError!Diagnosis {
+    var section_failure = section.Failure{};
+    _ = section.planSection(alloc, text, reference, lexer, &section_failure) catch |err| switch (err) {
+        // The band comes from the *code*, never from the exception type: an
+        // envelope whose marks contradict each other is thrown by the parser
+        // while carrying a `resolution/...` code.
+        error.Failed, error.Grammar => return .{
+            .status = if (js.startsWithBytes(section_failure.code, "grammar/")) .invalid else .failed,
+            .code = if (section_failure.code.len == 0) null else section_failure.code,
+            .message = section_failure.message,
+        },
+        else => |other| return other,
+    };
+    return .{};
+}
+
+/// One marker whose reference did not resolve, as `jumpGate` reports it: the
+/// reference, its stable failure code, the selector at fault, the scope it was
+/// searched in, and the message.
+pub const GateFailure = struct {
+    /// The whole marker line, `marker.raw`.
+    marker: Str,
+    path: Str,
+    /// `marker.region`: the `#` fragment, or null for a bare path.
+    reference: ?Str = null,
+    message: Str,
+    /// The stable code, or null for a failure that is not a reference at all
+    /// (a file that cannot be read, a marker with no fence).
+    code: ?Str = null,
+    /// See `Diagnosis`: both are null until `section.Failure` carries them.
+    selector: ?Str = null,
+    scope: ?Str = null,
+};
+
+/// What `jumpGate` answers for one whole document.
+pub const GateResult = struct {
+    passed: bool,
+    /// The number of markers the document carries — what the summary counts.
+    checked: usize,
+    failures: []const GateFailure,
+};
+
+/// `jumpGate`: resolve every marker in a document and report **every** failure
+/// in one run, so one pass is one fix list ([RFC 2 §5.1]).
+///
+/// It is deliberately the same strictness as `inject/gate`: a CI job that jumps
+/// through a document and one that injects into it must not disagree about
+/// whether the document is broken. The difference is what it does with the
+/// answers — this one reports failures and writes nothing.
+pub fn jumpGate(
+    alloc: Allocator,
+    text: Str,
+    options: Options,
+    failure: *Failure,
+) JsError!GateResult {
+    // `lenient` is what turns a dead include into a record instead of a throw,
+    // and a gate reports every one of them instead of the first.
+    var gate_options = options;
+    gate_options.lenient = true;
+    const result = try updateDocument(alloc, text, gate_options, failure);
+
+    var failures = std.ArrayList(GateFailure).empty;
+    for (result.results) |entry| {
+        const row_failure = entry.failure orelse continue;
+        const marker = entry.marker;
+        var code: ?Str = null;
+        var message = row_failure;
+        // The band, the selector and the scope come from the same diagnosis an
+        // editor reads, so a report names them without parsing prose. A failure
+        // that is not a reference at all has no band to report, and the layer's
+        // own message stands.
+        if (marker.region) |reference| {
+            var read_failure = Failure{};
+            if (gate_options.read_file.read(alloc, try utf8Encode(alloc, marker.path), &read_failure)) |bytes| {
+                const source = try utf8Decode(alloc, bytes);
+                // `cli.mjs` passes no `lexerFor` to `jumpGate`, so the lexer is
+                // undefined: the built-in engine reads the file, whatever its
+                // type, and the file's own region rule is not consulted again.
+                const diagnosis = try diagnose(alloc, source, reference, null);
+                if (diagnosis.status != .ok) {
+                    code = diagnosis.code;
+                    message = diagnosis.message;
+                }
+            } else |err| switch (err) {
+                // Being unable to read the file *is* the failure; nothing to add.
+                error.Failed => {},
+                else => |other| return other,
+            }
+        }
+        try failures.append(alloc, .{
+            .marker = marker.raw,
+            .path = marker.path,
+            .reference = marker.region,
+            .message = message,
+            .code = code,
+        });
+    }
+
+    return .{
+        .passed = failures.items.len == 0,
+        .checked = result.markers.len,
+        .failures = failures.items,
     };
 }
 

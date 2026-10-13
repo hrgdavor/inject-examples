@@ -8,10 +8,15 @@ the definition of *what a section reference is*.
 
 > **Scope, boundary and conformance obligations live in
 > [`doc/rfc/section-mapping.md`](rfc/section-mapping.md) (RFC 1, status
-> `0.9-rc`).** This document is normative for *how a reference resolves*; the
-> RFC is normative for what a mapper is and is not, the two use cases it serves,
-> and the suite a new implementation is measured against. Read the RFC first if
-> you are writing a port.
+> `0.9-rc`).** This document is normative for *how a reference resolves*; RFC 1
+> is normative for what a mapper is, the operations it exposes, the two error
+> categories, the first line a selection starts on, and the suite a new
+> implementation is measured against. The two **use cases** built on it have
+> specs of their own — [`rfc/code-jump.md`](rfc/code-jump.md) (RFC 2,
+> navigation, best-effort in an editor) and
+> [`rfc/inject-examples.md`](rfc/inject-examples.md) (RFC 3, injection, strict)
+> — and both are normative only for what they do *after* a resolve, never for
+> how one happens. Read RFC 1 first if you are writing a port.
 
 The marker that carries one looks like this:
 

@@ -96,6 +96,10 @@ const HELP =
     \\                       or block cannot be resolved is reported with its line
     \\                       number and its block is left as written; the exit code
     \\                       is still 1 when any such marker occurs
+    \\  -G, --gate           Jump gate: resolve every marker and report **each**
+    \\                       reference that does not resolve exactly, in one run —
+    \\                       the same strictness as --check, without comparing any
+    \\                       block's bytes. Exit 1 if any reference fails
     \\  -h, --help           Show this help
     \\  -V, --version        Show the version
     \\
@@ -126,6 +130,7 @@ const Args = struct {
     quiet: bool = false,
     allow_empty: bool = false,
     lenient: bool = false,
+    gate: bool = false,
     help: bool = false,
     version: bool = false,
 };
@@ -177,6 +182,10 @@ fn parseArgs(alloc: Allocator, argv: []const []const u8) !Parsed {
         }
         if (eqAscii(arg, "-l") or eqAscii(arg, "--lenient")) {
             options.lenient = true;
+            continue;
+        }
+        if (eqAscii(arg, "-G") or eqAscii(arg, "--gate")) {
+            options.gate = true;
             continue;
         }
         if (eqAscii(arg, "--allow-empty")) {
@@ -599,10 +608,105 @@ fn run(cli: *Cli, argv: []const []const u8, failure: *Failure) inject.JsError!u8
     for (resolved.documents) |document| {
         // Every document is processed, including the ones after a failure: one
         // broken page must not hold the healthy ones hostage.
-        const code = try processDocument(cli, document, options, gitignore, failure);
+        const code = if (options.gate)
+            try processGate(cli, document, options, gitignore)
+        else
+            try processDocument(cli, document, options, gitignore, failure);
         exit_code = @max(exit_code, code);
     }
     return exit_code;
+}
+
+/// `processGate`: the **jump gate** for one document — report every reference
+/// that does not resolve exactly, and compare nothing.
+///
+/// This is RFC 2's `jump/gate` reading (`doc/rfc/code-jump.md` §5.1): one run is
+/// one fix list, so it never stops at the first failing reference. It is
+/// deliberately the same strictness as `--check` — a reference CI refuses to
+/// jump through is one it must not inject either — while answering the narrower
+/// question, which is what lets a documentation author run it on a document
+/// whose blocks are not written yet.
+fn processGate(
+    cli: *Cli,
+    file: []const u8,
+    options: Args,
+    gitignore: inject.Gitignore,
+) inject.JsError!u8 {
+    const alloc = cli.alloc;
+    const root = if (options.root) |given|
+        try cli.resolvePath(given)
+    else
+        try cli.resolvePath(std.fs.path.dirname(file) orelse ".");
+
+    const raw = Io.Dir.cwd().readFileAlloc(cli.io, file, alloc, .unlimited) catch |err| {
+        const reason = if (err == error.FileNotFound)
+            "no such file"
+        else
+            try cli.reasonText(err, .reading, file);
+        cli.printErr("inject-examples: cannot read {s}: {s}\n", .{ try cli.display(file), reason });
+        return FAILED;
+    };
+    const original = try inject.utf8Decode(alloc, raw);
+
+    var context = ReadContext{ .cli = cli, .root = root };
+    const reader = inject.Reader{ .context = @ptrCast(&context), .read_fn = cliReadFile };
+
+    var document_failure = Failure{};
+    const result = inject.jumpGate(alloc, original, .{
+        .root = root,
+        .read_file = reader,
+        .gitignore = gitignore,
+    }, &document_failure) catch |err| switch (err) {
+        error.Failed => {
+            cli.printErr("inject-examples: {s}: ", .{try cli.display(file)});
+            cli.printErrUnits(document_failure.message);
+            cli.printErr("\n", .{});
+            return FAILED;
+        },
+        else => return err,
+    };
+
+    if (result.checked == 0) {
+        if (!options.allow_empty) {
+            cli.printErr("inject-examples: no injection markers found in {s}.\n", .{try cli.display(file)});
+            cli.printErr("A marker is a line that is nothing but a link to a file it names; see --help.\n", .{});
+            return FAILED;
+        }
+        cli.print("{s}: no markers, nothing to jump to.\n", .{try cli.display(file)});
+        return OK;
+    }
+
+    if (!options.quiet) {
+        for (result.failures) |entry| {
+            cli.printErr("failed  ", .{});
+            cli.printErrUnits(entry.path);
+            cli.printErr("#", .{});
+            if (entry.reference) |reference| cli.printErrUnits(reference);
+            cli.printErr("  [", .{});
+            if (entry.code) |code| cli.printErrUnits(code) else cli.printErr("no code", .{});
+            cli.printErr("]\n", .{});
+            // `cli.mjs` prints the selector at fault here — and the block it was
+            // searched in, when the diagnosis names one — as
+            // `selector ${JSON.stringify(selector)}`. `section.Failure` carries
+            // `message` and `code` only, so `jumpGate` has neither to hand over
+            // and there is no line to print; the fields on `GateFailure` are
+            // where they land when the resolver reports them.
+            cli.printErr("        ", .{});
+            cli.printErrUnits(entry.message);
+            cli.printErr("\n", .{});
+        }
+    }
+
+    if (!result.passed) {
+        cli.printErr("\n{s}: {d} of {d} reference(s) do not resolve.\n", .{
+            try cli.display(file),
+            result.failures.len,
+            result.checked,
+        });
+        return FAILED;
+    }
+    cli.print("\n{s}: all {d} reference(s) resolve.\n", .{ try cli.display(file), result.checked });
+    return OK;
 }
 
 /// `processDocument`: update, check or dry-run one document.
