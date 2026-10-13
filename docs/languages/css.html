@@ -188,12 +188,10 @@ body {
 .desc-note code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
 .desc-note a { color: var(--accent); }
 
-.file-tabs { display: flex; gap: .3rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
-.file-tab {
-  border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px; white-space: nowrap;
-  padding: .25rem .6rem; cursor: pointer; font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-.file-tab.active { color: var(--fg); background: var(--chip); border-color: var(--line); }
+/* No tab strip: the header names the file, and a page is read one target at a
+   time, so the pane shows one file at a time. The path is emphasised there
+   because it is the answer to "where am I reading?". */
+#source-path { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .file-view { overflow: auto; min-height: 0; }
 .file { display: none; }
 .file.active { display: block; }
@@ -352,10 +350,7 @@ body {
 </div>
 </section>
 <section class="pane pane-mid" aria-label="Source file">
-<div class="col-head">Source file<span class="col-note">lines the target selects</span></div>
-<div class="file-tabs" role="tablist">
-<button class="file-tab active" type="button" data-file="samples/site.css">docs/samples/site.css</button>
-</div>
+<div class="col-head">Source file<span class="col-note" id="source-path" data-note="lines the target selects">samples/site.css</span></div>
 <div class="file-view">
 <div class="file active" data-file="samples/site.css" aria-label="docs/samples/site.css"><pre class="code"><span class="line" id="samples-site-css-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-c">/* The design tokens, in one place. */</span></span></span><span class="line" id="samples-site-css-L2" data-line="2"><span class="ln">2</span><span class="lc">:root {</span></span><span class="line" id="samples-site-css-L3" data-line="3"><span class="ln">3</span><span class="lc">  --brand: #<span class="tok-n">1f6feb</span>;</span></span><span class="line" id="samples-site-css-L4" data-line="4"><span class="ln">4</span><span class="lc">  --<span class="tok-k">radius</span>: <span class="tok-n">6px</span>;</span></span><span class="line" id="samples-site-css-L5" data-line="5"><span class="ln">5</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L6" data-line="6"><span class="ln">6</span><span class="lc"></span></span><span class="line" id="samples-site-css-L7" data-line="7"><span class="ln">7</span><span class="lc"><span class="tok-c">/* One card, and the compact variant of it. */</span></span></span><span class="line" id="samples-site-css-L8" data-line="8"><span class="ln">8</span><span class="lc">.card {</span></span><span class="line" id="samples-site-css-L9" data-line="9"><span class="ln">9</span><span class="lc">  <span class="tok-k">display</span>: <span class="tok-k">grid</span>;</span></span><span class="line" id="samples-site-css-L10" data-line="10"><span class="ln">10</span><span class="lc">  <span class="tok-k">gap</span>: <span class="tok-n">8px</span>;</span></span><span class="line" id="samples-site-css-L11" data-line="11"><span class="ln">11</span><span class="lc">  <span class="tok-k">border</span>-<span class="tok-k">radius</span>: var(--<span class="tok-k">radius</span>);</span></span><span class="line" id="samples-site-css-L12" data-line="12"><span class="ln">12</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L13" data-line="13"><span class="ln">13</span><span class="lc"></span></span><span class="line" id="samples-site-css-L14" data-line="14"><span class="ln">14</span><span class="lc">.card[data-variant=<span class="tok-s">&quot;compact&quot;</span>] {</span></span><span class="line" id="samples-site-css-L15" data-line="15"><span class="ln">15</span><span class="lc">  <span class="tok-k">gap</span>: <span class="tok-n">2px</span>;</span></span><span class="line" id="samples-site-css-L16" data-line="16"><span class="ln">16</span><span class="lc">  <span class="tok-k">padding</span>: <span class="tok-n">4px</span>;</span></span><span class="line" id="samples-site-css-L17" data-line="17"><span class="ln">17</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L18" data-line="18"><span class="ln">18</span><span class="lc"></span></span><span class="line" id="samples-site-css-L19" data-line="19"><span class="ln">19</span><span class="lc"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {</span></span><span class="line" id="samples-site-css-L20" data-line="20"><span class="ln">20</span><span class="lc">  .card {</span></span><span class="line" id="samples-site-css-L21" data-line="21"><span class="ln">21</span><span class="lc">    <span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</span></span><span class="line" id="samples-site-css-L22" data-line="22"><span class="ln">22</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L23" data-line="23"><span class="ln">23</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L24" data-line="24"><span class="ln">24</span><span class="lc"></span></span><span class="line" id="samples-site-css-L25" data-line="25"><span class="ln">25</span><span class="lc"><span class="tok-c">/* #region pulse */</span></span></span><span class="line" id="samples-site-css-L26" data-line="26"><span class="ln">26</span><span class="lc"><span class="tok-a">@keyframes</span> pulse {</span></span><span class="line" id="samples-site-css-L27" data-line="27"><span class="ln">27</span><span class="lc">  from {</span></span><span class="line" id="samples-site-css-L28" data-line="28"><span class="ln">28</span><span class="lc">    <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;</span></span><span class="line" id="samples-site-css-L29" data-line="29"><span class="ln">29</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L30" data-line="30"><span class="ln">30</span><span class="lc">  to {</span></span><span class="line" id="samples-site-css-L31" data-line="31"><span class="ln">31</span><span class="lc">    <span class="tok-k">opacity</span>: <span class="tok-n">1</span>;</span></span><span class="line" id="samples-site-css-L32" data-line="32"><span class="ln">32</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L33" data-line="33"><span class="ln">33</span><span class="lc">}</span></span><span class="line" id="samples-site-css-L34" data-line="34"><span class="ln">34</span><span class="lc"><span class="tok-c">/* #endregion */</span></span></span><span class="line" id="samples-site-css-L35" data-line="35"><span class="ln">35</span><span class="lc"></span></span><span class="line" id="samples-site-css-L36" data-line="36"><span class="ln">36</span><span class="lc"><span class="tok-a">@keyframes</span> fade {</span></span><span class="line" id="samples-site-css-L37" data-line="37"><span class="ln">37</span><span class="lc">  from {</span></span><span class="line" id="samples-site-css-L38" data-line="38"><span class="ln">38</span><span class="lc">    <span class="tok-k">opacity</span>: <span class="tok-n">0</span>;</span></span><span class="line" id="samples-site-css-L39" data-line="39"><span class="ln">39</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L40" data-line="40"><span class="ln">40</span><span class="lc">  to {</span></span><span class="line" id="samples-site-css-L41" data-line="41"><span class="ln">41</span><span class="lc">    <span class="tok-k">opacity</span>: <span class="tok-n">1</span>;</span></span><span class="line" id="samples-site-css-L42" data-line="42"><span class="ln">42</span><span class="lc">  }</span></span><span class="line" id="samples-site-css-L43" data-line="43"><span class="ln">43</span><span class="lc">}</span></span></pre></div>
 </div>
@@ -414,7 +409,6 @@ body {
 (function () {
   var targets = Array.prototype.slice.call(document.querySelectorAll('.target'));
   var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('.file-tab'));
   var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
   var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
   var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
@@ -443,14 +437,12 @@ body {
     }
   }
 
+  // The column header says which file the pane is showing: there are no tabs, so
+  // this is the only place that answers "where am I reading?".
+  var sourcePath = document.getElementById('source-path');
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
-    tabs.forEach(function (tab) {
-      var active = tab.dataset.file === name;
-      tab.classList.toggle('active', active);
-      // With many files the tab strip scrolls; keep the active one in sight.
-      if (active) tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    });
+    if (sourcePath) sourcePath.textContent = name;
   }
 
   function select(target, keepScroll, keepHash) {

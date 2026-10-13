@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JSON — inject-examples</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --head: #ffffff; --fg: #1f2328; --muted: #6b7280;
+  --line: #e2e5e9; --chip: #f1f3f5; --accent: #1f6feb; --accent-soft: #e7f0ff; --accent-fg: #0b4fbd;
+  --hl: #fff3bf; --hl-edge: #e6c34a;
+  --code-fg: #24292f; --code-c: #6a737d; --code-s: #0a7d3c; --code-k: #cf222e;
+  --code-a: #8250df; --code-n: #0550ae; --code-t: #953800;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --panel: #161b22; --head: #161b22; --fg: #e6edf3; --muted: #9198a1;
+    --line: #30363d; --chip: #21262d; --accent: #4c8dff; --accent-soft: #16283f; --accent-fg: #a8c7ff;
+    --hl: #3a3316; --hl-edge: #8a7420;
+    --code-fg: #e6edf3; --code-c: #8b949e; --code-s: #7ee787; --code-k: #ff7b72;
+    --code-a: #d2a8ff; --code-n: #79c0ff; --code-t: #ffa657;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.page { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100vh; }
+
+/* A short, full-width banner: title and note on one row, the intro under it. */
+.page-head { background: var(--head); border-bottom: 1px solid var(--line); padding: .45rem .9rem .5rem; }
+.head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.head-title { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.page-head h1 { margin: 0; font-size: 1.12rem; }
+.page-head p { margin: .15rem 0 0; max-width: none; }
+.page-head .intro p { margin: .2rem 0 0; }
+.page-head .note { margin: 0; color: var(--muted); font-size: .78rem; }
+.page-sub { color: var(--muted); font-size: .84rem; }
+
+/* The hamburger and its menu: one page per language, from any page.
+   The menu is a popover — light dismiss, Escape and the top layer come with it —
+   and CSS anchor positioning pins it to the button, so it follows the banner
+   wherever the button lands. A browser without either API falls back to a
+   scroll-away block, kept usable by the small script below. */
+.menu-wrap { position: relative; flex: none; }
+.menu-toggle {
+  display: flex; align-items: center; gap: .45rem; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  border-radius: 8px; padding: .3rem .55rem; font: 500 .8rem/1.2 ui-sans-serif, system-ui, sans-serif;
+  anchor-name: --examples-menu;
+}
+.menu-toggle:hover { border-color: var(--accent); }
+.menu-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.menu-toggle[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+.menu-bars {
+  flex: none; width: 14px; height: 10px;
+  background:
+    linear-gradient(currentColor, currentColor) 0 0 / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 4px / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 8px / 100% 2px no-repeat;
+}
+@supports selector(:popover-open) and (position-anchor: --examples-menu) {
+  .menu {
+    position-anchor: --examples-menu;
+    position-area: bottom span-right;
+    position-try-fallbacks: bottom span-left, top span-right, top span-left;
+  }
+}
+@supports not (selector(:popover-open) and (position-anchor: --examples-menu)) {
+  .menu { position: absolute; top: 100%; left: 0; }
+  /* Without the popover API the attribute does not hide anything, so the menu
+     starts hidden here and the script below opens it. */
+  .menu:not([data-open]) { display: none; }
+}
+.menu {
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
+}
+.menu:popover-open { display: block; }
+.menu-head {
+  margin: .2rem .5rem .45rem; color: var(--muted); font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .06em; font-weight: 600;
+}
+.menu-group {
+  display: block; margin: .5rem .5rem .25rem; color: var(--muted); font-size: .72rem;
+  text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
+}
+.menu-item {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  text-decoration: none; border: 1px solid transparent;
+}
+.menu-item:hover { background: var(--chip); }
+.menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
+.menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
+.menu-item.current .menu-blurb { color: inherit; opacity: .8; }
+.menu-sample {
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.menu-item.current .menu-sample { color: inherit; opacity: .75; }
+
+/* Three columns: targets, source, and the document as it renders. */
+.split {
+  display: grid; min-height: 0;
+  grid-template-columns: minmax(270px, 23%) minmax(0, 38.5%) minmax(0, 38.5%);
+}
+.pane { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+.pane-left { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); border-right: 1px solid var(--line); }
+.pane-mid { grid-template-rows: auto auto minmax(0, 1fr); border-right: 1px solid var(--line); background: var(--panel); }
+.pane-right { grid-template-rows: auto minmax(0, 1fr); background: #ffffff; }
+.col-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+  padding: .42rem .85rem; border-bottom: 1px solid var(--line); background: var(--head);
+  font: 600 .72rem/1.4 ui-sans-serif, system-ui, sans-serif;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+.col-note { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: .74rem; opacity: .85; }
+
+/* The left pane is two stacked sections: the targets, then the description the
+   selected one is explained by. */
+.pane-left > .pane-section { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.pane-left > .pane-section + .pane-section { border-top: 1px solid var(--line); }
+
+.examples { list-style: none; margin: 0; padding: .3rem 1rem 2rem; overflow: auto; min-height: 0; }
+.example { padding: .8rem 0 .9rem; border-bottom: 1px solid var(--line); }
+.example:last-child { border-bottom: 0; }
+.example h3 { display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .4rem; font-size: 1rem; }
+.example h3 .num {
+  flex: none; min-width: 1.55rem; height: 1.55rem; border-radius: 50%; background: var(--chip);
+  color: var(--muted); font: 600 .78rem/1.55rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: center;
+}
+.targets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .45rem; }
+.target {
+  display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; max-width: 100%;
+  border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px;
+  padding: .28rem .75rem; cursor: pointer; text-align: left;
+  font: 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.target:hover { border-color: var(--accent); }
+.target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip-file { color: var(--muted); white-space: nowrap; }
+.chip-ref { font-weight: 600; white-space: nowrap; }
+.target[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+.target[aria-pressed="true"] .chip-file { color: inherit; opacity: .75; }
+
+/* The description pane: the prose of the selected example, and nothing else —
+   no snippet, since the target's text is what the middle column shows. */
+.desc-panel { min-height: 0; overflow: auto; padding: .85rem 1rem 4rem; }
+.desc-panel h2 {
+  display: flex; gap: .55rem; align-items: baseline; margin: 0 0 .5rem;
+  font-size: .95rem; text-transform: none; letter-spacing: 0; color: var(--fg);
+}
+.desc-panel h2 .num {
+  flex: none; min-width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--chip);
+  color: var(--muted); font: 600 .74rem/1.4rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: center;
+}
+.desc-panel .desc { display: none; font-size: .92rem; }
+.desc-panel .desc.active { display: block; }
+.desc-panel .desc p { margin: .35rem 0 .7rem; }
+.desc-panel .desc ul { margin: .35rem 0 .7rem; padding-left: 1.2rem; }
+.desc-panel .desc h3 { margin: .9rem 0 .35rem; font-size: .95rem; }
+.desc-panel .desc h4, .desc-panel .desc h5, .desc-panel .desc h6 { margin: .8rem 0 .3rem; font-size: .9rem; }
+.desc-panel .desc code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
+.desc-empty { margin: .3rem 0 .8rem; color: var(--muted); font-size: .84rem; }
+.desc-note {
+  padding: .1rem 0 .8rem; margin-bottom: .8rem; border-bottom: 1px solid var(--line);
+  font-size: .92rem;
+}
+/* What the pane says before anything is selected: the sections that offer no
+   example explain themselves here, and the hint says how to pick one. */
+.desc-panel.filled .desc-empty, .desc-panel.filled .desc-note { display: none; }
+.desc-note p { margin: .35rem 0 .7rem; }
+.desc-note ul { margin: .35rem 0 .7rem; padding-left: 1.2rem; }
+.desc-note li { margin: .15rem 0; }
+.desc-note code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
+.desc-note a { color: var(--accent); }
+
+/* No tab strip: the header names the file, and a page is read one target at a
+   time, so the pane shows one file at a time. The path is emphasised there
+   because it is the answer to "where am I reading?". */
+#source-path { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.file-view { overflow: auto; min-height: 0; }
+.file { display: none; }
+.file.active { display: block; }
+.code {
+  margin: 0; padding: .6rem 0 3rem; color: var(--code-fg);
+  font: 12.75px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.line { display: block; border-left: 3px solid transparent; padding-right: .9rem; }
+.line .ln { display: inline-block; width: 3.6rem; padding-right: .8rem; text-align: right; color: var(--muted); user-select: none; }
+.line .lc { white-space: pre; }
+.line.hl { background: var(--hl); border-left-color: var(--hl-edge); }
+.line.hl .ln { color: var(--fg); font-weight: 600; }
+.tok-c { color: var(--code-c); font-style: italic; }
+.tok-s { color: var(--code-s); }
+.tok-k { color: var(--code-k); }
+.tok-a { color: var(--code-a); }
+.tok-n { color: var(--code-n); }
+.tok-t { color: var(--code-t); }
+
+/* The third column is deliberately GitHub's light rendering, page theme or not. */
+.md-scroll { overflow: auto; min-height: 0; background: #ffffff; }
+.md {
+  background: #ffffff; color: #1f2328; padding: .9rem 1.1rem 4rem;
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+.md h1, .md h2 { border-bottom: 1px solid #d1d9e0; padding-bottom: .25em; }
+.md h1 { font-size: 1.5em; margin: .4em 0 .5em; }
+.md h2 { font-size: 1.2em; margin: 1.1em 0 .4em; }
+.md h3 { font-size: 1.05em; margin: 1em 0 .35em; }
+.md p { margin: 0 0 .8em; }
+.md ul { margin: 0 0 .8em; padding-left: 1.5em; }
+.md a { color: #0969da; text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+.md code {
+  background: rgba(175, 184, 193, .2); border-radius: 6px; padding: .15em .35em;
+  font: .86em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.md .md-pre { background: #f6f8fa; border-radius: 6px; padding: .75rem .9rem; margin: 0 0 .9em; overflow: auto; }
+.md .md-pre code { background: none; padding: 0; font-size: .84em; line-height: 1.45; }
+/* GitHub light's own token colours: the column stays light in either theme. */
+.md .tok-c { color: #6e7781; font-style: italic; }
+.md .tok-s { color: #0a3069; }
+.md .tok-k { color: #cf222e; }
+.md .tok-a { color: #8250df; }
+.md .tok-n { color: #0550ae; }
+.md .tok-t { color: #953800; }
+.md .md-marker { display: flex; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
+.md .md-badge {
+  font: 600 10px/1 ui-monospace, monospace; text-transform: uppercase; letter-spacing: .05em;
+  color: #1a7f37; background: #dafbe1; border: 1px solid #aceebb; border-radius: 999px; padding: .25em .5em;
+}
+.md-section { border-left: 3px solid transparent; padding-left: .75rem; margin-left: -.75rem; border-radius: 4px; }
+.md-section-active { border-left-color: #0969da; background: #f6f8fa; }
+.md .md-hit { background: #fff8c5; box-shadow: inset 0 0 0 1px rgba(212, 167, 44, .45); border-radius: 6px; }
+.md .md-pre.md-hit { background: #fff8c5; }
+.md .md-marker.md-hit { padding: .2rem .45rem; margin-left: -.45rem; }
+
+@media (max-width: 1150px) {
+  .page { height: auto; min-height: 100vh; grid-template-rows: auto auto; }
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .pane { height: 70vh; }
+  .pane-left, .pane-mid { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+/* A jump page has no targets column: the file and the document share the width. */
+.split.source-document { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+</style>
+</head>
+<body>
+<div class="page">
+<header class="page-head">
+<div class="head-row">
+<div class="head-title">
+<div class="menu-wrap">
+<button class="menu-toggle" type="button" popovertarget="menu" aria-label="Examples by language">
+<span class="menu-bars" aria-hidden="true"></span>
+<span class="menu-word">Examples</span>
+</button>
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
+<p class="menu-head">One page per language</p>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">what a reference points at, and where a reader arrives</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item with-sample" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item with-sample" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item with-sample" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item with-sample" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item with-sample" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item with-sample" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item current with-sample" href="json.html" aria-current="page"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item with-sample" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+</nav>
+</div>
+<h1>JSON</h1>
+</div>
+<p class="note">Generated from <code>docs/jump-demo.md</code> by <code>tools/build-demo.mjs</code> — edit the Markdown, not this file.</p>
+</div>
+<p class="page-sub">a nested key</p>
+<div class="intro">
+
+</div>
+</header>
+<main class="split source-document">
+
+<section class="pane pane-mid" aria-label="Source file">
+<div class="col-head">Source file<span class="col-note" id="source-path" data-note="the line the reference lands on">samples/api.json</span></div>
+<div class="file-view">
+<div class="file active" data-file="samples/api.json" aria-label="docs/samples/api.json"><pre class="code"><span class="line" id="samples-api-json-L1" data-line="1"><span class="ln">1</span><span class="lc">{</span></span><span class="line" id="samples-api-json-L2" data-line="2"><span class="ln">2</span><span class="lc">  <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,</span></span><span class="line" id="samples-api-json-L3" data-line="3"><span class="ln">3</span><span class="lc">  <span class="tok-s">&quot;version&quot;</span>: <span class="tok-s">&quot;1.0.0&quot;</span>,</span></span><span class="line" id="samples-api-json-L4" data-line="4"><span class="ln">4</span><span class="lc">  <span class="tok-s">&quot;server&quot;</span>: {</span></span><span class="line" id="samples-api-json-L5" data-line="5"><span class="ln">5</span><span class="lc">    <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>,</span></span><span class="line" id="samples-api-json-L6" data-line="6"><span class="ln">6</span><span class="lc">    <span class="tok-s">&quot;enabled&quot;</span>: <span class="tok-k">true</span>,</span></span><span class="line" id="samples-api-json-L7" data-line="7"><span class="ln">7</span><span class="lc">    <span class="tok-s">&quot;cors&quot;</span>: [<span class="tok-s">&quot;https://a.example&quot;</span>]</span></span><span class="line" id="samples-api-json-L8" data-line="8"><span class="ln">8</span><span class="lc">  },</span></span><span class="line" id="samples-api-json-L9" data-line="9"><span class="ln">9</span><span class="lc">  <span class="tok-s">&quot;keywords&quot;</span>: [<span class="tok-s">&quot;cart&quot;</span>, <span class="tok-s">&quot;orders&quot;</span>, <span class="tok-s">&quot;demo&quot;</span>]</span></span><span class="line" id="samples-api-json-L10" data-line="10"><span class="ln">10</span><span class="lc">}</span></span></pre></div>
+</div>
+</section>
+<section class="pane pane-right" aria-label="Rendered Markdown">
+<div class="col-head">Code navigation<span class="col-note">the references, as they are written</span></div>
+<div class="md-scroll">
+<article class="md">
+<section class="md-section" data-md-section="1">
+<h2 data-md-from="311" data-md-to="311">JSON: a nested key</h2>
+<p data-md-from="313" data-md-to="313">A JSON key path lands on the line the selected key is written on — the outermost key the path names, since that is where a reader has to start reading.</p>
+<p class="md-marker" data-marker="json-t-24-1" data-landing="2-2"><a href="../docs/samples/api.json#name">samples/api.json#name</a><span class="md-badge">jump</span></p>
+<p data-md-from="317" data-md-to="317">a top-level key</p>
+<p class="md-marker" data-marker="json-t-24-2" data-landing="4-4"><a href="../docs/samples/api.json#server/port">samples/api.json#server/port</a><span class="md-badge">jump</span></p>
+<p data-md-from="321" data-md-to="321">and a nested one</p>
+</section>
+</article>
+</div>
+</section>
+</main>
+</div>
+<script>
+(function () {
+  var targets = Array.prototype.slice.call(document.querySelectorAll('.target'));
+  var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
+  var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
+  var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
+  var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
+  var descriptions = Array.prototype.slice.call(document.querySelectorAll('.desc'));
+
+  // The examples menu is a popover: the browser opens it, light-dismisses it,
+  // closes it on Escape and keeps it in the top layer, and the button that
+  // invokes it is wired by popovertarget. A browser without the API gets the
+  // button wired by hand and the data-open attribute the fallback CSS reads.
+  if (!('showPopover' in HTMLElement.prototype)) {
+    var menu = document.querySelector('.menu');
+    var toggle = document.querySelector('.menu-toggle');
+    if (menu && toggle) {
+      toggle.setAttribute('aria-expanded', 'false');
+      var setMenu = function (open) {
+        menu.toggleAttribute('data-open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+      };
+      toggle.addEventListener('click', function () { setMenu(!menu.hasAttribute('data-open')); });
+      document.addEventListener('click', function (event) {
+        if (menu.hasAttribute('data-open') && !menu.contains(event.target)) setMenu(false);
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && menu.hasAttribute('data-open')) { setMenu(false); toggle.focus(); }
+      });
+    }
+  }
+
+  // The column header says which file the pane is showing: there are no tabs, so
+  // this is the only place that answers "where am I reading?".
+  var sourcePath = document.getElementById('source-path');
+  function showFile(name) {
+    files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
+    if (sourcePath) sourcePath.textContent = name;
+  }
+
+  function select(target, keepScroll, keepHash) {
+    var item = target.closest('.target-item');
+    targets.forEach(function (other) { other.setAttribute('aria-pressed', String(other === target)); });
+    // The link that was clicked stays visible: a description can be long, and
+    // with the panel scrolled the target is what says which example it belongs to.
+    if (!keepScroll) target.scrollIntoView({ block: 'nearest' });
+
+    // The second left-hand section is the description of the selected example,
+    // and only it: the example link itself never grows a footnote.
+    descriptions.forEach(function (desc) {
+      desc.classList.toggle('active', desc.dataset.desc === item.id);
+    });
+    var panel = document.querySelector('.desc-panel');
+    if (panel) {
+      panel.classList.toggle('filled', panel.querySelector('.desc.active') !== null);
+      panel.scrollTop = 0;
+    }
+
+    lines.forEach(function (line) { line.classList.remove('hl'); });
+    showFile(target.dataset.file);
+
+    var from = Number(target.dataset.from);
+    var to = Number(target.dataset.to);
+    var ranges = (target.dataset.ranges || '').split(',').filter(Boolean).map(function (range) {
+      var ends = range.split('-');
+      return [Number(ends[0]), Number(ends[1])];
+    });
+    if (ranges.length === 0) ranges = [[from, to]];
+    var shown = document.querySelector('.file.active');
+    var first = null;
+    if (shown) {
+      Array.prototype.forEach.call(shown.querySelectorAll('.line'), function (line) {
+        var n = Number(line.dataset.line);
+        var hit = ranges.some(function (range) { return n >= range[0] && n <= range[1]; });
+        if (hit) {
+          line.classList.add('hl');
+          if (first === null) first = line;
+        }
+      });
+    }
+
+    // The same target, in the rendered Markdown: its section, its marker line
+    // and the block that injection filled.
+    mdSections.forEach(function (section) {
+      section.classList.toggle('md-section-active', section.dataset.mdSection === target.dataset.section);
+    });
+    mdHits.forEach(function (hit) { hit.classList.remove('md-hit'); });
+    var marker = document.querySelector('[data-marker="' + item.id + '"]');
+    var inject = document.querySelector('[data-inject="' + item.id + '"]');
+    if (marker) marker.classList.add('md-hit');
+    if (inject) inject.classList.add('md-hit');
+
+    if (!keepScroll) {
+      if (first) first.scrollIntoView({ block: 'nearest' });
+      if (marker) marker.scrollIntoView({ block: 'center' });
+    }
+    if (!keepHash) history.replaceState(null, '', '#' + item.id);
+  }
+
+  targets.forEach(function (target) {
+    target.addEventListener('click', function () { select(target, false, false); });
+  });
+
+  var wanted = location.hash.slice(1);
+  var initial = targets.filter(function (target) {
+    return target.closest('.target-item').id === wanted;
+  })[0];
+  if (initial) select(initial, false, true);
+})();
+</script>
+<script>
+(function () {
+  var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
+  var markerHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker'));
+  var jumpLinks = Array.prototype.slice.call(document.querySelectorAll('.md-marker > a'));
+
+  var sourcePath = document.getElementById('source-path');
+  function showFile(name) {
+    var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
+    files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
+    if (sourcePath) sourcePath.textContent = name;
+  }
+
+  // A jump click does one thing: put the reader on the line the reference lands
+  // on. Nothing is injected, so there is no block to light up and no description
+  // to swap — the prose around the link already says what it means.
+  function jump(link) {
+    var item = link.closest('[data-marker]');
+    jumpLinks.forEach(function (other) { other.setAttribute('aria-current', String(other === link)); });
+    lines.forEach(function (line) { line.classList.remove('hl'); });
+    // The link's own href names the file it points into; the source column keys
+    // its panes by the path as the *document* writes it. Both are known here, so
+    // the match is made without a regular expression: no escaping survives a
+    // nested template literal intact.
+    var href = link.getAttribute('href').split('#')[0].split('/');
+    var parts = href.filter(function (part) { return part !== '..' && part !== '' && part !== '.'; });
+    var name = parts.join('/');
+    var match = null;
+    Array.prototype.forEach.call(document.querySelectorAll('.file'), function (file) {
+      var candidate = file.dataset.file;
+      var tail = name.slice(name.length - candidate.length);
+      if (tail === candidate && (name.length === candidate.length || name.charAt(name.length - candidate.length - 1) === '/')) {
+        if (match === null || candidate.length > match.length) match = candidate;
+      }
+    });
+    showFile(match);
+    if (match === null) return;
+
+    // The reference lands on ONE line: the first line of what it selects.
+    var from = Number(link.dataset.from);
+    var to = Number(link.dataset.to);
+    var shown = document.querySelector('.file.active');
+    var first = null;
+    if (shown) {
+      Array.prototype.forEach.call(shown.querySelectorAll('.line'), function (line) {
+        var n = Number(line.dataset.line);
+        if (n >= from && n <= to) {
+          line.classList.add('hl');
+          if (first === null) first = line;
+        }
+      });
+    }
+    markerHits.forEach(function (hit) { hit.classList.remove('md-hit'); });
+    if (item) item.classList.add('md-hit');
+    if (first) first.scrollIntoView({ block: 'center' });
+  }
+
+  // Each link carries the line its reference lands on, resolved by the generator
+  // from the very reference the link spells out.
+  jumpLinks.forEach(function (link) {
+    var item = link.closest('[data-marker]');
+    var landing = (item && item.dataset.landing) ? item.dataset.landing.split('-') : [];
+    link.dataset.from = landing[0] || '0';
+    link.dataset.to = landing[1] || landing[0] || '0';
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      jump(link);
+    });
+  });
+})();
+</script>
+</body>
+</html>

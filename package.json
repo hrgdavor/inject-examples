@@ -63,8 +63,8 @@
     "oracle": "node tools/mask-oracle.mjs",
     "compare:zig": "node tools/compare-zig.mjs",
     "typecheck": "tsc --noEmit",
-    "demo": "bun tools/build-demo.mjs",
-    "demo:check": "bun tools/build-demo.mjs --check"
+    "demo": "bun tools/build-demo.mjs --pages inject --pages jump",
+    "demo:check": "bun tools/build-demo.mjs --pages inject --pages jump --check"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

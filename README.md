@@ -10,6 +10,13 @@ itself, and every file it shows is exercised by the test suite. The
 sync and a generator turns into clickable pages, one per language (see
 [The demo pages](#the-demo-pages)).
 
+There is a second demo for the tool's other use case: the
+[code jump page](./docs/jump/index.html) shows the same references read as
+**destinations** — where a reader lands, and what a host does when the exact block
+is gone. It is built the same way, from
+[`docs/jump-demo.md`](./docs/jump-demo.md), and it stands on its own: the two
+demos do not link to each other.
+
 A **marker** is a line that is nothing but a link to a real file, labelled with
 that same path. The fenced code block that follows it is replaced — byte for
 byte — with that file's content. Because the text is *copied* rather than typed,
@@ -647,6 +654,23 @@ npx @hrg/inject-examples --check || {
 
 ## The demo pages
 
+There are **two demos**, and they are independent — neither links to the other.
+
+The **injection** demo is [`docs/index.html`](./docs/index.html), built from
+[`docs/demo.md`](./docs/demo.md): the text a reference puts into a document. The
+**navigation** demo is [`docs/jump/index.html`](./docs/jump/index.html), built from
+[`docs/jump-demo.md`](./docs/jump-demo.md): the line a reference takes a reader to,
+and what a host does when the exact block is gone. It is a different shape, not
+a re-skin — a jump **documents** code instead of embedding it, so its document has
+no fenced blocks, its pages have no target list or description pane, and clicking a
+reference highlights the single line a reader lands on rather than the text a marker
+would inject. Both are built by the same generator and cover the same languages and
+samples: one reference is asked "what do you inject?", the other "where do you
+land?".
+
+The rest of this section describes the injection demo; the navigation demo works
+the same way, with `--pages jump` in place of the default page set.
+
 [`docs/index.html`](./docs/index.html) is the **Overview**: the examples that are
 about the tool itself, whatever language the sample is written in. Each of the 18
 languages and config formats has a page of its own under
@@ -703,8 +727,8 @@ link itself grows no snippet. The pages are generated, never hand-written:
   are two highlights rather than one covering everything between them.
 
 ```bash
-bun tools/build-demo.mjs           # write every page
-bun tools/build-demo.mjs --check   # exit 1 when a page is stale
+bun tools/build-demo.mjs --pages inject --pages jump   # write both demos
+bun tools/build-demo.mjs --pages inject --pages jump --check   # exit 1 when a page is stale
 ```
 
 To add an example: put the sample in `docs/samples/`, write a `##` section with

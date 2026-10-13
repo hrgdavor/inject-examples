@@ -44,9 +44,29 @@
   (`#scripts/test`, `#server/port`). A format's own spelling stays in the *output*
   (a TOML header is still `[a.b]`). `.` is never a reference separator.
 
-## The demo pages (`docs/index.html`, `docs/languages/*.html`)
+## The demo pages (`docs/index.html`, `docs/jump/index.html`)
 
-- The pages are **generated** — never edit one by hand.
+- The pages are **generated** — never edit one by hand. **There are two demos**, and
+  they are deliberately independent: neither menu lists the other and no page links
+  across. One document, one page per language, twice over.
+  - the **injection** demo (`docs/index.html`, `docs/languages/*.html`) is built
+    from `docs/demo.md` and answers "what text does a reference put in my
+    document?" — it is the `inject` page set;
+  - the **navigation** demo (`docs/jump/index.html`, `docs/jump/languages/*.html`)
+    is built from `docs/jump-demo.md` and answers "where does a reader land, and
+    what happens when the exact block is gone?" — the `jump` page set, the
+    [code jump](./doc/rfc/code-jump.md) use case. It is **not** the injection
+    demo with different prose: a navigation document has **no fenced blocks at
+    all** (a reference in it is a plain link, because a jump has nothing to put
+    in the document), its pages have **no targets column and no description
+    pane** (the document's own inline links are the navigation), and every
+    target highlights **one line** — the line the reader lands on — rather than
+    the span the reference covers (`landing` in the set).
+  Both sets cover the same 19 slugs, so a language page exists on both sides.
+  `tools/build-demo.mjs --pages inject --pages jump` builds both (`npm run demo`,
+  `npm run demo:check`); `--pages <name>` alone builds one, and no `--pages` is the
+  `inject` set, which is what every older invocation still means. A set is a record
+  (`PAGE_SETS`), not the document's order, so one generator builds both.
 - One document, one page per language. `docs/index.html` is the **Overview** —
   the examples that are about the tool itself, whatever language the sample
   happens to be written in, closing with an index that links every language page
@@ -55,7 +75,10 @@
   sections are targets like any page's**, not prose: a reader clicks its topics
   and the middle and right columns follow. A reference is written once in the
   document and shown on one page, so the Java sample's *direct* names are the
-  overview's examples and its *path and line* forms are Java's page.
+  overview's examples and its *path and line* forms are Java's page. **A marker is
+  unique across a whole document**, so an example the overview shows is not
+  repeated on a language page; a document is checked for that when it is
+  generated, and the jump document is written from its own table.
 - Every page has the **same header**, and in it the same hamburger menu: a
   `popover` (opened by the button's `popovertarget`, so light dismiss, Escape and
   the top layer come from the platform) positioned against the button with CSS
@@ -90,8 +113,9 @@
   declarations`, `Go: a switch literal and a trailing comment`). The markers
   inject `docs/samples/*` — one sample per language and config format (Java,
   JavaScript, Go, Rust, Python, C#, Kotlin, PHP, Ruby, Shell, VB, Haskell, Zig,
-  YAML, TOML, INI, JSON, CSS) — and a page's middle column gets a tab per file its
-  own examples read, the active one scrolled into view.
+  YAML, TOML, INI, JSON, CSS). A page's middle column has **no tab strip**: it shows
+  one file at a time and names it in its own header (`Source file  samples/Cart.rs`),
+  which the page script keeps in step as targets are selected.
 - The pages are **grouped by feature**, not one section per example: a language
   page has two or three sections, and a section's examples share its prose (the
   description pane falls back to it). Where a language cannot show something —
@@ -110,21 +134,31 @@
   members at the top level, and Haskell's `data Cart` has no body — a language gets
   an envelope section only where there is a declaration to wrap.
 - Generator: `tools/build-demo.mjs`, run with Bun:
-  `bun tools/build-demo.mjs` (or `npm run demo`) writes every page,
-  `bun tools/build-demo.mjs --check` (or `npm run demo:check`) exits 1 when one
-  of them is stale.
+  `bun tools/build-demo.mjs --pages inject --pages jump` (or `npm run demo`) writes
+  every page of both sets; `--check` (or `npm run demo:check`) exits 1 when one of
+  them is stale. `tools/make-jump-doc.mjs` writes `docs/jump-demo.md` from its own
+  table of references — a navigation document is a list of destinations, not a
+  copy of the injection demo's examples — and it resolves every one of them while
+  it writes, so the document cannot contain a link the tool would refuse to
+  follow.
 - Adding an example: put the sample in `docs/samples/`, write the `##` section
   with its prose and a marker in `docs/demo.md`, run `node cli.mjs docs/demo.md`
   to fill the block, add the section's title to the page that owns it in `PAGES`,
   add the page to the language index in `docs/demo.md` if it is new, then run the
-  generator (a new file adds a tab to that page's middle column). Highlighting for
-  every sample comes from the `HIGHLIGHTERS` table in `tools/build-demo.mjs`,
+  generator (a new file becomes another file the page's pane can show, named in the
+  column header when a target reads it). Highlighting for every sample comes from
+  the `HIGHLIGHTERS` table in `tools/build-demo.mjs`,
   whose comment/string spans are the resolver's own syntaxes; a new language needs
-  a keyword set there too.
-- `test.mjs` holds the pages to the docs' standard: `docs/demo.md` must be in
-  sync with the samples, every target's line range must be the text it injects,
-  every section must be published on exactly one page, every page must carry the
-  menu, and each committed page must be byte-identical to the generator's output.
+  a keyword set there too. For the navigation demo, add the reference to
+  `tools/make-jump-doc.mjs`'s `SECTIONS` table and run it: the generator resolves
+  the reference and writes the link, so a reference the tool cannot follow is
+  caught before the page exists.
+- `test.mjs` holds both sets to the docs' standard: `docs/demo.md` must be in
+  sync with the samples and every target's line range must be the text it injects;
+  `docs/jump-demo.md` must carry **no fenced block** and every reference in it must
+  resolve; every section must be published on exactly one page; every page must
+  carry the menu; each committed page must be byte-identical to the generator's
+  output; and no page of one set may link into the other.
 
 ## Languages and the mask oracle
 

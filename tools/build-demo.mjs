@@ -145,16 +145,131 @@ export const PAGES = [
 /** The overview is the first page and the one a reader lands on. */
 export const OVERVIEW = PAGES[0];
 
+/**
+ * The **code-jump** page set: the second document, built by the same generator.
+ *
+ * It exists because the tool has two use cases ([RFC 1](../doc/rfc/section-mapping.md)),
+ * and one demo cannot show both well. `docs/demo.md` is about **injection** — the
+ * exact text a reference puts into a document. This set is about **navigation** —
+ * the line a reference takes a reader to, and what a host does when it cannot
+ * get there ([RFC 2](../doc/rfc/code-jump.md)).
+ *
+ * The two are deliberately **independent**: neither menu lists the other and no
+ * page links across, so a reader can read either one on its own. What they share
+ * is the sample files and the reference grammar they demonstrate.
+ */
+export const JUMP_DOC = 'docs/jump-demo.md';
+export const JUMP_OUT = 'docs/jump/index.html';
+
+export const JUMP_PAGES = [
+    { slug: 'overview', label: 'Overview', title: 'Overview', sample: null, group: 'This page', order: 0,
+        sections: ['A jump lands on one line', 'A region lands inside it',
+            'An envelope lands on the declaration that holds the member',
+            'When the exact block is gone', 'When two blocks answer to one name'],
+        blurb: 'what a reference points at, and where a reader arrives' },
+    // Languages. A navigation page is short on purpose: it shows the constructs
+    // of that language a reader actually jumps to, and the line each one starts
+    // on — not every example the injection demo has to offer.
+    { slug: 'java', label: 'Java', title: 'Java', group: 'Languages', order: 1, sample: 'samples/Inventory.java',
+        blurb: 'a class, a nested class, and the member inside it',
+        sections: ['Java: a declaration and the member nested in it', 'Java: a modifier moves the landing line'] },
+    { slug: 'javascript', label: 'JavaScript / TypeScript', title: 'JavaScript and TypeScript', group: 'Languages',
+        order: 2, sample: 'samples/cart.js', blurb: 'a member, its annotation, and a region',
+        sections: ['JavaScript: a member, its body and its annotation'] },
+    { slug: 'go', label: 'Go', title: 'Go', group: 'Languages', order: 3, sample: 'samples/Cart.go',
+        blurb: 'top-level functions and a region',
+        sections: ['Go: a function and a switch literal'] },
+    { slug: 'rust', label: 'Rust', title: 'Rust', group: 'Languages', order: 4, sample: 'samples/Cart.rs',
+        blurb: 'a name two impls answer to, and the one that holds the member',
+        sections: ['Rust: a member two impls answer to', 'Rust: the envelope names the impl'] },
+    { slug: 'python', label: 'Python', title: 'Python', group: 'Languages', order: 5, sample: 'samples/Cart.py',
+        blurb: 'a method, its body, and the class around it',
+        sections: ['Python: an indented method and its class'] },
+    { slug: 'csharp', label: 'C#', title: 'C#', group: 'Languages', order: 6, sample: 'samples/Cart.cs',
+        blurb: 'a method and the line its body starts on',
+        sections: ['C#: a method and its body'] },
+    { slug: 'kotlin', label: 'Kotlin', title: 'Kotlin', group: 'Languages', order: 7, sample: 'samples/Cart.kt',
+        blurb: 'a fun and the body it opens',
+        sections: ['Kotlin: a fun and its body'] },
+    { slug: 'php', label: 'PHP', title: 'PHP', group: 'Languages', order: 8, sample: 'samples/Cart.php',
+        blurb: 'a method and the heredoc that is not code',
+        sections: ['PHP: a method and its heredoc'] },
+    { slug: 'ruby', label: 'Ruby', title: 'Ruby', group: 'Languages', order: 9, sample: 'samples/Cart.rb',
+        blurb: 'a def, its body, and the end that closes it',
+        sections: ['Ruby: a def and the end that closes it'] },
+    { slug: 'shell', label: 'Shell', title: 'Shell', group: 'Languages', order: 10, sample: 'samples/run.sh',
+        blurb: 'a function, a region, and the heredoc between them',
+        sections: ['Shell: a function and the region around it'] },
+    { slug: 'vb', label: 'VB', title: 'VB', group: 'Languages', order: 11, sample: 'samples/Form.vb',
+        blurb: 'a function and the End that closes it',
+        sections: ['VB: a function and its End'] },
+    { slug: 'haskell', label: 'Haskell', title: 'Haskell', group: 'Languages', order: 12, sample: 'samples/Main.hs',
+        blurb: 'a binding and the signature above it',
+        sections: ['Haskell: a binding and its signature'] },
+    { slug: 'zig', label: 'Zig', title: 'Zig', group: 'Languages', order: 13, sample: 'samples/Nesting.zig',
+        blurb: 'a function and the nested comment that hides a decoy',
+        sections: ['Zig: a function and a region'] },
+    // Config formats: a jump lands on the line the key is written on, which is
+    // the whole of what navigation needs from a data rule.
+    { slug: 'yaml', label: 'YAML', title: 'YAML', group: 'Config formats', order: 14, sample: 'samples/app.yaml',
+        blurb: 'the line a key path is written on',
+        sections: ['YAML: a key path'] },
+    { slug: 'toml', label: 'TOML', title: 'TOML', group: 'Config formats', order: 15, sample: 'samples/app.toml',
+        blurb: 'a key inside a table',
+        sections: ['TOML: a table and a key'] },
+    { slug: 'ini', label: 'INI', title: 'INI', group: 'Config formats', order: 16, sample: 'samples/app.ini',
+        blurb: 'a section and a key',
+        sections: ['INI: a section and a key'] },
+    { slug: 'json', label: 'JSON', title: 'JSON', group: 'Config formats', order: 17, sample: 'samples/api.json',
+        blurb: 'a nested key',
+        sections: ['JSON: a nested key'] },
+    { slug: 'css', label: 'CSS', title: 'CSS', group: 'Styles', order: 18, sample: 'samples/site.css',
+        blurb: 'an at-rule and the rule nested in it',
+        sections: ['CSS: an at-rule and a rule inside it'] },
+];
+
+/**
+ * A page set is a whole build: its pages, its document, where its overview goes,
+ * and — for the navigation demo — how it differs.
+ *
+ * `mode` is `'inject'` or `'jump'`. An injection document writes a reference as a
+ * marker followed by the block it fills; a jump document writes it as the link it
+ * is, because a jump has nothing to put in the document. `landing` is the same
+ * distinction on the page: an injection target highlights the text it injects,
+ * while a navigation target highlights the single line a reader lands on.
+ * `layout` picks the page frame — the injection demo's three columns, or the
+ * navigation demo's source file beside the document.
+ */
+export const PAGE_SETS = {
+    inject: {
+        pages: PAGES, docPath: DEFAULT_DOC, outPath: DEFAULT_OUT,
+        mode: 'inject', landing: false, layout: 'three-column',
+    },
+    jump: {
+        pages: JUMP_PAGES, docPath: JUMP_DOC, outPath: JUMP_OUT,
+        mode: 'jump', landing: true, layout: 'source-document',
+    },
+};
+/** The overview of a page set: the first entry, and the one a reader lands on. */
+const overviewOf = (pages) => pages[0];
+
 /** The site's name, for the `<title>` of every page. */
 const SITE = 'inject-examples';
 
 /** The page a `##` section is published on: the one whose `sections` names it. */
-export function pageOfSection(section) {
-    return (PAGES.find((page) => page.sections.includes(section.title)) ?? OVERVIEW).slug;
+export function pageOfSection(section, pages = PAGES) {
+    return (pages.find((page) => page.sections.includes(section.title)) ?? overviewOf(pages)).slug;
+}
+
+/** The set a `--pages` name means, or `null` when there is no such set. */
+export function pageSet(name) {
+    return Object.hasOwn(PAGE_SETS, name) ? PAGE_SETS[name] : null;
 }
 
 const HELP = `usage: bun tools/build-demo.mjs [options]
 
+  --pages <name>  which page set to build: ${Object.keys(PAGE_SETS).join(' or ')}
+                  (default: inject). A set carries its own document and overview.
   --doc <file>    source document (default: ${DEFAULT_DOC})
   --out <file>    overview page to write (default: ${DEFAULT_OUT})
   --root <dir>    base directory the paths resolve against
@@ -181,8 +296,8 @@ function joinPath(dir, path) {
 }
 
 /** Where a page is written, relative to the root: the overview, or a language page. */
-export function pagePath(page, outPath = DEFAULT_OUT) {
-    if (page.slug === OVERVIEW.slug) return outPath;
+export function pagePath(page, outPath = DEFAULT_OUT, overviewSlug = OVERVIEW.slug) {
+    if (page.slug === overviewSlug) return outPath;
     return page.file ?? joinPath(posixDirname(slashes(outPath)), `${LANGUAGES_DIR}/${page.slug}.html`);
 }
 
@@ -219,13 +334,14 @@ function trimBlank(lines) {
  * Markers inside fenced blocks are not markers (`fenceRanges` and `parseMarker`
  * decide that, exactly as the tool does), so a section's code examples never
  * register as targets.
- * A section is published on the page `PAGES` names it on, and a section no page
- * claims stays on the overview.
+ * A section is published on the page the set's `pages` names it on, and a section
+ * no page claims stays on the overview.
  *
  * @param {string} text
+ * @param {Array<object>} [pages] the page set the document is published on
  * @returns {{ title: string, intro: object[], sections: Array<{ title: string, page: string, lead: object[], examples: object[] }> }}
  */
-export function parseDemoDoc(text) {
+export function parseDemoDoc(text, pages = PAGES) {
     const lines = text.replace(/\r\n/g, '\n').split('\n');
     const fences = fenceRanges(lines);
     const fenced = (index) => fences.some(([from, to]) => index >= from && index <= to);
@@ -252,7 +368,7 @@ export function parseDemoDoc(text) {
                 doc.title = heading[2].trim();
             } else if (heading[1].length === 2) {
                 const title = heading[2].trim();
-                section = { title, page: pageOfSection({ title }), line: i + 1, blocks: [], examples: [] };
+                section = { title, page: pageOfSection({ title }, pages), line: i + 1, blocks: [], examples: [] };
                 doc.sections.push(section);
             } else {
                 blocks().push({ type: 'heading', level: heading[1].length, text: heading[2].trim() });
@@ -513,7 +629,7 @@ export function locateCss(css, source, reference, injected) {
  * Java page works the same reference in detail — and an id is an element id on one
  * page, so each page names its targets in its own space.
  */
-function resolveTarget(marker, file, sectionIndex, targetIndex, warn, idPrefix = '') {
+function resolveTarget(marker, file, sectionIndex, targetIndex, warn, idPrefix = '', landing = false) {
     const rule = ruleFor(marker.path);
     let text;
     let ranges = null;
@@ -536,18 +652,23 @@ function resolveTarget(marker, file, sectionIndex, targetIndex, warn, idPrefix =
         // reference of several selectors, or a line range, has more than one
         // place to point at — so the page does not have to find them again.
         ranges = plan.ranges.map((range) => [range.from, range.to]);
+        // A jump lands on one line: the page highlights where the reader
+        // arrives, not the span the reference covers.
+        if (landing && ranges.length > 0) ranges = [[ranges[0][0], ranges[0][0]]];
         if (ranges.length === 0) {
             throw new Error(`${marker.raw}: the lines of "#${marker.reference}" cannot be located in ${marker.path}`);
         }
     } else if (rule === CSS_RULE) {
         text = rule.resolve(file.text, marker.reference, marker.path);
         ranges = locateCss(rule, file.text, marker.reference, text)?.ranges ?? null;
+        if (landing && ranges !== null && ranges.length > 0) ranges = [[ranges[0][0], ranges[0][0]]];
         if (ranges === null) {
             throw new Error(`${marker.raw}: the lines of "#${marker.reference}" cannot be located in ${marker.path}`);
         }
     } else {
         text = rule.resolve(file.text, marker.reference, marker.path);
         ranges = locateRendered(file.text, text)?.ranges ?? null;
+        if (landing && ranges !== null && ranges.length > 0) ranges = [[ranges[0][0], ranges[0][0]]];
     }
 
     return {
@@ -584,9 +705,16 @@ export function buildModel(options = {}) {
     const outPath = slashes(options.outPath ?? DEFAULT_OUT);
     const read = options.read ?? fileReader(root);
     const warn = options.onWarning ?? (() => {});
+    // The page set: `PAGES` by default, `JUMP_PAGES` for the navigation demo. A
+    // set is a record, not a document's order, so the same generator builds both.
+    const pages = options.pages ?? PAGES;
+    const overviewSlug = overviewOf(pages).slug;
+    const mode = options.mode ?? 'inject';
+    const landing = options.landing ?? false;
+    const layout = options.layout ?? 'three-column';
 
     const docText = read(docPath);
-    const doc = parseDemoDoc(docText);
+    const doc = parseDemoDoc(docText, pages);
     const docDir = posixDirname(docPath);
     const readTarget = (path) => read(docDir === '.' ? path : `${docDir}/${path}`);
     // Prose link: written beside the document, so it is relative to it — a page
@@ -612,8 +740,8 @@ export function buildModel(options = {}) {
 
     // Every page names every other one, so the menu is the first thing built —
     // in menu order, which is not the document's.
-    const paths = new Map(PAGES.map((entry) => [entry.slug, pagePath(entry, outPath)]));
-    const nav = [...PAGES].sort((a, b) => a.order - b.order).map((entry) => ({
+    const paths = new Map(pages.map((entry) => [entry.slug, pagePath(entry, outPath, overviewSlug)]));
+    const nav = [...pages].sort((a, b) => a.order - b.order).map((entry) => ({
         slug: entry.slug,
         label: entry.label,
         group: entry.group ?? null,
@@ -633,10 +761,10 @@ export function buildModel(options = {}) {
     });
 
     const files = new Map();
-    const pages = [];
+    const built = [];
     let exampleCount = 0;
 
-    for (const [pageIndex, entry] of PAGES.entries()) {
+    for (const [pageIndex, entry] of pages.entries()) {
         const pageFile = paths.get(entry.slug);
         const resolveLink = linkTo(pageFile);
         const owned = doc.sections.filter((part) => part.page === entry.slug);
@@ -646,7 +774,7 @@ export function buildModel(options = {}) {
         if (missing.length > 0) {
             throw new Error(`${docPath}: no section named ${missing.map((title) => `"${title}"`).join(', ')}`);
         }
-        if (entry.slug !== OVERVIEW.slug && owned.length === 0) {
+        if (entry.slug !== overviewSlug && owned.length === 0) {
             throw new Error(`the page "${entry.slug}" owns no section; PAGES and ${docPath} disagree`);
         }
 
@@ -656,11 +784,11 @@ export function buildModel(options = {}) {
             // shown on two pages does not collide as an element id: the overview
             // introduces the tool with Java's sample, and the Java page works the
             // same reference in detail.
-            const idPrefix = entry.slug === OVERVIEW.slug ? '' : `${entry.slug}-`;
+            const idPrefix = entry.slug === overviewSlug ? '' : `${entry.slug}-`;
             const examples = part.examples.map((example, index) => {
                 const file = loadFile(files, example.marker.path, readTarget);
                 file.display = docDir === '.' ? file.path : `${docDir}/${file.path}`;
-                const target = resolveTarget(example.marker, file, sectionIndex, index, warn, idPrefix);
+                const target = resolveTarget(example.marker, file, sectionIndex, index, warn, idPrefix, landing);
                 target.line = example.line;
                 // The panes carry different renderings of the same prose: the
                 // title is the heading above it in the left column, and the
@@ -685,16 +813,24 @@ export function buildModel(options = {}) {
         // page owns; a marker line carries its target's id, so a click can
         // highlight the exact spot in the Markdown.
         const markerIds = new Map();
+        const landings = new Map();
         for (const section of sections) {
-            for (const example of section.examples) markerIds.set(example.line, example.id);
+            for (const example of section.examples) {
+                markerIds.set(example.line, example.id);
+                // A navigation page sends the reader to one line; the page carries
+                // that line so a click needs no resolver of its own.
+                if (landing && example.ranges && example.ranges.length > 0) {
+                    landings.set(example.line, example.ranges[0]);
+                }
+            }
         }
         const ranges = owned.map((part) => spans.get(part));
 
-        pages.push({
+        built.push({
             ...entry,
             index: pageIndex,
             path: pageFile,
-            isOverview: entry.slug === OVERVIEW.slug,
+            isOverview: entry.slug === overviewSlug,
             sections,
             examples: sections.flatMap((section) => section.examples),
             // Only the files this page's examples read: the source column gets a
@@ -703,8 +839,8 @@ export function buildModel(options = {}) {
                 .map((path) => files.get(path)),
             // The core examples are the document's own lead, so the overview
             // shows the banner; a language page has its own title to get to.
-            introHtml: entry.slug === OVERVIEW.slug ? renderBlocks(doc.intro, resolveLink) : '',
-            markdownHtml: renderMarkdown(docText, { markerIds, ranges, resolveLink }),
+            introHtml: entry.slug === overviewSlug ? renderBlocks(doc.intro, resolveLink) : '',
+            markdownHtml: renderMarkdown(docText, { markerIds, landings, ranges, resolveLink, jumpMode: mode === 'jump' }),
             menu: nav.map((item) => ({ ...item, href: pageHref(pageFile, paths.get(item.slug)) })),
         });
     }
@@ -713,7 +849,14 @@ export function buildModel(options = {}) {
         title: doc.title,
         docPath,
         outPath,
-        pages,
+        // The set's overview slug, so a renderer can tell the one page whose
+        // name says nothing about what it holds — the only one that describes
+        // itself in the menu.
+        overviewSlug,
+        mode,
+        landing,
+        layout,
+        pages: built,
         nav,
         files: [...files.values()],
         exampleCount,
@@ -815,12 +958,20 @@ function renderFence(lines, open, fence, markerIds) {
 }
 
 /** One marker line, rendered the way Markdown would render it — as a link. */
-function renderMarker(line, id, resolve) {
+function renderMarker(line, id, resolve, jumpMode = false, landing = null) {
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(line.trim());
     const label = link ? renderInline(link[1], resolve) : escapeHtml(line.trim());
     const href = link ? escapeHtml(resolve(link[2])) : '#';
-    return `<p class="md-marker" data-marker="${id}"><a href="${href}">${label}</a>`
-        + `<span class="md-badge">inject</span></p>`;
+    // The marker is a link either way. What differs is what it *is*: an
+    // injection marker stands for the block under it, a jump marker is a
+    // destination and nothing else.
+    const badge = jumpMode ? 'jump' : 'inject';
+    // A jump page has no targets column, so the landing line travels on the
+    // paragraph instead — the generator resolved it from the same reference the
+    // link spells out. The file needs no attribute: the link's own href names it.
+    const lands = landing ? ` data-landing="${landing[0]}-${landing[1]}"` : '';
+    return `<p class="md-marker" data-marker="${id}"${lands}><a href="${href}">${label}</a>`
+        + `<span class="md-badge">${badge}</span></p>`;
 }
 
 /**
@@ -847,6 +998,8 @@ function renderMarker(line, id, resolve) {
 export function renderMarkdown(text, options = {}) {
     const markerIds = options.markerIds ?? new Map();
     const resolve = options.resolveLink ?? ((href) => href);
+    const jumpMode = options.jumpMode ?? false;
+    const landings = options.landings ?? new Map();
     const owned = options.ranges ?? null;
     const wanted = (index) => owned === null || owned.some(([from, to]) => index + 1 >= from && index + 1 <= to);
 
@@ -897,7 +1050,7 @@ export function renderMarkdown(text, options = {}) {
         }
 
         if (markerAt(i)) {
-            html.push(renderMarker(line, markerIds.get(i + 1), resolve));
+            html.push(renderMarker(line, markerIds.get(i + 1), resolve, jumpMode, landings.get(i + 1)));
             i++;
             continue;
         }
@@ -1390,12 +1543,10 @@ body {
 .desc-note code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
 .desc-note a { color: var(--accent); }
 
-.file-tabs { display: flex; gap: .3rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
-.file-tab {
-  border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px; white-space: nowrap;
-  padding: .25rem .6rem; cursor: pointer; font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-.file-tab.active { color: var(--fg); background: var(--chip); border-color: var(--line); }
+/* No tab strip: the header names the file, and a page is read one target at a
+   time, so the pane shows one file at a time. The path is emphasised there
+   because it is the answer to "where am I reading?". */
+#source-path { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .file-view { overflow: auto; min-height: 0; }
 .file { display: none; }
 .file.active { display: block; }
@@ -1461,11 +1612,97 @@ body {
 }
 `.trim();
 
+/**
+ * The navigation demo's own CSS: a jump page has no targets column, so the file
+ * and the document share the width. Injection pages do not ship it.
+ */
+const JUMP_STYLE = `
+/* A jump page has no targets column: the file and the document share the width. */
+.split.source-document { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+`.trim();
+
+/**
+ * A navigation page's own script: the document's inline links are the
+ * navigation, and a click puts the reader on the single line the reference lands
+ * on. It runs after the shared script, which has already wired the source
+ * column's header.
+ */
+const JUMP_SCRIPT = `
+(function () {
+  var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
+  var markerHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker'));
+  var jumpLinks = Array.prototype.slice.call(document.querySelectorAll('.md-marker > a'));
+
+  var sourcePath = document.getElementById('source-path');
+  function showFile(name) {
+    var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
+    files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
+    if (sourcePath) sourcePath.textContent = name;
+  }
+
+  // A jump click does one thing: put the reader on the line the reference lands
+  // on. Nothing is injected, so there is no block to light up and no description
+  // to swap — the prose around the link already says what it means.
+  function jump(link) {
+    var item = link.closest('[data-marker]');
+    jumpLinks.forEach(function (other) { other.setAttribute('aria-current', String(other === link)); });
+    lines.forEach(function (line) { line.classList.remove('hl'); });
+    // The link's own href names the file it points into; the source column keys
+    // its panes by the path as the *document* writes it. Both are known here, so
+    // the match is made without a regular expression: no escaping survives a
+    // nested template literal intact.
+    var href = link.getAttribute('href').split('#')[0].split('/');
+    var parts = href.filter(function (part) { return part !== '..' && part !== '' && part !== '.'; });
+    var name = parts.join('/');
+    var match = null;
+    Array.prototype.forEach.call(document.querySelectorAll('.file'), function (file) {
+      var candidate = file.dataset.file;
+      var tail = name.slice(name.length - candidate.length);
+      if (tail === candidate && (name.length === candidate.length || name.charAt(name.length - candidate.length - 1) === '/')) {
+        if (match === null || candidate.length > match.length) match = candidate;
+      }
+    });
+    showFile(match);
+    if (match === null) return;
+
+    // The reference lands on ONE line: the first line of what it selects.
+    var from = Number(link.dataset.from);
+    var to = Number(link.dataset.to);
+    var shown = document.querySelector('.file.active');
+    var first = null;
+    if (shown) {
+      Array.prototype.forEach.call(shown.querySelectorAll('.line'), function (line) {
+        var n = Number(line.dataset.line);
+        if (n >= from && n <= to) {
+          line.classList.add('hl');
+          if (first === null) first = line;
+        }
+      });
+    }
+    markerHits.forEach(function (hit) { hit.classList.remove('md-hit'); });
+    if (item) item.classList.add('md-hit');
+    if (first) first.scrollIntoView({ block: 'center' });
+  }
+
+  // Each link carries the line its reference lands on, resolved by the generator
+  // from the very reference the link spells out.
+  jumpLinks.forEach(function (link) {
+    var item = link.closest('[data-marker]');
+    var landing = (item && item.dataset.landing) ? item.dataset.landing.split('-') : [];
+    link.dataset.from = landing[0] || '0';
+    link.dataset.to = landing[1] || landing[0] || '0';
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      jump(link);
+    });
+  });
+})();
+`.trim();
+
 const SCRIPT = `
 (function () {
   var targets = Array.prototype.slice.call(document.querySelectorAll('.target'));
   var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('.file-tab'));
   var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
   var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
   var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
@@ -1494,14 +1731,12 @@ const SCRIPT = `
     }
   }
 
+  // The column header says which file the pane is showing: there are no tabs, so
+  // this is the only place that answers "where am I reading?".
+  var sourcePath = document.getElementById('source-path');
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
-    tabs.forEach(function (tab) {
-      var active = tab.dataset.file === name;
-      tab.classList.toggle('active', active);
-      // With many files the tab strip scrolls; keep the active one in sight.
-      if (active) tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    });
+    if (sourcePath) sourcePath.textContent = name;
   }
 
   function select(target, keepScroll, keepHash) {
@@ -1640,18 +1875,18 @@ function renderDescriptions(page) {
     return notes === '' ? blocks : `${notes}\n${blocks}`;
 }
 
-/** The right pane: one tab and one code pane per target file. */
+/**
+ * The source pane: one code pane per file the page's targets read, the first one
+ * shown. Which file is on screen is named in the column header — and nothing else
+ * is, because the page is read one target at a time.
+ */
 function renderFiles(files) {
-    const tabs = files
-        .map((file, index) => `<button class="file-tab${index === 0 ? ' active' : ''}" type="button"`
-            + ` data-file="${escapeHtml(file.path)}">${escapeHtml(file.display)}</button>`)
-        .join('\n');
     const panes = files
         .map((file, index) => `<div class="file${index === 0 ? ' active' : ''}" data-file="${escapeHtml(file.path)}"`
             + ` aria-label="${escapeHtml(file.display)}">`
             + `<pre class="code">${renderSourceLines(file)}</pre></div>`)
         .join('\n');
-    return { tabs, panes };
+    return { panes, firstFile: files.length > 0 ? files[0].path : '' };
 }
 
 /**
@@ -1663,6 +1898,10 @@ function renderFiles(files) {
  * invoker, so the two stay in step without a line of script.
  */
 function renderMenu(page) {
+    // The set's overview is the one page whose name says nothing about what it
+    // holds, so it is the only entry that describes itself. The nav is in menu
+    // order, and `order: 0` is the overview in every set.
+    const overviewSlug = page.menu[0].slug;
     const items = page.menu
         .map((item, index, all) => {
             const note = item.group !== null && (index === 0 || all[index - 1].group !== item.group)
@@ -1673,7 +1912,7 @@ function renderMenu(page) {
             // Only the Overview says what it is; a language page is what its name
             // says it is, and a blurb under every entry made the menu a paragraph
             // to read instead of a list to scan.
-            const blurb = item.slug === OVERVIEW.slug
+            const blurb = item.slug === overviewSlug
                 ? `<span class="menu-blurb">${escapeHtml(item.blurb)}</span>`
                 : '';
             const classes = ['menu-item'];
@@ -1709,10 +1948,36 @@ function renderMenu(page) {
  */
 export function renderPage(model) {
     const page = model.page;
-    const { tabs, panes } = renderFiles(page.files);
+    const { panes, firstFile } = renderFiles(page.files);
     const sections = renderSections(page);
     const descriptions = renderDescriptions(page);
     const title = `${page.isOverview ? 'Overview' : page.title} — ${SITE}`;
+    // A jump page has no left column: the document's own inline links are the
+    // navigation, so there is no list of targets and nothing to describe
+    // separately — the prose around a link explains it where it is written.
+    const linkOnly = model.layout === 'source-document';
+    const leftPane = linkOnly ? '' : `<section class="pane pane-left" aria-label="Targets">
+<div class="pane-section">
+<div class="col-head">Targets<span class="col-note">titles and example links</span></div>
+<ol class="examples">
+${sections}
+</ol>
+</div>
+<div class="pane-section">
+<div class="col-head">Description<span class="col-note">of the selected example</span></div>
+<div class="desc-panel">
+<p class="desc-empty">Click an example link above to read what it demonstrates.</p>
+${descriptions}
+</div>
+</div>
+</section>`;
+    // The column header names the file on screen, so the reader always knows
+    // which sample the pane belongs to without a tab strip to scan.
+    const sourceNote = linkOnly ? 'the line the reference lands on' : 'lines the target selects';
+    const markdownNote = linkOnly
+        ? 'the references, as they are written'
+        : 'as it reads, injections in place';
+    const markdownHead = linkOnly ? 'Code navigation' : 'Markdown';
 
     return `<!doctype html>
 <html lang="en">
@@ -1721,7 +1986,7 @@ export function renderPage(model) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>
-${STYLE}
+${STYLE}${linkOnly ? `\n${JUMP_STYLE}` : ''}
 </style>
 </head>
 <body>
@@ -1741,33 +2006,16 @@ ${page.isOverview ? '' : `<p class="page-sub">${escapeHtml(page.blurb)}</p>`}
 ${page.introHtml}
 </div>
 </header>
-<main class="split">
-<section class="pane pane-left" aria-label="Targets">
-<div class="pane-section">
-<div class="col-head">Targets<span class="col-note">titles and example links</span></div>
-<ol class="examples">
-${sections}
-</ol>
-</div>
-<div class="pane-section">
-<div class="col-head">Description<span class="col-note">of the selected example</span></div>
-<div class="desc-panel">
-<p class="desc-empty">Click an example link above to read what it demonstrates.</p>
-${descriptions}
-</div>
-</div>
-</section>
+<main class="split${linkOnly ? ' source-document' : ''}">
+${leftPane}
 <section class="pane pane-mid" aria-label="Source file">
-<div class="col-head">Source file<span class="col-note">lines the target selects</span></div>
-<div class="file-tabs" role="tablist">
-${tabs}
-</div>
+<div class="col-head">Source file<span class="col-note" id="source-path" data-note="${sourceNote}">${escapeHtml(firstFile)}</span></div>
 <div class="file-view">
 ${panes}
 </div>
 </section>
 <section class="pane pane-right" aria-label="Rendered Markdown">
-<div class="col-head">Markdown<span class="col-note">as it reads, injections in place</span></div>
+<div class="col-head">${markdownHead}<span class="col-note">${markdownNote}</span></div>
 <div class="md-scroll">
 <article class="md">
 ${page.markdownHtml}
@@ -1778,7 +2026,10 @@ ${page.markdownHtml}
 </div>
 <script>
 ${SCRIPT}
-</script>
+</script>${linkOnly ? `
+<script>
+${JUMP_SCRIPT}
+</script>` : ''}
 </body>
 </html>
 `;
@@ -1801,11 +2052,21 @@ export function buildDemo(options = {}) {
 /**
  * Parse `argv` and build, check or write every page. Returns the process exit
  * code and never calls `process.exit`, so tests can drive it.
+ *
+ * `--pages` may be given more than once, and each one is a complete build of its
+ * own set — `--pages inject --pages jump` refreshes both demos in one run, which
+ * is what `npm run demo` needs (a shell `;` does not survive npm's Windows shim).
  */
 export function run(argv = [], io = {}) {
     const out = io.out ?? ((line) => process.stdout.write(`${line}\n`));
     const err = io.err ?? ((line) => process.stderr.write(`${line}\n`));
-    const options = { root: REPO_ROOT, docPath: DEFAULT_DOC, outPath: DEFAULT_OUT, check: false };
+    const options = {
+        root: REPO_ROOT, docPath: DEFAULT_DOC, outPath: DEFAULT_OUT, pages: PAGES, check: false,
+        mode: 'inject', landing: false, layout: 'three-column',
+    };
+    // The sets named by `--pages`, in the order they were asked for. Empty means
+    // the default, single-set build.
+    const sets = [];
 
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -1813,9 +2074,44 @@ export function run(argv = [], io = {}) {
         else if (arg === '--root') options.root = resolve(argv[++i] ?? '.');
         else if (arg === '--doc') options.docPath = argv[++i];
         else if (arg === '-o' || arg === '--out') options.outPath = argv[++i];
+        else if (arg === '--pages') {
+            const name = argv[++i];
+            const set = pageSet(name);
+            if (set === null) {
+                err(`build-demo: no page set named "${name}"; write ${Object.keys(PAGE_SETS).join(' or ')}`);
+                return 2;
+            }
+            sets.push(set);
+        }
         else if (arg === '-h' || arg === '--help') { out(HELP); return 0; }
         else { err(`build-demo: unknown argument: ${arg}`); return 2; }
     }
+
+    if (sets.length > 0) {
+        // One `--pages` alone builds that set; with `--doc`/`--out` also given,
+        // the explicit paths win, which is what the tests drive.
+        let status = 0;
+        for (const set of sets) {
+            const explicitDoc = argv.includes('--doc');
+            const explicitOut = argv.includes('-o') || argv.includes('--out');
+            status = Math.max(status, buildOne({
+                ...options,
+                pages: set.pages,
+                docPath: explicitDoc ? options.docPath : set.docPath,
+                outPath: explicitOut ? options.outPath : set.outPath,
+                mode: set.mode,
+                landing: set.landing,
+                layout: set.layout,
+            }, { out, err }));
+        }
+        return status;
+    }
+
+    return buildOne(options, { out, err });
+}
+
+/** Build, check or write one page set. Returns its exit code. */
+function buildOne(options, { out, err }) {
     if (!options.docPath || !options.outPath) {
         err('build-demo: --doc and --out need a value');
         return 2;
@@ -1827,6 +2123,12 @@ export function run(argv = [], io = {}) {
             root: options.root,
             docPath: options.docPath,
             outPath: options.outPath,
+            pages: options.pages,
+            // How this set differs: a jump document links instead of injecting,
+            // and its pages highlight a landing line in a two-column frame.
+            mode: options.mode,
+            landing: options.landing,
+            layout: options.layout,
             onWarning: (m) => err(`build-demo: warn: ${m}`),
         });
     } catch (cause) {

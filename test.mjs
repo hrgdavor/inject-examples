@@ -3341,7 +3341,10 @@ import {
     escapeHtml,
     exampleBlocks,
     highlightCode,
+    JUMP_DOC,
+    JUMP_PAGES,
     locateRange,
+    PAGE_SETS,
     parseDemoDoc,
     renderMarkdown,
     run as runBuildDemo,
@@ -3463,7 +3466,6 @@ test('demo: locateRange finds the lines a reference selects', () => {
 test('demo: every target in docs/demo.md lands on the lines it injects', () => {
     const root = dirname(fileURLToPath(import.meta.url));
     const docText = readFileSync(join(root, 'docs', 'demo.md'), 'utf8');
-
     const synced = updateDocument(docText, { root: join(root, 'docs'), gitignore: false });
     assert.equal(synced.changed, false, 'docs/demo.md must match docs/samples/Inventory.java');
     for (const entry of synced.results) {
@@ -3473,6 +3475,11 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
     const built = buildDemo({ root });
     const { model } = built;
     assert.ok(model.exampleCount >= 30, 'the pages show a substantial set of targets');
+    // No tab strip: the source column names the file it is showing in its own
+    // header, so a second switcher would be redundant.
+    assert.ok(!built.html.includes('file-tab'), 'the source column has no tab strip');
+    assert.match(built.html, /id="source-path"[^>]*>samples\/Inventory\.java</,
+        'the source column header names the file on screen');
     assert.ok(model.files.length >= 16, 'every sample file the document shows is on a page');
 
     // Every page is checked against the part of the document it publishes, and
@@ -3481,7 +3488,7 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
         const html = built.pages.find((entry) => entry.page.slug === page.slug).html;
         for (const file of page.files) {
             assert.ok(html.includes(`data-file="${file.path}"`),
-                `${page.slug}: ${file.path} has a tab and a pane`);
+                `${page.slug}: ${file.path} has a pane`);
         }
 
         for (const section of page.sections) {
@@ -3606,6 +3613,73 @@ test('demo: every target in docs/demo.md lands on the lines it injects', () => {
     }
 });
 
+test('demo: the navigation document links, and every link lands on one line', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const docText = readFileSync(join(root, JUMP_DOC), 'utf8');
+
+    // A navigation document injects nothing: a reference in it is a link, not a
+    // marker with a block under it. A fence here would mean the demo had drifted
+    // back into being an injection demo.
+    assert.equal((docText.match(/^```/gm) ?? []).length, 0,
+        `${JUMP_DOC} must carry no fenced block: a jump has nothing to put in the document`);
+
+    // Every reference it shows is one the tool can follow, because the generator
+    // resolved each of them when it wrote the document.
+    const links = [...docText.matchAll(/^\[([^\]]+)\]\(([^)\s]+)\)$/gm)].map((match) => match[2]);
+    assert.ok(links.length >= 40, 'the document links a substantial set of references');
+    for (const href of links) {
+        const [file, reference] = href.replace(/^\.\//, '').split('#');
+        assert.ok(reference, `${href} names a reference`);
+        const source = readFileSync(join(root, 'docs', file), 'utf8');
+        // Resolving it is the assertion: a link the tool cannot follow would have
+        // failed when the document was written, and must fail here too. The rule
+        // is the path's — a config format is read by its own rule, not by the
+        // code resolver.
+        const plan = planMarker({ path: file, reference }, () => source, ruleFor(file));
+        assert.ok(plan.text.length > 0, `${href} selects something`);
+    }
+
+    const built = buildDemo({ root, ...PAGE_SETS.jump });
+    const { model } = built;
+    assert.equal(model.mode, 'jump', 'the set builds in navigation mode');
+    assert.ok(model.exampleCount >= 40, 'the pages show a substantial set of jump targets');
+    assert.equal(model.pages.length, JUMP_PAGES.length, 'every page of the set is built');
+
+    for (const page of model.pages) {
+        assert.ok(page.sections.length > 0, `${page.slug}: the page owns at least one section`);
+        const html = built.pages.find((entry) => entry.page.slug === page.slug).html;
+
+        // The frame: no targets column, no description pane, no injected block.
+        assert.ok(html.includes('class="split source-document"'), `${page.slug}: the source and the document share the width`);
+        assert.ok(!html.includes('<section class="pane pane-left"'), `${page.slug}: there is no targets column, and no description pane`);
+        assert.ok(!html.includes('class="desc-panel"'), `${page.slug}: nothing to describe separately`);
+        assert.ok(!html.includes('class="target"'), `${page.slug}: no list of example links`);
+        assert.ok(!html.includes('file-tab'), `${page.slug}: no tab strip either`);
+        assert.ok(!html.includes('class="md-pre"'), `${page.slug}: nothing is injected into the document`);
+        assert.match(html, /<div class="col-head">Source file</, `${page.slug}: the source column is titled`);
+        assert.match(html, /<div class="col-head">Code navigation</, `${page.slug}: and the document column`);
+
+        // A jump lands on ONE line: every target highlights exactly one, and it is
+        // the first line of what the reference selected.
+        for (const example of page.examples) {
+            assert.ok(Array.isArray(example.ranges) && example.ranges.length > 0,
+                `${example.raw}: a jump is given the line to land on`);
+            for (const [from, to] of example.ranges) {
+                assert.equal(from, to, `${example.raw}: a jump highlights one line, not ${from}-${to}`);
+            }
+            assert.equal(example.ranges[0][0], example.from,
+                `${example.raw}: the landing line is where the reference starts`);
+            assert.ok(html.includes(`data-landing="${example.from}-${example.to}"`),
+                `${example.raw}: the landing line travels to the page`);
+        }
+    }
+
+    // The sections tile the document: every one is published, none twice.
+    const published = model.pages.flatMap((page) => page.sections.map((section) => section.title));
+    const inDoc = [...docText.matchAll(/^## (.+)$/gm)].map((match) => match[1].trim());
+    assert.deepEqual([...published].sort(), [...inDoc].sort(),
+        'every "##" section of the navigation document is published exactly once');
+});
 test('demo: the rendered Markdown keeps its shape and marks each injection', () => {
     const text = [
         '# A title',
@@ -3865,6 +3939,38 @@ test('demo: the committed pages are exactly what the generator writes', () => {
     for (const { page, html } of built.pages) {
         assert.equal(readFileSync(join(root, page.path), 'utf8'), html,
             `${page.path} is stale; run: bun tools/build-demo.mjs`);
+    }
+});
+
+test('demo: the jump pages are exactly what the generator writes, from their own document', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const built = buildDemo({ root, ...PAGE_SETS.jump });
+    assert.equal(built.model.pages.length, JUMP_PAGES.length, 'one page per entry in the set');
+    for (const { page, html } of built.pages) {
+        assert.equal(readFileSync(join(root, page.path), 'utf8'), html,
+            `${page.path} is stale; run: bun tools/build-demo.mjs --pages jump`);
+    }
+});
+
+test('demo: the two page sets are parallel, and neither links to the other', () => {
+    // Same slugs, so a language page exists on both sides and a reader can read
+    // either demo on its own terms.
+    assert.deepEqual(
+        JUMP_PAGES.map((page) => page.slug),
+        PAGE_SETS.inject.pages.map((page) => page.slug),
+        'the jump set covers exactly the pages the inject set does');
+    assert.equal(JUMP_DOC, 'docs/jump-demo.md', 'the jump set has its own source document');
+    assert.notEqual(PAGE_SETS.jump.outPath, PAGE_SETS.inject.outPath, 'and its own pages');
+
+    const root = dirname(fileURLToPath(import.meta.url));
+    // Independence is a property of the pages, not a promise: no page of one set
+    // may link into the other's directory.
+    for (const [name, set] of Object.entries(PAGE_SETS)) {
+        const other = name === 'inject' ? '/jump/' : '/docs/index.html';
+        const built = buildDemo({ root, ...set });
+        for (const { page, html } of built.pages) {
+            assert.ok(!html.includes(other), `${page.path} links into the other demo`);
+        }
     }
 });
 

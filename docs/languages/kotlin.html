@@ -188,12 +188,10 @@ body {
 .desc-note code { background: var(--chip); border-radius: 4px; padding: .05rem .3rem; font-size: .87em; }
 .desc-note a { color: var(--accent); }
 
-.file-tabs { display: flex; gap: .3rem; padding: .4rem .7rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
-.file-tab {
-  border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px; white-space: nowrap;
-  padding: .25rem .6rem; cursor: pointer; font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-.file-tab.active { color: var(--fg); background: var(--chip); border-color: var(--line); }
+/* No tab strip: the header names the file, and a page is read one target at a
+   time, so the pane shows one file at a time. The path is emphasised there
+   because it is the answer to "where am I reading?". */
+#source-path { color: var(--fg); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .file-view { overflow: auto; min-height: 0; }
 .file { display: none; }
 .file.active { display: block; }
@@ -371,10 +369,7 @@ body {
 </div>
 </section>
 <section class="pane pane-mid" aria-label="Source file">
-<div class="col-head">Source file<span class="col-note">lines the target selects</span></div>
-<div class="file-tabs" role="tablist">
-<button class="file-tab active" type="button" data-file="samples/Cart.kt">docs/samples/Cart.kt</button>
-</div>
+<div class="col-head">Source file<span class="col-note" id="source-path" data-note="lines the target selects">samples/Cart.kt</span></div>
 <div class="file-view">
 <div class="file active" data-file="samples/Cart.kt" aria-label="docs/samples/Cart.kt"><pre class="code"><span class="line" id="samples-Cart-kt-L1" data-line="1"><span class="ln">1</span><span class="lc"><span class="tok-k">class</span> <span class="tok-t">Cart</span> {</span></span><span class="line" id="samples-Cart-kt-L2" data-line="2"><span class="ln">2</span><span class="lc">    <span class="tok-c">// The catalog is a region directive: the directive lines are never injected.</span></span></span><span class="line" id="samples-Cart-kt-L3" data-line="3"><span class="ln">3</span><span class="lc">    <span class="tok-c">// #region catalog</span></span></span><span class="line" id="samples-Cart-kt-L4" data-line="4"><span class="ln">4</span><span class="lc">    <span class="tok-k">val</span> catalog = listOf(<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>)</span></span><span class="line" id="samples-Cart-kt-L5" data-line="5"><span class="ln">5</span><span class="lc">    <span class="tok-c">// #endregion</span></span></span><span class="line" id="samples-Cart-kt-L6" data-line="6"><span class="ln">6</span><span class="lc"></span></span><span class="line" id="samples-Cart-kt-L7" data-line="7"><span class="ln">7</span><span class="lc">    <span class="tok-c">/* Kotlin nests /* comments */, and a raw string hides a decoy: */</span></span></span><span class="line" id="samples-Cart-kt-L8" data-line="8"><span class="ln">8</span><span class="lc">    <span class="tok-k">val</span> note = <span class="tok-s">&quot;&quot;&quot;fun decoy() {}&quot;&quot;&quot;</span></span></span><span class="line" id="samples-Cart-kt-L9" data-line="9"><span class="ln">9</span><span class="lc"></span></span><span class="line" id="samples-Cart-kt-L10" data-line="10"><span class="ln">10</span><span class="lc">    <span class="tok-a">@Deprecated</span>(<span class="tok-s">&quot;use add&quot;</span>)</span></span><span class="line" id="samples-Cart-kt-L11" data-line="11"><span class="ln">11</span><span class="lc">    <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {</span></span><span class="line" id="samples-Cart-kt-L12" data-line="12"><span class="ln">12</span><span class="lc">        items.add(item)</span></span><span class="line" id="samples-Cart-kt-L13" data-line="13"><span class="ln">13</span><span class="lc">    }</span></span><span class="line" id="samples-Cart-kt-L14" data-line="14"><span class="ln">14</span><span class="lc"></span></span><span class="line" id="samples-Cart-kt-L15" data-line="15"><span class="ln">15</span><span class="lc">    <span class="tok-k">fun</span> dispatch(methodName: <span class="tok-t">String</span>) {</span></span><span class="line" id="samples-Cart-kt-L16" data-line="16"><span class="ln">16</span><span class="lc">        <span class="tok-k">if</span> (methodName == <span class="tok-s">&quot;count&quot;</span>) {</span></span><span class="line" id="samples-Cart-kt-L17" data-line="17"><span class="ln">17</span><span class="lc">            println(catalog.size)</span></span><span class="line" id="samples-Cart-kt-L18" data-line="18"><span class="ln">18</span><span class="lc">        }</span></span><span class="line" id="samples-Cart-kt-L19" data-line="19"><span class="ln">19</span><span class="lc">        <span class="tok-k">return</span></span></span><span class="line" id="samples-Cart-kt-L20" data-line="20"><span class="ln">20</span><span class="lc">    }</span></span><span class="line" id="samples-Cart-kt-L21" data-line="21"><span class="ln">21</span><span class="lc"></span></span><span class="line" id="samples-Cart-kt-L22" data-line="22"><span class="ln">22</span><span class="lc">    <span class="tok-k">fun</span> legacy() { <span class="tok-c">//count</span></span></span><span class="line" id="samples-Cart-kt-L23" data-line="23"><span class="ln">23</span><span class="lc">        println(catalog.size)</span></span><span class="line" id="samples-Cart-kt-L24" data-line="24"><span class="ln">24</span><span class="lc">    }</span></span><span class="line" id="samples-Cart-kt-L25" data-line="25"><span class="ln">25</span><span class="lc">}</span></span></pre></div>
 </div>
@@ -437,7 +432,6 @@ body {
 (function () {
   var targets = Array.prototype.slice.call(document.querySelectorAll('.target'));
   var lines = Array.prototype.slice.call(document.querySelectorAll('.line'));
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('.file-tab'));
   var files = Array.prototype.slice.call(document.querySelectorAll('.file'));
   var mdSections = Array.prototype.slice.call(document.querySelectorAll('[data-md-section]'));
   var mdHits = Array.prototype.slice.call(document.querySelectorAll('.md-marker, .md-pre'));
@@ -466,14 +460,12 @@ body {
     }
   }
 
+  // The column header says which file the pane is showing: there are no tabs, so
+  // this is the only place that answers "where am I reading?".
+  var sourcePath = document.getElementById('source-path');
   function showFile(name) {
     files.forEach(function (file) { file.classList.toggle('active', file.dataset.file === name); });
-    tabs.forEach(function (tab) {
-      var active = tab.dataset.file === name;
-      tab.classList.toggle('active', active);
-      // With many files the tab strip scrolls; keep the active one in sight.
-      if (active) tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    });
+    if (sourcePath) sourcePath.textContent = name;
   }
 
   function select(target, keepScroll, keepHash) {
