@@ -193,6 +193,15 @@ const cases = [
     { name: 'envelope-different-parents', input: EXAMPLE, reference: 'Cart/^,Line/render,Line/$' },
     { name: 'envelope-region-parent', input: EXAMPLE, reference: 'Cart/^,nope,$' },
 
+    // Resolution — an envelope whose parent is a name **several blocks** answer
+    // to. A Rust type is a `struct` beside its `impl`s, so the marks retry them
+    // the way a path retries a scope, and the member inside decides which one the
+    // envelope is about: `add` is in the first `impl`, `remove` in the second.
+    { name: 'envelope-rust-struct-and-impl', input: RUST, reference: 'Cart/^,add,$' },
+    { name: 'envelope-rust-second-impl', input: RUST, reference: 'Cart/^,remove,Cart/$' },
+    { name: 'envelope-rust-nested-literal', input: RUST, reference: 'Cart/^,dispatch/count,Cart/$' },
+    { name: 'envelope-rust-member-in-no-impl', input: RUST, reference: 'Cart/^,nope,$' },
+
     // Resolution — Wrapped.java: a declaration whose header does not fit on one
     // line. The parameters, the `throws` clause and the class's type parameters
     // each get their own line, so the matcher has to follow the header past the

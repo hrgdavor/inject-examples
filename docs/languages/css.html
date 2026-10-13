@@ -75,7 +75,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -89,17 +89,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -263,27 +269,27 @@ body {
 <span class="menu-bars" aria-hidden="true"></span>
 <span class="menu-word">Examples</span>
 </button>
-<nav class="menu" id="menu" popover aria-label="Example pages">
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
 <p class="menu-head">One page per language</p>
-<span class="menu-group" role="presentation">This page</span><a class="menu-item" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
-<span class="menu-group" role="presentation">Languages</span><a class="menu-item" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
-<a class="menu-item" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
-<a class="menu-item" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
-<a class="menu-item" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
-<a class="menu-item" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
-<a class="menu-item" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
-<a class="menu-item" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
-<a class="menu-item" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
-<a class="menu-item" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
-<a class="menu-item" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
-<a class="menu-item" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
-<a class="menu-item" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
-<a class="menu-item" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
-<span class="menu-group" role="presentation">Config formats</span><a class="menu-item" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
-<a class="menu-item" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
-<a class="menu-item" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
-<a class="menu-item" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
-<span class="menu-group" role="presentation">Styles</span><a class="menu-item current" href="css.html" aria-current="page"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item with-sample" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item with-sample" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item with-sample" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item with-sample" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item with-sample" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item with-sample" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item with-sample" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item current with-sample" href="css.html" aria-current="page"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
 </nav>
 </div>
 <h1>CSS</h1>
@@ -303,16 +309,16 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>CSS: rules and at-rules</h3>
 <ul class="targets">
-<li class="target-item" id="css-t-43-1"><button class="target" type="button" data-file="samples/site.css" data-section="43" data-from="2" data-to="5" data-ranges="2-5" aria-pressed="false" aria-controls="css-t-43-1-desc" title="[samples/site.css#:root](./samples/site.css#:root)"><span class="chip-file">site.css</span><span class="chip-ref">#:root</span></button></li>
-<li class="target-item" id="css-t-43-2"><button class="target" type="button" data-file="samples/site.css" data-section="43" data-from="19" data-to="23" data-ranges="19-23" aria-pressed="false" aria-controls="css-t-43-2-desc" title="[samples/site.css#@media](./samples/site.css#@media)"><span class="chip-file">site.css</span><span class="chip-ref">#@media</span></button></li>
-<li class="target-item" id="css-t-43-3"><button class="target" type="button" data-file="samples/site.css" data-section="43" data-from="21" data-to="21" data-ranges="21-21" aria-pressed="false" aria-controls="css-t-43-3-desc" title="[samples/site.css#@media/.card/-](./samples/site.css#@media/.card/-)"><span class="chip-file">site.css</span><span class="chip-ref">#@media/.card/-</span></button></li>
-<li class="target-item" id="css-t-43-4"><button class="target" type="button" data-file="samples/site.css" data-section="43" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="css-t-43-4-desc" title="[samples/site.css#@keyframes:pulse](./samples/site.css#@keyframes:pulse)"><span class="chip-file">site.css</span><span class="chip-ref">#@keyframes:pulse</span></button></li>
+<li class="target-item" id="css-t-51-1"><button class="target" type="button" data-file="samples/site.css" data-section="51" data-from="2" data-to="5" data-ranges="2-5" aria-pressed="false" aria-controls="css-t-51-1-desc" title="[samples/site.css#:root](./samples/site.css#:root)"><span class="chip-file">site.css</span><span class="chip-ref">#:root</span></button></li>
+<li class="target-item" id="css-t-51-2"><button class="target" type="button" data-file="samples/site.css" data-section="51" data-from="19" data-to="23" data-ranges="19-23" aria-pressed="false" aria-controls="css-t-51-2-desc" title="[samples/site.css#@media](./samples/site.css#@media)"><span class="chip-file">site.css</span><span class="chip-ref">#@media</span></button></li>
+<li class="target-item" id="css-t-51-3"><button class="target" type="button" data-file="samples/site.css" data-section="51" data-from="21" data-to="21" data-ranges="21-21" aria-pressed="false" aria-controls="css-t-51-3-desc" title="[samples/site.css#@media/.card/-](./samples/site.css#@media/.card/-)"><span class="chip-file">site.css</span><span class="chip-ref">#@media/.card/-</span></button></li>
+<li class="target-item" id="css-t-51-4"><button class="target" type="button" data-file="samples/site.css" data-section="51" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="css-t-51-4-desc" title="[samples/site.css#@keyframes:pulse](./samples/site.css#@keyframes:pulse)"><span class="chip-file">site.css</span><span class="chip-ref">#@keyframes:pulse</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
 <h3><span class="num">2</span>CSS: a predicate, and a region</h3>
 <ul class="targets">
-<li class="target-item" id="css-t-44-1"><button class="target" type="button" data-file="samples/site.css" data-section="44" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="css-t-44-1-desc" title="[samples/site.css#pulse](./samples/site.css#pulse)"><span class="chip-file">site.css</span><span class="chip-ref">#pulse</span></button></li>
+<li class="target-item" id="css-t-52-1"><button class="target" type="button" data-file="samples/site.css" data-section="52" data-from="26" data-to="33" data-ranges="26-33" aria-pressed="false" aria-controls="css-t-52-1-desc" title="[samples/site.css#pulse](./samples/site.css#pulse)"><span class="chip-file">site.css</span><span class="chip-ref">#pulse</span></button></li>
 </ul>
 </li>
 </ol>
@@ -321,23 +327,23 @@ body {
 <div class="col-head">Description<span class="col-note">of the selected example</span></div>
 <div class="desc-panel">
 <p class="desc-empty">Click an example link above to read what it demonstrates.</p>
-<div class="desc" id="css-t-43-1-desc" data-desc="css-t-43-1">
+<div class="desc" id="css-t-51-1-desc" data-desc="css-t-51-1">
 <h2><span class="num">1</span>CSS: rules and at-rules</h2>
 <p>A <code>.css</code> reference names a <strong>rule</strong>, in CSS’s own vocabulary. A style rule is named by the rightmost simple selector of its selector list, an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the declarations alone&quot; works through a path too, so <code>@media/.card/-</code> is that inner rule’s declarations without its selector.</p>
 </div>
-<div class="desc" id="css-t-43-2-desc" data-desc="css-t-43-2">
+<div class="desc" id="css-t-51-2-desc" data-desc="css-t-51-2">
 <h2><span class="num">1</span>CSS: rules and at-rules</h2>
 <p>A <code>.css</code> reference names a <strong>rule</strong>, in CSS’s own vocabulary. A style rule is named by the rightmost simple selector of its selector list, an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the declarations alone&quot; works through a path too, so <code>@media/.card/-</code> is that inner rule’s declarations without its selector.</p>
 </div>
-<div class="desc" id="css-t-43-3-desc" data-desc="css-t-43-3">
+<div class="desc" id="css-t-51-3-desc" data-desc="css-t-51-3">
 <h2><span class="num">1</span>CSS: rules and at-rules</h2>
 <p>A <code>.css</code> reference names a <strong>rule</strong>, in CSS’s own vocabulary. A style rule is named by the rightmost simple selector of its selector list, an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the declarations alone&quot; works through a path too, so <code>@media/.card/-</code> is that inner rule’s declarations without its selector.</p>
 </div>
-<div class="desc" id="css-t-43-4-desc" data-desc="css-t-43-4">
+<div class="desc" id="css-t-51-4-desc" data-desc="css-t-51-4">
 <h2><span class="num">1</span>CSS: rules and at-rules</h2>
 <p>A <code>.css</code> reference names a <strong>rule</strong>, in CSS’s own vocabulary. A style rule is named by the rightmost simple selector of its selector list, an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the declarations alone&quot; works through a path too, so <code>@media/.card/-</code> is that inner rule’s declarations without its selector.</p>
 </div>
-<div class="desc" id="css-t-44-1-desc" data-desc="css-t-44-1">
+<div class="desc" id="css-t-52-1-desc" data-desc="css-t-52-1">
 <h2><span class="num">2</span>CSS: a predicate, and a region</h2>
 <p>Two rules share the name <code>.card</code> — the base rule and its compact variant — so a reference that would match both is an error rather than a guess, and <code>#.card</code> names nothing. A predicate read from the selector picks one, and a region directive still works in CSS, where a class name cannot be a region name.</p>
 <p>[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])</p>
@@ -359,23 +365,23 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="1105" data-md-to="1105">CSS: rules and at-rules</h2>
-<p data-md-from="1107" data-md-to="1107">A <code>.css</code> reference names a <strong>rule</strong>, in CSS’s own vocabulary. A style rule is named by the rightmost simple selector of its selector list, an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the declarations alone&quot; works through a path too, so <code>@media/.card/-</code> is that inner rule’s declarations without its selector.</p>
-<p class="md-marker" data-marker="css-t-43-1"><a href="../docs/samples/site.css#:root">samples/site.css#:root</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-43-1" data-md-from="1111" data-md-to="1116"><code class="language-css">:root {
+<h2 data-md-from="1322" data-md-to="1322">CSS: rules and at-rules</h2>
+<p data-md-from="1324" data-md-to="1324">A <code>.css</code> reference names a <strong>rule</strong>, in CSS’s own vocabulary. A style rule is named by the rightmost simple selector of its selector list, an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the declarations alone&quot; works through a path too, so <code>@media/.card/-</code> is that inner rule’s declarations without its selector.</p>
+<p class="md-marker" data-marker="css-t-51-1"><a href="../docs/samples/site.css#:root">samples/site.css#:root</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="css-t-51-1" data-md-from="1328" data-md-to="1333"><code class="language-css">:root {
   --brand: #<span class="tok-n">1f6feb</span>;
   --<span class="tok-k">radius</span>: <span class="tok-n">6px</span>;
 }</code></pre>
-<p class="md-marker" data-marker="css-t-43-2"><a href="../docs/samples/site.css#@media">samples/site.css#@media</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-43-2" data-md-from="1120" data-md-to="1126"><code class="language-css"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {
+<p class="md-marker" data-marker="css-t-51-2"><a href="../docs/samples/site.css#@media">samples/site.css#@media</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="css-t-51-2" data-md-from="1337" data-md-to="1343"><code class="language-css"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {
   .card {
     <span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;
   }
 }</code></pre>
-<p class="md-marker" data-marker="css-t-43-3"><a href="../docs/samples/site.css#@media/.card/-">samples/site.css#@media/.card/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-43-3" data-md-from="1130" data-md-to="1132"><code class="language-css"><span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</code></pre>
-<p class="md-marker" data-marker="css-t-43-4"><a href="../docs/samples/site.css#@keyframes:pulse">samples/site.css#@keyframes:pulse</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-43-4" data-md-from="1136" data-md-to="1145"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
+<p class="md-marker" data-marker="css-t-51-3"><a href="../docs/samples/site.css#@media/.card/-">samples/site.css#@media/.card/-</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="css-t-51-3" data-md-from="1347" data-md-to="1349"><code class="language-css"><span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</code></pre>
+<p class="md-marker" data-marker="css-t-51-4"><a href="../docs/samples/site.css#@keyframes:pulse">samples/site.css#@keyframes:pulse</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="css-t-51-4" data-md-from="1353" data-md-to="1362"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
   from {
     <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;
   }
@@ -385,12 +391,12 @@ body {
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="1147" data-md-to="1147">CSS: a predicate, and a region</h2>
-<p data-md-from="1149" data-md-to="1149">Two rules share the name <code>.card</code> — the base rule and its compact variant — so a reference that would match both is an error rather than a guess, and <code>#.card</code> names nothing. A predicate read from the selector picks one, and a region directive still works in CSS, where a class name cannot be a region name.</p>
-<p data-md-from="1151" data-md-to="1151">[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])</p>
-<pre class="md-pre" data-md-from="1153" data-md-to="1154"><code></code></pre>
-<p class="md-marker" data-marker="css-t-44-1"><a href="../docs/samples/site.css#pulse">samples/site.css#pulse</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-44-1" data-md-from="1158" data-md-to="1167"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
+<h2 data-md-from="1364" data-md-to="1364">CSS: a predicate, and a region</h2>
+<p data-md-from="1366" data-md-to="1366">Two rules share the name <code>.card</code> — the base rule and its compact variant — so a reference that would match both is an error rather than a guess, and <code>#.card</code> names nothing. A predicate read from the selector picks one, and a region directive still works in CSS, where a class name cannot be a region name.</p>
+<p data-md-from="1368" data-md-to="1368">[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])</p>
+<pre class="md-pre" data-md-from="1370" data-md-to="1371"><code></code></pre>
+<p class="md-marker" data-marker="css-t-52-1"><a href="../docs/samples/site.css#pulse">samples/site.css#pulse</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="css-t-52-1" data-md-from="1375" data-md-to="1384"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
   from {
     <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;
   }

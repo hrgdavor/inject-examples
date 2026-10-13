@@ -864,8 +864,9 @@ through the fragment.
     `^` or `$` — and use case A is unaffected, which is what this addition is for:
     the range is *useful to inject and not to open*, and a host that only navigates
     ignores the extra pieces. The `Selector` gains an optional `envelope` field
-    ([§5.3](#53-plan-the-whole-contract)); the corpus gains 22 rows (9 grammar, 13
-    resolution).
+    ([§5.3](#53-plan-the-whole-contract)); the corpus gains 29 rows carrying a mark
+    (9 grammar, 4 resolution rows for a type whose members live in several `impl`
+    blocks, and 16 error paths).
   - `0.9-rc` (this revision) — **a comment is any spelling, and a block need not
     brace.** Three matchers were reachable only through C-style spellings, and are
     now reachable through the language's own: a region directive accepts a `#`

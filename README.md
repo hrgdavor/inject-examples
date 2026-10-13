@@ -657,8 +657,9 @@ in the shared header of every page lists them all and marks the current one, so 
 reader can go straight to the language they came for instead of scrolling past
 everything else; the Overview's last section is the same list as links. The menu
 is a list to scan rather than a paragraph to read: an entry is the page's name and
-its sample, and only the Overview, whose name does not say what it holds,
-describes itself.
+its sample — **one line**, the name bold on the left and the file it reads
+(`samples/Cart.rs`) pushed to the right edge, so the sample column scans — and only
+the Overview, whose name does not say what it holds, describes itself.
 
 The Overview's own sections are **targets like any page's** — click "A condition
 literal" and the columns follow it — so the tool's examples and the index of the

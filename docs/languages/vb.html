@@ -75,7 +75,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -89,17 +89,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -263,27 +269,27 @@ body {
 <span class="menu-bars" aria-hidden="true"></span>
 <span class="menu-word">Examples</span>
 </button>
-<nav class="menu" id="menu" popover aria-label="Example pages">
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
 <p class="menu-head">One page per language</p>
-<span class="menu-group" role="presentation">This page</span><a class="menu-item" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
-<span class="menu-group" role="presentation">Languages</span><a class="menu-item" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
-<a class="menu-item" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
-<a class="menu-item" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
-<a class="menu-item" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
-<a class="menu-item" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
-<a class="menu-item" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
-<a class="menu-item" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
-<a class="menu-item" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
-<a class="menu-item" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
-<a class="menu-item" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
-<a class="menu-item current" href="vb.html" aria-current="page"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
-<a class="menu-item" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
-<a class="menu-item" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
-<span class="menu-group" role="presentation">Config formats</span><a class="menu-item" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
-<a class="menu-item" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
-<a class="menu-item" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
-<a class="menu-item" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
-<span class="menu-group" role="presentation">Styles</span><a class="menu-item" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item with-sample" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item with-sample" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item with-sample" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item with-sample" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item with-sample" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item current with-sample" href="vb.html" aria-current="page"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item with-sample" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item with-sample" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
 </nav>
 </div>
 <h1>VB</h1>
@@ -303,16 +309,23 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>VB: regions and declarations</h3>
 <ul class="targets">
-<li class="target-item" id="vb-t-29-1"><button class="target" type="button" data-file="samples/Form.vb" data-section="29" data-from="4" data-to="4" data-ranges="4-4" aria-pressed="false" aria-controls="vb-t-29-1-desc" title="[samples/Form.vb#catalog](./samples/Form.vb#catalog)"><span class="chip-file">Form.vb</span><span class="chip-ref">#catalog</span></button></li>
-<li class="target-item" id="vb-t-29-2"><button class="target" type="button" data-file="samples/Form.vb" data-section="29" data-from="7" data-to="10" data-ranges="7-10" aria-pressed="false" aria-controls="vb-t-29-2-desc" title="[samples/Form.vb#Add](./samples/Form.vb#Add)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Add</span></button></li>
-<li class="target-item" id="vb-t-29-3"><button class="target" type="button" data-file="samples/Form.vb" data-section="29" data-from="8" data-to="9" data-ranges="8-9" aria-pressed="false" aria-controls="vb-t-29-3-desc" title="[samples/Form.vb#Add/-](./samples/Form.vb#Add/-)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Add/-</span></button></li>
-<li class="target-item" id="vb-t-29-4"><button class="target" type="button" data-file="samples/Form.vb" data-section="29" data-from="12" data-to="17" data-ranges="12-17" aria-pressed="false" aria-controls="vb-t-29-4-desc" title="[samples/Form.vb#Dispatch/+](./samples/Form.vb#Dispatch/+)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Dispatch/+</span></button></li>
+<li class="target-item" id="vb-t-36-1"><button class="target" type="button" data-file="samples/Form.vb" data-section="36" data-from="4" data-to="4" data-ranges="4-4" aria-pressed="false" aria-controls="vb-t-36-1-desc" title="[samples/Form.vb#catalog](./samples/Form.vb#catalog)"><span class="chip-file">Form.vb</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="vb-t-36-2"><button class="target" type="button" data-file="samples/Form.vb" data-section="36" data-from="7" data-to="10" data-ranges="7-10" aria-pressed="false" aria-controls="vb-t-36-2-desc" title="[samples/Form.vb#Add](./samples/Form.vb#Add)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Add</span></button></li>
+<li class="target-item" id="vb-t-36-3"><button class="target" type="button" data-file="samples/Form.vb" data-section="36" data-from="8" data-to="9" data-ranges="8-9" aria-pressed="false" aria-controls="vb-t-36-3-desc" title="[samples/Form.vb#Add/-](./samples/Form.vb#Add/-)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Add/-</span></button></li>
+<li class="target-item" id="vb-t-36-4"><button class="target" type="button" data-file="samples/Form.vb" data-section="36" data-from="12" data-to="17" data-ranges="12-17" aria-pressed="false" aria-controls="vb-t-36-4-desc" title="[samples/Form.vb#Dispatch/+](./samples/Form.vb#Dispatch/+)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Dispatch/+</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
 <h3><span class="num">2</span>VB: an anchor</h3>
 <ul class="targets">
-<li class="target-item" id="vb-t-30-1"><button class="target" type="button" data-file="samples/Form.vb" data-section="30" data-from="19" data-to="21" data-ranges="19-21" aria-pressed="false" aria-controls="vb-t-30-1-desc" title="[samples/Form.vb#Legacy/count](./samples/Form.vb#Legacy/count)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Legacy/count</span></button></li>
+<li class="target-item" id="vb-t-37-1"><button class="target" type="button" data-file="samples/Form.vb" data-section="37" data-from="19" data-to="21" data-ranges="19-21" aria-pressed="false" aria-controls="vb-t-37-1-desc" title="[samples/Form.vb#Legacy/count](./samples/Form.vb#Legacy/count)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Legacy/count</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-3">
+<h3><span class="num">3</span>VB: an envelope around a function</h3>
+<ul class="targets">
+<li class="target-item" id="vb-t-38-1"><button class="target" type="button" data-file="samples/Form.vb" data-section="38" data-from="1" data-to="22" data-ranges="1-1,7-10,22-22" aria-pressed="false" aria-controls="vb-t-38-1-desc" title="[samples/Form.vb#Form/^,Add,$](./samples/Form.vb#Form/^,Add,$)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Form/^,Add,$</span></button></li>
+<li class="target-item" id="vb-t-38-2"><button class="target" type="button" data-file="samples/Form.vb" data-section="38" data-from="1" data-to="22" data-ranges="1-1,7-10,22-22" aria-pressed="false" aria-controls="vb-t-38-2-desc" title="[samples/Form.vb#Form/^,Form/Add,Form/$](./samples/Form.vb#Form/^,Form/Add,Form/$)"><span class="chip-file">Form.vb</span><span class="chip-ref">#Form/^,Form/Add,Form/$</span></button></li>
 </ul>
 </li>
 </ol>
@@ -321,25 +334,33 @@ body {
 <div class="col-head">Description<span class="col-note">of the selected example</span></div>
 <div class="desc-panel">
 <p class="desc-empty">Click an example link above to read what it demonstrates.</p>
-<div class="desc" id="vb-t-29-1-desc" data-desc="vb-t-29-1">
+<div class="desc" id="vb-t-36-1-desc" data-desc="vb-t-36-1">
 <h2><span class="num">1</span>VB: regions and declarations</h2>
 <p>VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>. The <code>+</code> modifier takes the declaration with the annotation above it, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure. A shared array is named by its region directive.</p>
 </div>
-<div class="desc" id="vb-t-29-2-desc" data-desc="vb-t-29-2">
+<div class="desc" id="vb-t-36-2-desc" data-desc="vb-t-36-2">
 <h2><span class="num">1</span>VB: regions and declarations</h2>
 <p>VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>. The <code>+</code> modifier takes the declaration with the annotation above it, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure. A shared array is named by its region directive.</p>
 </div>
-<div class="desc" id="vb-t-29-3-desc" data-desc="vb-t-29-3">
+<div class="desc" id="vb-t-36-3-desc" data-desc="vb-t-36-3">
 <h2><span class="num">1</span>VB: regions and declarations</h2>
 <p>VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>. The <code>+</code> modifier takes the declaration with the annotation above it, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure. A shared array is named by its region directive.</p>
 </div>
-<div class="desc" id="vb-t-29-4-desc" data-desc="vb-t-29-4">
+<div class="desc" id="vb-t-36-4-desc" data-desc="vb-t-36-4">
 <h2><span class="num">1</span>VB: regions and declarations</h2>
 <p>VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>. The <code>+</code> modifier takes the declaration with the annotation above it, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure. A shared array is named by its region directive.</p>
 </div>
-<div class="desc" id="vb-t-30-1-desc" data-desc="vb-t-30-1">
+<div class="desc" id="vb-t-37-1-desc" data-desc="vb-t-37-1">
 <h2><span class="num">2</span>VB: an anchor</h2>
 <p>VB writes an equality test with the same <code>=</code> an assignment uses, so an <code>If methodName = &quot;count&quot; Then</code> header is not addressable as a condition literal here; a trailing comment on the declaration line names the function below it.</p>
+</div>
+<div class="desc" id="vb-t-38-1-desc" data-desc="vb-t-38-1">
+<h2><span class="num">3</span>VB: an envelope around a function</h2>
+<p>VB closes every block with a keyword line, so the class's <code>End Class</code> is what the tail is: <code>#Form/^,Add,$</code> is <code>Public Class Form</code>, the function through <code>End Function</code>, and <code>End Class</code>.</p>
+</div>
+<div class="desc" id="vb-t-38-2-desc" data-desc="vb-t-38-2">
+<h2><span class="num">3</span>VB: an envelope around a function</h2>
+<p>VB closes every block with a keyword line, so the class's <code>End Class</code> is what the tail is: <code>#Form/^,Add,$</code> is <code>Public Class Form</code>, the function through <code>End Function</code>, and <code>End Class</code>.</p>
 </div>
 </div>
 </div>
@@ -358,20 +379,20 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="819" data-md-to="819">VB: regions and declarations</h2>
-<p data-md-from="821" data-md-to="821">VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>. The <code>+</code> modifier takes the declaration with the annotation above it, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure. A shared array is named by its region directive.</p>
-<p class="md-marker" data-marker="vb-t-29-1"><a href="../docs/samples/Form.vb#catalog">samples/Form.vb#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-29-1" data-md-from="825" data-md-to="827"><code class="language-vb">    <span class="tok-k">Private</span> <span class="tok-k">Shared</span> <span class="tok-t">ReadOnly</span> <span class="tok-t">CatalogList</span> <span class="tok-k">As</span> <span class="tok-k">String</span>() = {<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>}</code></pre>
-<p class="md-marker" data-marker="vb-t-29-2"><a href="../docs/samples/Form.vb#Add">samples/Form.vb#Add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-29-2" data-md-from="831" data-md-to="836"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
+<h2 data-md-from="1009" data-md-to="1009">VB: regions and declarations</h2>
+<p data-md-from="1011" data-md-to="1011">VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>. The <code>+</code> modifier takes the declaration with the annotation above it, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure. A shared array is named by its region directive.</p>
+<p class="md-marker" data-marker="vb-t-36-1"><a href="../docs/samples/Form.vb#catalog">samples/Form.vb#catalog</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="vb-t-36-1" data-md-from="1015" data-md-to="1017"><code class="language-vb">    <span class="tok-k">Private</span> <span class="tok-k">Shared</span> <span class="tok-t">ReadOnly</span> <span class="tok-t">CatalogList</span> <span class="tok-k">As</span> <span class="tok-k">String</span>() = {<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>}</code></pre>
+<p class="md-marker" data-marker="vb-t-36-2"><a href="../docs/samples/Form.vb#Add">samples/Form.vb#Add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="vb-t-36-2" data-md-from="1021" data-md-to="1026"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
         <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
         <span class="tok-k">Return</span> note
     <span class="tok-k">End</span> <span class="tok-k">Function</span></code></pre>
-<p class="md-marker" data-marker="vb-t-29-3"><a href="../docs/samples/Form.vb#Add/-">samples/Form.vb#Add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-29-3" data-md-from="840" data-md-to="843"><code class="language-vb">        <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
+<p class="md-marker" data-marker="vb-t-36-3"><a href="../docs/samples/Form.vb#Add/-">samples/Form.vb#Add/-</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="vb-t-36-3" data-md-from="1030" data-md-to="1033"><code class="language-vb">        <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
         <span class="tok-k">Return</span> note</code></pre>
-<p class="md-marker" data-marker="vb-t-29-4"><a href="../docs/samples/Form.vb#Dispatch/+">samples/Form.vb#Dispatch/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-29-4" data-md-from="847" data-md-to="854"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Dispatch</span>(methodName <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">Boolean</span>
+<p class="md-marker" data-marker="vb-t-36-4"><a href="../docs/samples/Form.vb#Dispatch/+">samples/Form.vb#Dispatch/+</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="vb-t-36-4" data-md-from="1037" data-md-to="1044"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Dispatch</span>(methodName <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">Boolean</span>
         <span class="tok-k">If</span> methodName = <span class="tok-s">&quot;count&quot;</span> <span class="tok-k">Then</span>
             <span class="tok-k">Return</span> <span class="tok-t">CatalogList</span>.<span class="tok-t">Length</span> &gt; <span class="tok-n">0</span>
         <span class="tok-k">End</span> <span class="tok-k">If</span>
@@ -379,12 +400,30 @@ body {
     <span class="tok-k">End</span> <span class="tok-k">Function</span></code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="856" data-md-to="856">VB: an anchor</h2>
-<p data-md-from="858" data-md-to="858">VB writes an equality test with the same <code>=</code> an assignment uses, so an <code>If methodName = &quot;count&quot; Then</code> header is not addressable as a condition literal here; a trailing comment on the declaration line names the function below it.</p>
-<p class="md-marker" data-marker="vb-t-30-1"><a href="../docs/samples/Form.vb#Legacy/count">samples/Form.vb#Legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-30-1" data-md-from="862" data-md-to="866"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Legacy</span>() <span class="tok-k">As</span> <span class="tok-k">Boolean</span> <span class="tok-c">'count</span>
+<h2 data-md-from="1046" data-md-to="1046">VB: an anchor</h2>
+<p data-md-from="1048" data-md-to="1048">VB writes an equality test with the same <code>=</code> an assignment uses, so an <code>If methodName = &quot;count&quot; Then</code> header is not addressable as a condition literal here; a trailing comment on the declaration line names the function below it.</p>
+<p class="md-marker" data-marker="vb-t-37-1"><a href="../docs/samples/Form.vb#Legacy/count">samples/Form.vb#Legacy/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="vb-t-37-1" data-md-from="1052" data-md-to="1056"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Legacy</span>() <span class="tok-k">As</span> <span class="tok-k">Boolean</span> <span class="tok-c">'count</span>
         <span class="tok-k">Return</span> <span class="tok-t">CatalogList</span>.<span class="tok-t">Length</span> &gt; <span class="tok-n">0</span>
     <span class="tok-k">End</span> <span class="tok-k">Function</span></code></pre>
+</section>
+<section class="md-section" data-md-section="3">
+<h2 data-md-from="1059" data-md-to="1059">VB: an envelope around a function</h2>
+<p data-md-from="1061" data-md-to="1061">VB closes every block with a keyword line, so the class's <code>End Class</code> is what the tail is: <code>#Form/^,Add,$</code> is <code>Public Class Form</code>, the function through <code>End Function</code>, and <code>End Class</code>.</p>
+<p class="md-marker" data-marker="vb-t-38-1"><a href="../docs/samples/Form.vb#Form/^,Add,$">samples/Form.vb#Form/^,Add,$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="vb-t-38-1" data-md-from="1065" data-md-to="1072"><code class="language-vb"><span class="tok-k">Public</span> <span class="tok-k">Class</span> <span class="tok-t">Form</span>
+    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
+        <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
+        <span class="tok-k">Return</span> note
+    <span class="tok-k">End</span> <span class="tok-k">Function</span>
+<span class="tok-k">End</span> <span class="tok-k">Class</span></code></pre>
+<p class="md-marker" data-marker="vb-t-38-2"><a href="../docs/samples/Form.vb#Form/^,Form/Add,Form/$">samples/Form.vb#Form/^,Form/Add,Form/$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="vb-t-38-2" data-md-from="1076" data-md-to="1083"><code class="language-vb"><span class="tok-k">Public</span> <span class="tok-k">Class</span> <span class="tok-t">Form</span>
+    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
+        <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
+        <span class="tok-k">Return</span> note
+    <span class="tok-k">End</span> <span class="tok-k">Function</span>
+<span class="tok-k">End</span> <span class="tok-k">Class</span></code></pre>
 </section>
 </article>
 </div>

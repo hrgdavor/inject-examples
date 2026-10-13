@@ -75,7 +75,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -89,17 +89,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -263,27 +269,27 @@ body {
 <span class="menu-bars" aria-hidden="true"></span>
 <span class="menu-word">Examples</span>
 </button>
-<nav class="menu" id="menu" popover aria-label="Example pages">
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
 <p class="menu-head">One page per language</p>
-<span class="menu-group" role="presentation">This page</span><a class="menu-item" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
-<span class="menu-group" role="presentation">Languages</span><a class="menu-item" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
-<a class="menu-item" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
-<a class="menu-item" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
-<a class="menu-item" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
-<a class="menu-item" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
-<a class="menu-item" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
-<a class="menu-item" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
-<a class="menu-item" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
-<a class="menu-item" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
-<a class="menu-item" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
-<a class="menu-item" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
-<a class="menu-item" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
-<a class="menu-item" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
-<span class="menu-group" role="presentation">Config formats</span><a class="menu-item" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
-<a class="menu-item" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
-<a class="menu-item" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
-<a class="menu-item current" href="json.html" aria-current="page"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
-<span class="menu-group" role="presentation">Styles</span><a class="menu-item" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item with-sample" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item with-sample" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item with-sample" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item with-sample" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item with-sample" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item with-sample" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item current with-sample" href="json.html" aria-current="page"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item with-sample" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
 </nav>
 </div>
 <h1>JSON</h1>
@@ -303,14 +309,14 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>JSON: keys</h3>
 <ul class="targets">
-<li class="target-item" id="json-t-37-1"><button class="target" type="button" data-file="samples/api.json" data-section="37" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="json-t-37-1-desc" title="[samples/api.json#name,server/port](./samples/api.json#name,server/port)"><span class="chip-file">api.json</span><span class="chip-ref">#name,server/port</span></button></li>
-<li class="target-item" id="json-t-37-2"><button class="target" type="button" data-file="samples/api.json" data-section="37" data-from="4" data-to="7" data-ranges="4-4,7-7" aria-pressed="false" aria-controls="json-t-37-2-desc" title="[samples/api.json#server/cors](./samples/api.json#server/cors)"><span class="chip-file">api.json</span><span class="chip-ref">#server/cors</span></button></li>
+<li class="target-item" id="json-t-45-1"><button class="target" type="button" data-file="samples/api.json" data-section="45" data-from="2" data-to="5" data-ranges="2-2,4-5" aria-pressed="false" aria-controls="json-t-45-1-desc" title="[samples/api.json#name,server/port](./samples/api.json#name,server/port)"><span class="chip-file">api.json</span><span class="chip-ref">#name,server/port</span></button></li>
+<li class="target-item" id="json-t-45-2"><button class="target" type="button" data-file="samples/api.json" data-section="45" data-from="4" data-to="7" data-ranges="4-4,7-7" aria-pressed="false" aria-controls="json-t-45-2-desc" title="[samples/api.json#server/cors](./samples/api.json#server/cors)"><span class="chip-file">api.json</span><span class="chip-ref">#server/cors</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
 <h3><span class="num">2</span>JSON: a nested key</h3>
 <ul class="targets">
-<li class="target-item" id="json-t-38-1"><button class="target" type="button" data-file="samples/api.json" data-section="38" data-from="4" data-to="6" data-ranges="4-4,6-6" aria-pressed="false" aria-controls="json-t-38-1-desc" title="[samples/api.json#server/enabled](./samples/api.json#server/enabled)"><span class="chip-file">api.json</span><span class="chip-ref">#server/enabled</span></button></li>
+<li class="target-item" id="json-t-46-1"><button class="target" type="button" data-file="samples/api.json" data-section="46" data-from="4" data-to="6" data-ranges="4-4,6-6" aria-pressed="false" aria-controls="json-t-46-1-desc" title="[samples/api.json#server/enabled](./samples/api.json#server/enabled)"><span class="chip-file">api.json</span><span class="chip-ref">#server/enabled</span></button></li>
 </ul>
 </li>
 </ol>
@@ -319,15 +325,15 @@ body {
 <div class="col-head">Description<span class="col-note">of the selected example</span></div>
 <div class="desc-panel">
 <p class="desc-empty">Click an example link above to read what it demonstrates.</p>
-<div class="desc" id="json-t-37-1-desc" data-desc="json-t-37-1">
+<div class="desc" id="json-t-45-1-desc" data-desc="json-t-45-1">
 <h2><span class="num">1</span>JSON: keys</h2>
 <p>JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys addressable by <code>/</code> — the same separator a code reference uses.</p>
 </div>
-<div class="desc" id="json-t-37-2-desc" data-desc="json-t-37-2">
+<div class="desc" id="json-t-45-2-desc" data-desc="json-t-45-2">
 <h2><span class="num">1</span>JSON: keys</h2>
 <p>JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys addressable by <code>/</code> — the same separator a code reference uses.</p>
 </div>
-<div class="desc" id="json-t-38-1-desc" data-desc="json-t-38-1">
+<div class="desc" id="json-t-46-1-desc" data-desc="json-t-46-1">
 <h2><span class="num">2</span>JSON: a nested key</h2>
 <p>A key nested one level down is more segments, and the rendered block keeps the braces that make it valid JSON.</p>
 </div>
@@ -348,17 +354,17 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="992" data-md-to="992">JSON: keys</h2>
-<p data-md-from="994" data-md-to="994">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys addressable by <code>/</code> — the same separator a code reference uses.</p>
-<p class="md-marker" data-marker="json-t-37-1"><a href="../docs/samples/api.json#name,server/port">samples/api.json#name,server/port</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="json-t-37-1" data-md-from="998" data-md-to="1005"><code class="language-json">{
+<h2 data-md-from="1209" data-md-to="1209">JSON: keys</h2>
+<p data-md-from="1211" data-md-to="1211">JSON renders a selection of keys as valid JSON, in the order they were named, with nested keys addressable by <code>/</code> — the same separator a code reference uses.</p>
+<p class="md-marker" data-marker="json-t-45-1"><a href="../docs/samples/api.json#name,server/port">samples/api.json#name,server/port</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="json-t-45-1" data-md-from="1215" data-md-to="1222"><code class="language-json">{
   <span class="tok-s">&quot;name&quot;</span>: <span class="tok-s">&quot;cart-api&quot;</span>,
   <span class="tok-s">&quot;server&quot;</span>: {
     <span class="tok-s">&quot;port&quot;</span>: <span class="tok-n">8080</span>
   }
 }</code></pre>
-<p class="md-marker" data-marker="json-t-37-2"><a href="../docs/samples/api.json#server/cors">samples/api.json#server/cors</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="json-t-37-2" data-md-from="1009" data-md-to="1017"><code class="language-json">{
+<p class="md-marker" data-marker="json-t-45-2"><a href="../docs/samples/api.json#server/cors">samples/api.json#server/cors</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="json-t-45-2" data-md-from="1226" data-md-to="1234"><code class="language-json">{
   <span class="tok-s">&quot;server&quot;</span>: {
     <span class="tok-s">&quot;cors&quot;</span>: [
       <span class="tok-s">&quot;https://a.example&quot;</span>
@@ -367,10 +373,10 @@ body {
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="1019" data-md-to="1019">JSON: a nested key</h2>
-<p data-md-from="1021" data-md-to="1021">A key nested one level down is more segments, and the rendered block keeps the braces that make it valid JSON.</p>
-<p class="md-marker" data-marker="json-t-38-1"><a href="../docs/samples/api.json#server/enabled">samples/api.json#server/enabled</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="json-t-38-1" data-md-from="1025" data-md-to="1031"><code class="language-json">{
+<h2 data-md-from="1236" data-md-to="1236">JSON: a nested key</h2>
+<p data-md-from="1238" data-md-to="1238">A key nested one level down is more segments, and the rendered block keeps the braces that make it valid JSON.</p>
+<p class="md-marker" data-marker="json-t-46-1"><a href="../docs/samples/api.json#server/enabled">samples/api.json#server/enabled</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="json-t-46-1" data-md-from="1242" data-md-to="1248"><code class="language-json">{
   <span class="tok-s">&quot;server&quot;</span>: {
     <span class="tok-s">&quot;enabled&quot;</span>: <span class="tok-k">true</span>
   }

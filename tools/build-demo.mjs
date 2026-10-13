@@ -89,34 +89,35 @@ export const PAGES = [
             'Java: an envelope around a member'] },
     { slug: 'javascript', label: 'JavaScript / TypeScript', title: 'JavaScript and TypeScript', group: 'Languages',
         order: 2, sample: 'samples/cart.js', blurb: 'a template that hides its braces',
-        sections: ['JavaScript: regions, declarations and modifiers', 'JavaScript: a template, a condition and an anchor'] },
+        sections: ['JavaScript: regions, declarations and modifiers', 'JavaScript: a template, a condition and an anchor',
+            'JavaScript: an envelope around a member'] },
     { slug: 'go', label: 'Go', title: 'Go', group: 'Languages', order: 3, sample: 'samples/Cart.go',
         blurb: 'a raw string is not code',
         sections: ['Go: regions and declarations', 'Go: a switch literal and a trailing comment'] },
     { slug: 'rust', label: 'Rust', title: 'Rust', group: 'Languages', order: 4, sample: 'samples/Cart.rs',
         blurb: 'the members live in the impl',
-        sections: ['Rust: regions and the impls', 'Rust: two impls, a literal and an anchor'] },
+        sections: ['Rust: regions and the impls', 'Rust: two impls, a literal and an anchor', 'Rust: an envelope is the impl'] },
     { slug: 'python', label: 'Python', title: 'Python', group: 'Languages', order: 5, sample: 'samples/Cart.py',
         blurb: 'triple quotes, indentation, and decorators',
-        sections: ['Python: regions, defs and decorators', 'Python: an indented condition and an anchor'] },
+        sections: ['Python: regions, defs and decorators', 'Python: an indented condition and an anchor', 'Python: an envelope restores the indentation'] },
     { slug: 'csharp', label: 'C#', title: 'C#', group: 'Languages', order: 6, sample: 'samples/Cart.cs',
         blurb: 'a verbatim string keeps its quotes',
-        sections: ['C#: regions and declarations', 'C#: a condition and an anchor'] },
+        sections: ['C#: regions and declarations', 'C#: a condition and an anchor', 'C#: an envelope around a method'] },
     { slug: 'kotlin', label: 'Kotlin', title: 'Kotlin', group: 'Languages', order: 7, sample: 'samples/Cart.kt',
         blurb: 'nested comments, raw strings, and annotations',
-        sections: ['Kotlin: regions and declarations', 'Kotlin: a condition and an anchor'] },
+        sections: ['Kotlin: regions and declarations', 'Kotlin: a condition and an anchor', 'Kotlin: an envelope around a method'] },
     { slug: 'php', label: 'PHP', title: 'PHP', group: 'Languages', order: 8, sample: 'samples/Cart.php',
         blurb: 'a heredoc is not code',
-        sections: ['PHP: regions and declarations', 'PHP: a condition and an anchor'] },
+        sections: ['PHP: regions and declarations', 'PHP: a condition and an anchor', 'PHP: an envelope around a method'] },
     { slug: 'ruby', label: 'Ruby', title: 'Ruby', group: 'Languages', order: 9, sample: 'samples/Cart.rb',
         blurb: 'def, end, and the shift operator',
-        sections: ['Ruby: regions, defs and end', 'Ruby: a condition and an anchor'] },
+        sections: ['Ruby: regions, defs and end', 'Ruby: a condition and an anchor', 'Ruby: an envelope around a method'] },
     { slug: 'shell', label: 'Shell', title: 'Shell', group: 'Languages', order: 10, sample: 'samples/run.sh',
         blurb: 'a heredoc is not code either, and regions are how a script is addressed',
         sections: ['Shell: regions and functions', 'Shell: a heredoc and an anchor'] },
     { slug: 'vb', label: 'VB', title: 'VB', group: 'Languages', order: 11, sample: 'samples/Form.vb',
         blurb: 'a function and its End',
-        sections: ['VB: regions and declarations', 'VB: an anchor'] },
+        sections: ['VB: regions and declarations', 'VB: an anchor', 'VB: an envelope around a function'] },
     { slug: 'haskell', label: 'Haskell', title: 'Haskell', group: 'Languages', order: 12, sample: 'samples/Main.hs',
         blurb: 'a binding and its signature',
         sections: ['Haskell: bindings and signatures', 'Haskell: a condition in a binding'] },
@@ -1276,7 +1277,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -1290,17 +1291,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -1669,11 +1676,15 @@ function renderMenu(page) {
             const blurb = item.slug === OVERVIEW.slug
                 ? `<span class="menu-blurb">${escapeHtml(item.blurb)}</span>`
                 : '';
-            return `${note}<a class="menu-item${current ? ' current' : ''}" href="${escapeHtml(item.href)}"`
+            const classes = ['menu-item'];
+            if (current) classes.push('current');
+            if (sample !== '') classes.push('with-sample');
+            if (blurb !== '') classes.push('with-blurb');
+            return `${note}<a class="${classes.join(' ')}" href="${escapeHtml(item.href)}"`
                 + `${current ? ' aria-current="page"' : ''}>`
                 + `<span class="menu-label">${escapeHtml(item.label)}</span>`
-                + blurb
                 + sample
+                + blurb
                 + `</a>`;
         })
         .join('\n');
@@ -1683,7 +1694,9 @@ function renderMenu(page) {
         `<span class="menu-bars" aria-hidden="true"></span>`,
         `<span class="menu-word">Examples</span>`,
         `</button>`,
-        `<nav class="menu" id="menu" popover aria-label="Example pages">`,
+        // The width is set inline as well as in the stylesheet, so a host that
+        // serves a cached copy of the page's CSS cannot leave the menu narrow.
+        `<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">`,
         `<p class="menu-head">One page per language</p>`,
         items,
         `</nav>`,

@@ -379,6 +379,31 @@ A path descends into the class, and a template literal that spans lines hides it
     }
 ```
 
+
+## JavaScript: an envelope around a member
+
+A method copied out of a class reads as a fragment — `render` alone is indented under nothing, and the template literal is the only hint of where it came from. An envelope takes the class's own first and last lines around it: `#Cart/^,render,$` is `export class Cart {`, the whole `render` method, and the closing brace, as three pieces.
+
+[samples/cart.js#Cart/^,render,$](./samples/cart.js#Cart/^,render,$)
+
+```javascript
+export class Cart {
+    render() {
+        return `cart (${this.items.length}): ${this.items.map((item) => `{${item}}`).join(', ')}`;
+    }
+}
+```
+
+[samples/cart.js#Cart/^,Cart/render,Cart/$](./samples/cart.js#Cart/^,Cart/render,Cart/$)
+
+```javascript
+export class Cart {
+    render() {
+        return `cart (${this.items.length}): ${this.items.map((item) => `{${item}}`).join(', ')}`;
+    }
+}
+```
+
 ## Go: regions and declarations
 
 A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. `#Add` names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.
@@ -489,6 +514,31 @@ A type may be `impl`-ed several times, and the path retries each of them: `Cart/
     }
 ```
 
+
+## Rust: an envelope is the impl
+
+A Rust type's members live in `impl` blocks, and there are usually several: this file has three for `Cart`. The marks **retry them the way a path does**, and the member decides which one the envelope is about — so `#Cart/^,add,$` is the first `impl` and `#Cart/^,remove,Cart/$` is the second. The type's name alone would be ambiguous; the envelope is what makes it not.
+
+[samples/Cart.rs#Cart/^,add,$](./samples/Cart.rs#Cart/^,add,$)
+
+```rust
+impl Cart {
+    fn add(&mut self, x: String) {
+        self.items.push(x);
+    }
+}
+```
+
+[samples/Cart.rs#Cart/^,remove,Cart/$](./samples/Cart.rs#Cart/^,remove,Cart/$)
+
+```rust
+impl Cart {
+    fn remove(&mut self) -> Option<String> {
+        self.items.pop()
+    }
+}
+```
+
 ## Python: regions, defs and decorators
 
 A method body is the indented block under its `def`, so the selection ends where the indentation ends, and the `@property` decorator above `catalog` is what the `+` modifier brings along. A class attribute is named by the region directive around it.
@@ -534,6 +584,28 @@ The triple-quoted docstring hides a whole `def decoy` from the matcher. Inside a
 
 ```python
     def legacy(self):  #count
+        return len(self.items)
+```
+
+
+## Python: an envelope restores the indentation
+
+Indentation is meaning in Python, so a method taken out of its class is not valid code on its own. The envelope is the class line and the end of the block: `#Cart/^,add,$` puts `add` under `class Cart:` exactly as the file has it.
+
+[samples/Cart.py#Cart/^,add,$](./samples/Cart.py#Cart/^,add,$)
+
+```python
+class Cart:
+    def add(self, item):
+        self.items.append(item)
+        return len(self.items)
+```
+
+[samples/Cart.py#Cart/^,add/-,Cart/$](./samples/Cart.py#Cart/^,add/-,Cart/$)
+
+```python
+class Cart:
+        self.items.append(item)
         return len(self.items)
 ```
 
@@ -603,6 +675,35 @@ A condition literal names the block whose header line carries the string it test
     }
 ```
 
+
+## C#: an envelope around a method
+
+A C# method taken out of its class reads as a fragment too, and the envelope is the type: `#Cart/^,Add,$` is the class header, the method with the attribute above it, and the closing brace.
+
+[samples/Cart.cs#Cart/^,Add,$](./samples/Cart.cs#Cart/^,Add,$)
+
+```csharp
+public class Cart
+{
+    public void Add(string item)
+    {
+        items.Add(item);
+    }
+}
+```
+
+[samples/Cart.cs#Cart/^,Cart/Add,Cart/$](./samples/Cart.cs#Cart/^,Cart/Add,Cart/$)
+
+```csharp
+public class Cart
+{
+    public void Add(string item)
+    {
+        items.Add(item);
+    }
+}
+```
+
 ## Kotlin: regions and declarations
 
 A nested block comment swallows the decoy beside it and a raw string is text with no escapes at all, so neither can be mistaken for structure. `#add/+` brings the `@Deprecated` annotation along, and `#catalog` names the list by its region directive.
@@ -654,6 +755,31 @@ A condition literal names the `if` that tests it, and a trailing comment names t
     fun legacy() { //count
         println(catalog.size)
     }
+```
+
+
+## Kotlin: an envelope around a method
+
+The same for a Kotlin class: `#Cart/^,add,$` is `class Cart {`, the whole `add` method with its annotation, and the closing brace.
+
+[samples/Cart.kt#Cart/^,add,$](./samples/Cart.kt#Cart/^,add,$)
+
+```kotlin
+class Cart {
+    fun add(item: String) {
+        items.add(item)
+    }
+}
+```
+
+[samples/Cart.kt#Cart/^,Cart/add,Cart/$](./samples/Cart.kt#Cart/^,Cart/add,Cart/$)
+
+```kotlin
+class Cart {
+    fun add(item: String) {
+        items.add(item)
+    }
+}
 ```
 
 ## PHP: regions and declarations
@@ -712,6 +838,45 @@ A condition literal names the `if` whose header carries the string, and a traili
     }
 ```
 
+
+## PHP: an envelope around a method
+
+A PHP method without its class is a fragment, and the heredoc inside `add` is data rather than syntax. `#Cart/^,add,$` is the class header, the method, and the closing brace.
+
+[samples/Cart.php#Cart/^,add,$](./samples/Cart.php#Cart/^,add,$)
+
+```php
+class Cart
+{
+    public function add(string $item): string
+    {
+        // The heredoc body is data: the brace in it is not PHP syntax.
+        $sql = <<<SQL
+        insert into cart (item) values ('}') -- a decoy
+        SQL;
+
+        return $sql;
+    }
+}
+```
+
+[samples/Cart.php#Cart/^,Cart/add,Cart/$](./samples/Cart.php#Cart/^,Cart/add,Cart/$)
+
+```php
+class Cart
+{
+    public function add(string $item): string
+    {
+        // The heredoc body is data: the brace in it is not PHP syntax.
+        $sql = <<<SQL
+        insert into cart (item) values ('}') -- a decoy
+        SQL;
+
+        return $sql;
+    }
+}
+```
+
 ## Ruby: regions, defs and end
 
 `def add` needs no parentheses, and its body is closed by `end`, which the selection brings along. The `<<` in `@items << item` is an append and not a heredoc; only `<<~TAG`, `<<-TAG` or a quoted tag opens one. A name may end in `!` or `?`, and that is part of the name, not a modifier.
@@ -760,6 +925,31 @@ A condition literal names the `if` or `elsif` whose header carries the string, a
 ```ruby
   def legacy # count
     @items.size
+  end
+```
+
+
+## Ruby: an envelope around a method
+
+A Ruby method is `def … end`, which is valid on its own but says nothing about what it belongs to. `#Cart/^,add,$` is `class Cart`, the method, and the class's `end`.
+
+[samples/Cart.rb#Cart/^,add,$](./samples/Cart.rb#Cart/^,add,$)
+
+```ruby
+class Cart
+  def add(item)
+    @items << item
+  end
+  end
+```
+
+[samples/Cart.rb#Cart/^,Cart/add,Cart/$](./samples/Cart.rb#Cart/^,Cart/add,Cart/$)
+
+```ruby
+class Cart
+  def add(item)
+    @items << item
+  end
   end
 ```
 
@@ -863,6 +1053,33 @@ VB writes an equality test with the same `=` an assignment uses, so an `If metho
     Public Function Legacy() As Boolean 'count
         Return CatalogList.Length > 0
     End Function
+```
+
+
+## VB: an envelope around a function
+
+VB closes every block with a keyword line, so the class's `End Class` is what the tail is: `#Form/^,Add,$` is `Public Class Form`, the function through `End Function`, and `End Class`.
+
+[samples/Form.vb#Form/^,Add,$](./samples/Form.vb#Form/^,Add,$)
+
+```vb
+Public Class Form
+    Public Function Add(item As String) As String
+        Dim note As String = "a ""}"" decoy"
+        Return note
+    End Function
+End Class
+```
+
+[samples/Form.vb#Form/^,Form/Add,Form/$](./samples/Form.vb#Form/^,Form/Add,Form/$)
+
+```vb
+Public Class Form
+    Public Function Add(item As String) As String
+        Dim note As String = "a ""}"" decoy"
+        Return note
+    End Function
+End Class
 ```
 
 ## Haskell: bindings and signatures

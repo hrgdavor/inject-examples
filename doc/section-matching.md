@@ -571,6 +571,17 @@ that is not unique in the file — `toString` — needs no qualification. A sele
 that *does* name the parent is left as written, because saying it again says the
 same thing: the long form above resolves byte for byte like the short one.
 
+**The marks retry a name several blocks answer to**, exactly as a path does. A
+Rust type is a `struct` beside one or more `impl` blocks, all of them answering to
+the type's name, so `Cart/^,add,$` is the `impl` that holds `add` and
+`Cart/^,remove,Cart/$` is the one that holds `remove` — the member between the
+marks is what chooses. This is the one place an envelope is *not* ambiguous where
+a bare name would be: `#Cart` on its own is the
+[ambiguity error](#when-a-name-is-declared-more-than-once), while
+`Cart/^,…,Cart/$` names the candidate the rest of the reference fits. A name no
+candidate can hold is still `no section named "…" in "…"`, and a name that is not
+a container at all is `"…" is not a container`.
+
 An envelope is **verbatim**, like every other code selection: the head and the
 tail are the file's own lines, indentation included, so the pieces join into text
 that reads as the declaration with the selected member still inside it. The

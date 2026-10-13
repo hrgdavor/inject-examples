@@ -75,7 +75,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -89,17 +89,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -263,27 +269,27 @@ body {
 <span class="menu-bars" aria-hidden="true"></span>
 <span class="menu-word">Examples</span>
 </button>
-<nav class="menu" id="menu" popover aria-label="Example pages">
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
 <p class="menu-head">One page per language</p>
-<span class="menu-group" role="presentation">This page</span><a class="menu-item" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
-<span class="menu-group" role="presentation">Languages</span><a class="menu-item" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
-<a class="menu-item current" href="javascript.html" aria-current="page"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
-<a class="menu-item" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
-<a class="menu-item" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
-<a class="menu-item" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
-<a class="menu-item" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
-<a class="menu-item" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
-<a class="menu-item" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
-<a class="menu-item" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
-<a class="menu-item" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
-<a class="menu-item" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
-<a class="menu-item" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
-<a class="menu-item" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
-<span class="menu-group" role="presentation">Config formats</span><a class="menu-item" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
-<a class="menu-item" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
-<a class="menu-item" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
-<a class="menu-item" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
-<span class="menu-group" role="presentation">Styles</span><a class="menu-item" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item current with-sample" href="javascript.html" aria-current="page"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item with-sample" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item with-sample" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item with-sample" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item with-sample" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item with-sample" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item with-sample" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item with-sample" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
 </nav>
 </div>
 <h1>JavaScript and TypeScript</h1>
@@ -317,6 +323,13 @@ body {
 <li class="target-item" id="javascript-t-12-1"><button class="target" type="button" data-file="samples/cart.js" data-section="12" data-from="15" data-to="17" data-ranges="15-17" aria-pressed="false" aria-controls="javascript-t-12-1-desc" title="[samples/cart.js#Cart/render](./samples/cart.js#Cart/render)"><span class="chip-file">cart.js</span><span class="chip-ref">#Cart/render</span></button></li>
 <li class="target-item" id="javascript-t-12-2"><button class="target" type="button" data-file="samples/cart.js" data-section="12" data-from="24" data-to="26" data-ranges="24-26" aria-pressed="false" aria-controls="javascript-t-12-2-desc" title="[samples/cart.js#dispatch/count](./samples/cart.js#dispatch/count)"><span class="chip-file">cart.js</span><span class="chip-ref">#dispatch/count</span></button></li>
 <li class="target-item" id="javascript-t-12-3"><button class="target" type="button" data-file="samples/cart.js" data-section="12" data-from="30" data-to="32" data-ranges="30-32" aria-pressed="false" aria-controls="javascript-t-12-3-desc" title="[samples/cart.js#count/count](./samples/cart.js#count/count)"><span class="chip-file">cart.js</span><span class="chip-ref">#count/count</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-3">
+<h3><span class="num">3</span>JavaScript: an envelope around a member</h3>
+<ul class="targets">
+<li class="target-item" id="javascript-t-13-1"><button class="target" type="button" data-file="samples/cart.js" data-section="13" data-from="3" data-to="33" data-ranges="3-3,15-17,33-33" aria-pressed="false" aria-controls="javascript-t-13-1-desc" title="[samples/cart.js#Cart/^,render,$](./samples/cart.js#Cart/^,render,$)"><span class="chip-file">cart.js</span><span class="chip-ref">#Cart/^,render,$</span></button></li>
+<li class="target-item" id="javascript-t-13-2"><button class="target" type="button" data-file="samples/cart.js" data-section="13" data-from="3" data-to="33" data-ranges="3-3,15-17,33-33" aria-pressed="false" aria-controls="javascript-t-13-2-desc" title="[samples/cart.js#Cart/^,Cart/render,Cart/$](./samples/cart.js#Cart/^,Cart/render,Cart/$)"><span class="chip-file">cart.js</span><span class="chip-ref">#Cart/^,Cart/render,Cart/$</span></button></li>
 </ul>
 </li>
 </ol>
@@ -360,6 +373,14 @@ body {
 <div class="desc" id="javascript-t-12-3-desc" data-desc="javascript-t-12-3">
 <h2><span class="num">2</span>JavaScript: a template, a condition and an anchor</h2>
 <p>A path descends into the class, and a template literal that spans lines hides its braces from the matcher — the body of <code>render</code> is found *through* it. A condition literal names the <code>if</code> whose header tests it, and a trailing comment names the block it opens: <code>count/count</code> is the <code>count()</code> method that opens with <code>//count</code>.</p>
+</div>
+<div class="desc" id="javascript-t-13-1-desc" data-desc="javascript-t-13-1">
+<h2><span class="num">3</span>JavaScript: an envelope around a member</h2>
+<p>A method copied out of a class reads as a fragment — <code>render</code> alone is indented under nothing, and the template literal is the only hint of where it came from. An envelope takes the class's own first and last lines around it: <code>#Cart/^,render,$</code> is <code>export class Cart {</code>, the whole <code>render</code> method, and the closing brace, as three pieces.</p>
+</div>
+<div class="desc" id="javascript-t-13-2-desc" data-desc="javascript-t-13-2">
+<h2><span class="num">3</span>JavaScript: an envelope around a member</h2>
+<p>A method copied out of a class reads as a fragment — <code>render</code> alone is indented under nothing, and the template literal is the only hint of where it came from. An envelope takes the class's own first and last lines around it: <code>#Cart/^,render,$</code> is <code>export class Cart {</code>, the whole <code>render</code> method, and the closing brace, as three pieces.</p>
 </div>
 </div>
 </div>
@@ -415,6 +436,22 @@ body {
 <pre class="md-pre" data-inject="javascript-t-12-3" data-md-from="376" data-md-to="380"><code class="language-javascript">    count() { <span class="tok-c">//count</span>
         <span class="tok-k">return</span> <span class="tok-k">this</span>.items.length;
     }</code></pre>
+</section>
+<section class="md-section" data-md-section="3">
+<h2 data-md-from="383" data-md-to="383">JavaScript: an envelope around a member</h2>
+<p data-md-from="385" data-md-to="385">A method copied out of a class reads as a fragment — <code>render</code> alone is indented under nothing, and the template literal is the only hint of where it came from. An envelope takes the class's own first and last lines around it: <code>#Cart/^,render,$</code> is <code>export class Cart {</code>, the whole <code>render</code> method, and the closing brace, as three pieces.</p>
+<p class="md-marker" data-marker="javascript-t-13-1"><a href="../docs/samples/cart.js#Cart/^,render,$">samples/cart.js#Cart/^,render,$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="javascript-t-13-1" data-md-from="389" data-md-to="395"><code class="language-javascript"><span class="tok-k">export</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span> {
+    render() {
+        <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;
+    }
+}</code></pre>
+<p class="md-marker" data-marker="javascript-t-13-2"><a href="../docs/samples/cart.js#Cart/^,Cart/render,Cart/$">samples/cart.js#Cart/^,Cart/render,Cart/$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="javascript-t-13-2" data-md-from="399" data-md-to="405"><code class="language-javascript"><span class="tok-k">export</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span> {
+    render() {
+        <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;
+    }
+}</code></pre>
 </section>
 </article>
 </div>

@@ -75,7 +75,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -89,17 +89,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -263,27 +269,27 @@ body {
 <span class="menu-bars" aria-hidden="true"></span>
 <span class="menu-word">Examples</span>
 </button>
-<nav class="menu" id="menu" popover aria-label="Example pages">
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
 <p class="menu-head">One page per language</p>
-<span class="menu-group" role="presentation">This page</span><a class="menu-item" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
-<span class="menu-group" role="presentation">Languages</span><a class="menu-item" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
-<a class="menu-item" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
-<a class="menu-item" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
-<a class="menu-item" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
-<a class="menu-item current" href="python.html" aria-current="page"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
-<a class="menu-item" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
-<a class="menu-item" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
-<a class="menu-item" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
-<a class="menu-item" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
-<a class="menu-item" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
-<a class="menu-item" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
-<a class="menu-item" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
-<a class="menu-item" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
-<span class="menu-group" role="presentation">Config formats</span><a class="menu-item" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
-<a class="menu-item" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
-<a class="menu-item" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
-<a class="menu-item" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
-<span class="menu-group" role="presentation">Styles</span><a class="menu-item" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item with-sample" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item with-sample" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item with-sample" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item current with-sample" href="python.html" aria-current="page"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item with-sample" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item with-sample" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item with-sample" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item with-sample" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
 </nav>
 </div>
 <h1>Python</h1>
@@ -303,17 +309,24 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>Python: regions, defs and decorators</h3>
 <ul class="targets">
-<li class="target-item" id="python-t-17-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="17" data-from="11" data-to="11" data-ranges="11-11" aria-pressed="false" aria-controls="python-t-17-1-desc" title="[samples/Cart.py#catalog](./samples/Cart.py#catalog)"><span class="chip-file">Cart.py</span><span class="chip-ref">#catalog</span></button></li>
-<li class="target-item" id="python-t-17-2"><button class="target" type="button" data-file="samples/Cart.py" data-section="17" data-from="18" data-to="19" data-ranges="18-19" aria-pressed="false" aria-controls="python-t-17-2-desc" title="[samples/Cart.py#add](./samples/Cart.py#add)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add</span></button></li>
-<li class="target-item" id="python-t-17-3"><button class="target" type="button" data-file="samples/Cart.py" data-section="17" data-from="19" data-to="19" data-ranges="19-19" aria-pressed="false" aria-controls="python-t-17-3-desc" title="[samples/Cart.py#add/-](./samples/Cart.py#add/-)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add/-</span></button></li>
-<li class="target-item" id="python-t-17-4"><button class="target" type="button" data-file="samples/Cart.py" data-section="17" data-from="18" data-to="19" data-ranges="18-19" aria-pressed="false" aria-controls="python-t-17-4-desc" title="[samples/Cart.py#add/+](./samples/Cart.py#add/+)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add/+</span></button></li>
+<li class="target-item" id="python-t-19-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="11" data-to="11" data-ranges="11-11" aria-pressed="false" aria-controls="python-t-19-1-desc" title="[samples/Cart.py#catalog](./samples/Cart.py#catalog)"><span class="chip-file">Cart.py</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="python-t-19-2"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="18" data-to="19" data-ranges="18-19" aria-pressed="false" aria-controls="python-t-19-2-desc" title="[samples/Cart.py#add](./samples/Cart.py#add)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add</span></button></li>
+<li class="target-item" id="python-t-19-3"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="19" data-to="19" data-ranges="19-19" aria-pressed="false" aria-controls="python-t-19-3-desc" title="[samples/Cart.py#add/-](./samples/Cart.py#add/-)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add/-</span></button></li>
+<li class="target-item" id="python-t-19-4"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="18" data-to="19" data-ranges="18-19" aria-pressed="false" aria-controls="python-t-19-4-desc" title="[samples/Cart.py#add/+](./samples/Cart.py#add/+)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add/+</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
 <h3><span class="num">2</span>Python: an indented condition and an anchor</h3>
 <ul class="targets">
-<li class="target-item" id="python-t-18-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="18" data-from="22" data-to="23" data-ranges="22-23" aria-pressed="false" aria-controls="python-t-18-1-desc" title="[samples/Cart.py#dispatch/count](./samples/Cart.py#dispatch/count)"><span class="chip-file">Cart.py</span><span class="chip-ref">#dispatch/count</span></button></li>
-<li class="target-item" id="python-t-18-2"><button class="target" type="button" data-file="samples/Cart.py" data-section="18" data-from="28" data-to="29" data-ranges="28-29" aria-pressed="false" aria-controls="python-t-18-2-desc" title="[samples/Cart.py#legacy/count](./samples/Cart.py#legacy/count)"><span class="chip-file">Cart.py</span><span class="chip-ref">#legacy/count</span></button></li>
+<li class="target-item" id="python-t-20-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="20" data-from="22" data-to="23" data-ranges="22-23" aria-pressed="false" aria-controls="python-t-20-1-desc" title="[samples/Cart.py#dispatch/count](./samples/Cart.py#dispatch/count)"><span class="chip-file">Cart.py</span><span class="chip-ref">#dispatch/count</span></button></li>
+<li class="target-item" id="python-t-20-2"><button class="target" type="button" data-file="samples/Cart.py" data-section="20" data-from="28" data-to="29" data-ranges="28-29" aria-pressed="false" aria-controls="python-t-20-2-desc" title="[samples/Cart.py#legacy/count](./samples/Cart.py#legacy/count)"><span class="chip-file">Cart.py</span><span class="chip-ref">#legacy/count</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-3">
+<h3><span class="num">3</span>Python: an envelope restores the indentation</h3>
+<ul class="targets">
+<li class="target-item" id="python-t-21-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="21" data-from="1" data-to="32" data-ranges="1-1,18-19,32-32" aria-pressed="false" aria-controls="python-t-21-1-desc" title="[samples/Cart.py#Cart/^,add,$](./samples/Cart.py#Cart/^,add,$)"><span class="chip-file">Cart.py</span><span class="chip-ref">#Cart/^,add,$</span></button></li>
+<li class="target-item" id="python-t-21-2"><button class="target" type="button" data-file="samples/Cart.py" data-section="21" data-from="1" data-to="32" data-ranges="1-1,19-19,32-32" aria-pressed="false" aria-controls="python-t-21-2-desc" title="[samples/Cart.py#Cart/^,add/-,Cart/$](./samples/Cart.py#Cart/^,add/-,Cart/$)"><span class="chip-file">Cart.py</span><span class="chip-ref">#Cart/^,add/-,Cart/$</span></button></li>
 </ul>
 </li>
 </ol>
@@ -322,29 +335,37 @@ body {
 <div class="col-head">Description<span class="col-note">of the selected example</span></div>
 <div class="desc-panel">
 <p class="desc-empty">Click an example link above to read what it demonstrates.</p>
-<div class="desc" id="python-t-17-1-desc" data-desc="python-t-17-1">
+<div class="desc" id="python-t-19-1-desc" data-desc="python-t-19-1">
 <h2><span class="num">1</span>Python: regions, defs and decorators</h2>
 <p>A method body is the indented block under its <code>def</code>, so the selection ends where the indentation ends, and the <code>@property</code> decorator above <code>catalog</code> is what the <code>+</code> modifier brings along. A class attribute is named by the region directive around it.</p>
 </div>
-<div class="desc" id="python-t-17-2-desc" data-desc="python-t-17-2">
+<div class="desc" id="python-t-19-2-desc" data-desc="python-t-19-2">
 <h2><span class="num">1</span>Python: regions, defs and decorators</h2>
 <p>A method body is the indented block under its <code>def</code>, so the selection ends where the indentation ends, and the <code>@property</code> decorator above <code>catalog</code> is what the <code>+</code> modifier brings along. A class attribute is named by the region directive around it.</p>
 </div>
-<div class="desc" id="python-t-17-3-desc" data-desc="python-t-17-3">
+<div class="desc" id="python-t-19-3-desc" data-desc="python-t-19-3">
 <h2><span class="num">1</span>Python: regions, defs and decorators</h2>
 <p>A method body is the indented block under its <code>def</code>, so the selection ends where the indentation ends, and the <code>@property</code> decorator above <code>catalog</code> is what the <code>+</code> modifier brings along. A class attribute is named by the region directive around it.</p>
 </div>
-<div class="desc" id="python-t-17-4-desc" data-desc="python-t-17-4">
+<div class="desc" id="python-t-19-4-desc" data-desc="python-t-19-4">
 <h2><span class="num">1</span>Python: regions, defs and decorators</h2>
 <p>A method body is the indented block under its <code>def</code>, so the selection ends where the indentation ends, and the <code>@property</code> decorator above <code>catalog</code> is what the <code>+</code> modifier brings along. A class attribute is named by the region directive around it.</p>
 </div>
-<div class="desc" id="python-t-18-1-desc" data-desc="python-t-18-1">
+<div class="desc" id="python-t-20-1-desc" data-desc="python-t-20-1">
 <h2><span class="num">2</span>Python: an indented condition and an anchor</h2>
 <p>The triple-quoted docstring hides a whole <code>def decoy</code> from the matcher. Inside a method, a condition literal names the indented <code>if</code> it tests, and a trailing comment names the block it opens.</p>
 </div>
-<div class="desc" id="python-t-18-2-desc" data-desc="python-t-18-2">
+<div class="desc" id="python-t-20-2-desc" data-desc="python-t-20-2">
 <h2><span class="num">2</span>Python: an indented condition and an anchor</h2>
 <p>The triple-quoted docstring hides a whole <code>def decoy</code> from the matcher. Inside a method, a condition literal names the indented <code>if</code> it tests, and a trailing comment names the block it opens.</p>
+</div>
+<div class="desc" id="python-t-21-1-desc" data-desc="python-t-21-1">
+<h2><span class="num">3</span>Python: an envelope restores the indentation</h2>
+<p>Indentation is meaning in Python, so a method taken out of its class is not valid code on its own. The envelope is the class line and the end of the block: <code>#Cart/^,add,$</code> puts <code>add</code> under <code>class Cart:</code> exactly as the file has it.</p>
+</div>
+<div class="desc" id="python-t-21-2-desc" data-desc="python-t-21-2">
+<h2><span class="num">3</span>Python: an envelope restores the indentation</h2>
+<p>Indentation is meaning in Python, so a method taken out of its class is not valid code on its own. The envelope is the class line and the end of the block: <code>#Cart/^,add,$</code> puts <code>add</code> under <code>class Cart:</code> exactly as the file has it.</p>
 </div>
 </div>
 </div>
@@ -363,27 +384,40 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="492" data-md-to="492">Python: regions, defs and decorators</h2>
-<p data-md-from="494" data-md-to="494">A method body is the indented block under its <code>def</code>, so the selection ends where the indentation ends, and the <code>@property</code> decorator above <code>catalog</code> is what the <code>+</code> modifier brings along. A class attribute is named by the region directive around it.</p>
-<p class="md-marker" data-marker="python-t-17-1"><a href="../docs/samples/Cart.py#catalog">samples/Cart.py#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-17-1" data-md-from="498" data-md-to="500"><code class="language-python">    <span class="tok-t">CATALOG</span> = [<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>]</code></pre>
-<p class="md-marker" data-marker="python-t-17-2"><a href="../docs/samples/Cart.py#add">samples/Cart.py#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-17-2" data-md-from="504" data-md-to="507"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
+<h2 data-md-from="542" data-md-to="542">Python: regions, defs and decorators</h2>
+<p data-md-from="544" data-md-to="544">A method body is the indented block under its <code>def</code>, so the selection ends where the indentation ends, and the <code>@property</code> decorator above <code>catalog</code> is what the <code>+</code> modifier brings along. A class attribute is named by the region directive around it.</p>
+<p class="md-marker" data-marker="python-t-19-1"><a href="../docs/samples/Cart.py#catalog">samples/Cart.py#catalog</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="python-t-19-1" data-md-from="548" data-md-to="550"><code class="language-python">    <span class="tok-t">CATALOG</span> = [<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>]</code></pre>
+<p class="md-marker" data-marker="python-t-19-2"><a href="../docs/samples/Cart.py#add">samples/Cart.py#add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="python-t-19-2" data-md-from="554" data-md-to="557"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
         <span class="tok-k">self</span>.items.append(item)</code></pre>
-<p class="md-marker" data-marker="python-t-17-3"><a href="../docs/samples/Cart.py#add/-">samples/Cart.py#add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-17-3" data-md-from="511" data-md-to="513"><code class="language-python">        <span class="tok-k">self</span>.items.append(item)</code></pre>
-<p class="md-marker" data-marker="python-t-17-4"><a href="../docs/samples/Cart.py#add/+">samples/Cart.py#add/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-17-4" data-md-from="517" data-md-to="520"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
+<p class="md-marker" data-marker="python-t-19-3"><a href="../docs/samples/Cart.py#add/-">samples/Cart.py#add/-</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="python-t-19-3" data-md-from="561" data-md-to="563"><code class="language-python">        <span class="tok-k">self</span>.items.append(item)</code></pre>
+<p class="md-marker" data-marker="python-t-19-4"><a href="../docs/samples/Cart.py#add/+">samples/Cart.py#add/+</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="python-t-19-4" data-md-from="567" data-md-to="570"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
         <span class="tok-k">self</span>.items.append(item)</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="522" data-md-to="522">Python: an indented condition and an anchor</h2>
-<p data-md-from="524" data-md-to="524">The triple-quoted docstring hides a whole <code>def decoy</code> from the matcher. Inside a method, a condition literal names the indented <code>if</code> it tests, and a trailing comment names the block it opens.</p>
-<p class="md-marker" data-marker="python-t-18-1"><a href="../docs/samples/Cart.py#dispatch/count">samples/Cart.py#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-18-1" data-md-from="528" data-md-to="531"><code class="language-python">        <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span>:
+<h2 data-md-from="572" data-md-to="572">Python: an indented condition and an anchor</h2>
+<p data-md-from="574" data-md-to="574">The triple-quoted docstring hides a whole <code>def decoy</code> from the matcher. Inside a method, a condition literal names the indented <code>if</code> it tests, and a trailing comment names the block it opens.</p>
+<p class="md-marker" data-marker="python-t-20-1"><a href="../docs/samples/Cart.py#dispatch/count">samples/Cart.py#dispatch/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="python-t-20-1" data-md-from="578" data-md-to="581"><code class="language-python">        <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span>:
             <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</code></pre>
-<p class="md-marker" data-marker="python-t-18-2"><a href="../docs/samples/Cart.py#legacy/count">samples/Cart.py#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-18-2" data-md-from="535" data-md-to="538"><code class="language-python">    <span class="tok-k">def</span> legacy(<span class="tok-k">self</span>):  <span class="tok-c">#count</span>
+<p class="md-marker" data-marker="python-t-20-2"><a href="../docs/samples/Cart.py#legacy/count">samples/Cart.py#legacy/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="python-t-20-2" data-md-from="585" data-md-to="588"><code class="language-python">    <span class="tok-k">def</span> legacy(<span class="tok-k">self</span>):  <span class="tok-c">#count</span>
+        <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</code></pre>
+</section>
+<section class="md-section" data-md-section="3">
+<h2 data-md-from="591" data-md-to="591">Python: an envelope restores the indentation</h2>
+<p data-md-from="593" data-md-to="593">Indentation is meaning in Python, so a method taken out of its class is not valid code on its own. The envelope is the class line and the end of the block: <code>#Cart/^,add,$</code> puts <code>add</code> under <code>class Cart:</code> exactly as the file has it.</p>
+<p class="md-marker" data-marker="python-t-21-1"><a href="../docs/samples/Cart.py#Cart/^,add,$">samples/Cart.py#Cart/^,add,$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="python-t-21-1" data-md-from="597" data-md-to="602"><code class="language-python"><span class="tok-k">class</span> <span class="tok-t">Cart</span>:
+    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
+        <span class="tok-k">self</span>.items.append(item)
+        <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</code></pre>
+<p class="md-marker" data-marker="python-t-21-2"><a href="../docs/samples/Cart.py#Cart/^,add/-,Cart/$">samples/Cart.py#Cart/^,add/-,Cart/$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="python-t-21-2" data-md-from="606" data-md-to="610"><code class="language-python"><span class="tok-k">class</span> <span class="tok-t">Cart</span>:
+        <span class="tok-k">self</span>.items.append(item)
         <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</code></pre>
 </section>
 </article>

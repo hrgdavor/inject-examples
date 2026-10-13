@@ -75,7 +75,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -89,17 +89,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -263,27 +269,27 @@ body {
 <span class="menu-bars" aria-hidden="true"></span>
 <span class="menu-word">Examples</span>
 </button>
-<nav class="menu" id="menu" popover aria-label="Example pages">
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
 <p class="menu-head">One page per language</p>
-<span class="menu-group" role="presentation">This page</span><a class="menu-item" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
-<span class="menu-group" role="presentation">Languages</span><a class="menu-item" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
-<a class="menu-item" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
-<a class="menu-item" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
-<a class="menu-item current" href="rust.html" aria-current="page"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
-<a class="menu-item" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
-<a class="menu-item" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
-<a class="menu-item" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
-<a class="menu-item" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
-<a class="menu-item" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
-<a class="menu-item" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
-<a class="menu-item" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
-<a class="menu-item" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
-<a class="menu-item" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
-<span class="menu-group" role="presentation">Config formats</span><a class="menu-item" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
-<a class="menu-item" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
-<a class="menu-item" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
-<a class="menu-item" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
-<span class="menu-group" role="presentation">Styles</span><a class="menu-item" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item with-sample" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item with-sample" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item current with-sample" href="rust.html" aria-current="page"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item with-sample" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item with-sample" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item with-sample" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item with-sample" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item with-sample" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
 </nav>
 </div>
 <h1>Rust</h1>
@@ -303,18 +309,25 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>Rust: regions and the impls</h3>
 <ul class="targets">
-<li class="target-item" id="rust-t-15-1"><button class="target" type="button" data-file="samples/Cart.rs" data-section="15" data-from="5" data-to="6" data-ranges="5-6" aria-pressed="false" aria-controls="rust-t-15-1-desc" title="[samples/Cart.rs#catalog](./samples/Cart.rs#catalog)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#catalog</span></button></li>
-<li class="target-item" id="rust-t-15-2"><button class="target" type="button" data-file="samples/Cart.rs" data-section="15" data-from="14" data-to="16" data-ranges="14-16" aria-pressed="false" aria-controls="rust-t-15-2-desc" title="[samples/Cart.rs#add](./samples/Cart.rs#add)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#add</span></button></li>
-<li class="target-item" id="rust-t-15-3"><button class="target" type="button" data-file="samples/Cart.rs" data-section="15" data-from="15" data-to="15" data-ranges="15-15" aria-pressed="false" aria-controls="rust-t-15-3-desc" title="[samples/Cart.rs#add/-](./samples/Cart.rs#add/-)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#add/-</span></button></li>
-<li class="target-item" id="rust-t-15-4"><button class="target" type="button" data-file="samples/Cart.rs" data-section="15" data-from="26" data-to="32" data-ranges="26-32" aria-pressed="false" aria-controls="rust-t-15-4-desc" title="[samples/Cart.rs#dispatch/+](./samples/Cart.rs#dispatch/+)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#dispatch/+</span></button></li>
+<li class="target-item" id="rust-t-16-1"><button class="target" type="button" data-file="samples/Cart.rs" data-section="16" data-from="5" data-to="6" data-ranges="5-6" aria-pressed="false" aria-controls="rust-t-16-1-desc" title="[samples/Cart.rs#catalog](./samples/Cart.rs#catalog)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="rust-t-16-2"><button class="target" type="button" data-file="samples/Cart.rs" data-section="16" data-from="14" data-to="16" data-ranges="14-16" aria-pressed="false" aria-controls="rust-t-16-2-desc" title="[samples/Cart.rs#add](./samples/Cart.rs#add)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#add</span></button></li>
+<li class="target-item" id="rust-t-16-3"><button class="target" type="button" data-file="samples/Cart.rs" data-section="16" data-from="15" data-to="15" data-ranges="15-15" aria-pressed="false" aria-controls="rust-t-16-3-desc" title="[samples/Cart.rs#add/-](./samples/Cart.rs#add/-)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#add/-</span></button></li>
+<li class="target-item" id="rust-t-16-4"><button class="target" type="button" data-file="samples/Cart.rs" data-section="16" data-from="26" data-to="32" data-ranges="26-32" aria-pressed="false" aria-controls="rust-t-16-4-desc" title="[samples/Cart.rs#dispatch/+](./samples/Cart.rs#dispatch/+)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#dispatch/+</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
 <h3><span class="num">2</span>Rust: two impls, a literal and an anchor</h3>
 <ul class="targets">
-<li class="target-item" id="rust-t-16-1"><button class="target" type="button" data-file="samples/Cart.rs" data-section="16" data-from="20" data-to="22" data-ranges="20-22" aria-pressed="false" aria-controls="rust-t-16-1-desc" title="[samples/Cart.rs#remove](./samples/Cart.rs#remove)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#remove</span></button></li>
-<li class="target-item" id="rust-t-16-2"><button class="target" type="button" data-file="samples/Cart.rs" data-section="16" data-from="28" data-to="30" data-ranges="28-30" aria-pressed="false" aria-controls="rust-t-16-2-desc" title="[samples/Cart.rs#dispatch/count](./samples/Cart.rs#dispatch/count)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#dispatch/count</span></button></li>
-<li class="target-item" id="rust-t-16-3"><button class="target" type="button" data-file="samples/Cart.rs" data-section="16" data-from="34" data-to="36" data-ranges="34-36" aria-pressed="false" aria-controls="rust-t-16-3-desc" title="[samples/Cart.rs#legacy/count](./samples/Cart.rs#legacy/count)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#legacy/count</span></button></li>
+<li class="target-item" id="rust-t-17-1"><button class="target" type="button" data-file="samples/Cart.rs" data-section="17" data-from="20" data-to="22" data-ranges="20-22" aria-pressed="false" aria-controls="rust-t-17-1-desc" title="[samples/Cart.rs#remove](./samples/Cart.rs#remove)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#remove</span></button></li>
+<li class="target-item" id="rust-t-17-2"><button class="target" type="button" data-file="samples/Cart.rs" data-section="17" data-from="28" data-to="30" data-ranges="28-30" aria-pressed="false" aria-controls="rust-t-17-2-desc" title="[samples/Cart.rs#dispatch/count](./samples/Cart.rs#dispatch/count)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#dispatch/count</span></button></li>
+<li class="target-item" id="rust-t-17-3"><button class="target" type="button" data-file="samples/Cart.rs" data-section="17" data-from="34" data-to="36" data-ranges="34-36" aria-pressed="false" aria-controls="rust-t-17-3-desc" title="[samples/Cart.rs#legacy/count](./samples/Cart.rs#legacy/count)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#legacy/count</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-3">
+<h3><span class="num">3</span>Rust: an envelope is the impl</h3>
+<ul class="targets">
+<li class="target-item" id="rust-t-18-1"><button class="target" type="button" data-file="samples/Cart.rs" data-section="18" data-from="13" data-to="17" data-ranges="13-17" aria-pressed="false" aria-controls="rust-t-18-1-desc" title="[samples/Cart.rs#Cart/^,add,$](./samples/Cart.rs#Cart/^,add,$)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#Cart/^,add,$</span></button></li>
+<li class="target-item" id="rust-t-18-2"><button class="target" type="button" data-file="samples/Cart.rs" data-section="18" data-from="19" data-to="37" data-ranges="19-22,37-37" aria-pressed="false" aria-controls="rust-t-18-2-desc" title="[samples/Cart.rs#Cart/^,remove,Cart/$](./samples/Cart.rs#Cart/^,remove,Cart/$)"><span class="chip-file">Cart.rs</span><span class="chip-ref">#Cart/^,remove,Cart/$</span></button></li>
 </ul>
 </li>
 </ol>
@@ -323,33 +336,41 @@ body {
 <div class="col-head">Description<span class="col-note">of the selected example</span></div>
 <div class="desc-panel">
 <p class="desc-empty">Click an example link above to read what it demonstrates.</p>
-<div class="desc" id="rust-t-15-1-desc" data-desc="rust-t-15-1">
-<h2><span class="num">1</span>Rust: regions and the impls</h2>
-<p>A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
-</div>
-<div class="desc" id="rust-t-15-2-desc" data-desc="rust-t-15-2">
-<h2><span class="num">1</span>Rust: regions and the impls</h2>
-<p>A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
-</div>
-<div class="desc" id="rust-t-15-3-desc" data-desc="rust-t-15-3">
-<h2><span class="num">1</span>Rust: regions and the impls</h2>
-<p>A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
-</div>
-<div class="desc" id="rust-t-15-4-desc" data-desc="rust-t-15-4">
-<h2><span class="num">1</span>Rust: regions and the impls</h2>
-<p>A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
-</div>
 <div class="desc" id="rust-t-16-1-desc" data-desc="rust-t-16-1">
-<h2><span class="num">2</span>Rust: two impls, a literal and an anchor</h2>
-<p>A type may be <code>impl</code>-ed several times, and the path retries each of them: <code>Cart/remove</code> is in the second one. Inside a method, a condition literal names the arm it compares against, and a trailing comment anchors the block.</p>
+<h2><span class="num">1</span>Rust: regions and the impls</h2>
+<p>A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
 </div>
 <div class="desc" id="rust-t-16-2-desc" data-desc="rust-t-16-2">
+<h2><span class="num">1</span>Rust: regions and the impls</h2>
+<p>A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
+</div>
+<div class="desc" id="rust-t-16-3-desc" data-desc="rust-t-16-3">
+<h2><span class="num">1</span>Rust: regions and the impls</h2>
+<p>A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
+</div>
+<div class="desc" id="rust-t-16-4-desc" data-desc="rust-t-16-4">
+<h2><span class="num">1</span>Rust: regions and the impls</h2>
+<p>A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
+</div>
+<div class="desc" id="rust-t-17-1-desc" data-desc="rust-t-17-1">
 <h2><span class="num">2</span>Rust: two impls, a literal and an anchor</h2>
 <p>A type may be <code>impl</code>-ed several times, and the path retries each of them: <code>Cart/remove</code> is in the second one. Inside a method, a condition literal names the arm it compares against, and a trailing comment anchors the block.</p>
 </div>
-<div class="desc" id="rust-t-16-3-desc" data-desc="rust-t-16-3">
+<div class="desc" id="rust-t-17-2-desc" data-desc="rust-t-17-2">
 <h2><span class="num">2</span>Rust: two impls, a literal and an anchor</h2>
 <p>A type may be <code>impl</code>-ed several times, and the path retries each of them: <code>Cart/remove</code> is in the second one. Inside a method, a condition literal names the arm it compares against, and a trailing comment anchors the block.</p>
+</div>
+<div class="desc" id="rust-t-17-3-desc" data-desc="rust-t-17-3">
+<h2><span class="num">2</span>Rust: two impls, a literal and an anchor</h2>
+<p>A type may be <code>impl</code>-ed several times, and the path retries each of them: <code>Cart/remove</code> is in the second one. Inside a method, a condition literal names the arm it compares against, and a trailing comment anchors the block.</p>
+</div>
+<div class="desc" id="rust-t-18-1-desc" data-desc="rust-t-18-1">
+<h2><span class="num">3</span>Rust: an envelope is the impl</h2>
+<p>A Rust type's members live in <code>impl</code> blocks, and there are usually several: this file has three for <code>Cart</code>. The marks <strong>retry them the way a path does</strong>, and the member decides which one the envelope is about — so <code>#Cart/^,add,$</code> is the first <code>impl</code> and <code>#Cart/^,remove,Cart/$</code> is the second. The type's name alone would be ambiguous; the envelope is what makes it not.</p>
+</div>
+<div class="desc" id="rust-t-18-2-desc" data-desc="rust-t-18-2">
+<h2><span class="num">3</span>Rust: an envelope is the impl</h2>
+<p>A Rust type's members live in <code>impl</code> blocks, and there are usually several: this file has three for <code>Cart</code>. The marks <strong>retry them the way a path does</strong>, and the member decides which one the envelope is about — so <code>#Cart/^,add,$</code> is the first <code>impl</code> and <code>#Cart/^,remove,Cart/$</code> is the second. The type's name alone would be ambiguous; the envelope is what makes it not.</p>
 </div>
 </div>
 </div>
@@ -368,19 +389,19 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="427" data-md-to="427">Rust: regions and the impls</h2>
-<p data-md-from="429" data-md-to="429">A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
-<p class="md-marker" data-marker="rust-t-15-1"><a href="../docs/samples/Cart.rs#catalog">samples/Cart.rs#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="rust-t-15-1" data-md-from="433" data-md-to="436"><code class="language-rust"><span class="tok-c">/// The catalog the shop stocks.</span>
+<h2 data-md-from="452" data-md-to="452">Rust: regions and the impls</h2>
+<p data-md-from="454" data-md-to="454">A constant is named by the region directive around it, and <code>#Cart/add</code> reaches a method where Rust keeps it — inside an <code>impl</code> block, which the path treats as a scope named after the type. <code>#dispatch/+</code> brings the attribute above the method along.</p>
+<p class="md-marker" data-marker="rust-t-16-1"><a href="../docs/samples/Cart.rs#catalog">samples/Cart.rs#catalog</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-16-1" data-md-from="458" data-md-to="461"><code class="language-rust"><span class="tok-c">/// The catalog the shop stocks.</span>
 <span class="tok-k">pub</span> <span class="tok-k">const</span> <span class="tok-t">CATALOG</span>: [&amp;str; <span class="tok-n">3</span>] = [<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>];</code></pre>
-<p class="md-marker" data-marker="rust-t-15-2"><a href="../docs/samples/Cart.rs#add">samples/Cart.rs#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="rust-t-15-2" data-md-from="440" data-md-to="444"><code class="language-rust">    <span class="tok-k">fn</span> add(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>, x: <span class="tok-t">String</span>) {
+<p class="md-marker" data-marker="rust-t-16-2"><a href="../docs/samples/Cart.rs#add">samples/Cart.rs#add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-16-2" data-md-from="465" data-md-to="469"><code class="language-rust">    <span class="tok-k">fn</span> add(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>, x: <span class="tok-t">String</span>) {
         <span class="tok-k">self</span>.items.push(x);
     }</code></pre>
-<p class="md-marker" data-marker="rust-t-15-3"><a href="../docs/samples/Cart.rs#add/-">samples/Cart.rs#add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="rust-t-15-3" data-md-from="448" data-md-to="450"><code class="language-rust">        <span class="tok-k">self</span>.items.push(x);</code></pre>
-<p class="md-marker" data-marker="rust-t-15-4"><a href="../docs/samples/Cart.rs#dispatch/+">samples/Cart.rs#dispatch/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="rust-t-15-4" data-md-from="454" data-md-to="462"><code class="language-rust">    #[allow(dead_code)]
+<p class="md-marker" data-marker="rust-t-16-3"><a href="../docs/samples/Cart.rs#add/-">samples/Cart.rs#add/-</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-16-3" data-md-from="473" data-md-to="475"><code class="language-rust">        <span class="tok-k">self</span>.items.push(x);</code></pre>
+<p class="md-marker" data-marker="rust-t-16-4"><a href="../docs/samples/Cart.rs#dispatch/+">samples/Cart.rs#dispatch/+</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-16-4" data-md-from="479" data-md-to="487"><code class="language-rust">    #[allow(dead_code)]
     <span class="tok-k">pub</span> <span class="tok-k">fn</span> dispatch(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>, method_name: &amp;str) -&gt; <span class="tok-t">Option</span>&lt;usize&gt; {
         <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span> {
             <span class="tok-k">return</span> <span class="tok-t">Some</span>(<span class="tok-k">self</span>.items.len());
@@ -389,20 +410,36 @@ body {
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="464" data-md-to="464">Rust: two impls, a literal and an anchor</h2>
-<p data-md-from="466" data-md-to="466">A type may be <code>impl</code>-ed several times, and the path retries each of them: <code>Cart/remove</code> is in the second one. Inside a method, a condition literal names the arm it compares against, and a trailing comment anchors the block.</p>
-<p class="md-marker" data-marker="rust-t-16-1"><a href="../docs/samples/Cart.rs#remove">samples/Cart.rs#remove</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="rust-t-16-1" data-md-from="470" data-md-to="474"><code class="language-rust">    <span class="tok-k">fn</span> remove(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; <span class="tok-t">Option</span>&lt;<span class="tok-t">String</span>&gt; {
+<h2 data-md-from="489" data-md-to="489">Rust: two impls, a literal and an anchor</h2>
+<p data-md-from="491" data-md-to="491">A type may be <code>impl</code>-ed several times, and the path retries each of them: <code>Cart/remove</code> is in the second one. Inside a method, a condition literal names the arm it compares against, and a trailing comment anchors the block.</p>
+<p class="md-marker" data-marker="rust-t-17-1"><a href="../docs/samples/Cart.rs#remove">samples/Cart.rs#remove</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-17-1" data-md-from="495" data-md-to="499"><code class="language-rust">    <span class="tok-k">fn</span> remove(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; <span class="tok-t">Option</span>&lt;<span class="tok-t">String</span>&gt; {
         <span class="tok-k">self</span>.items.pop()
     }</code></pre>
-<p class="md-marker" data-marker="rust-t-16-2"><a href="../docs/samples/Cart.rs#dispatch/count">samples/Cart.rs#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="rust-t-16-2" data-md-from="478" data-md-to="482"><code class="language-rust">        <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span> {
+<p class="md-marker" data-marker="rust-t-17-2"><a href="../docs/samples/Cart.rs#dispatch/count">samples/Cart.rs#dispatch/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-17-2" data-md-from="503" data-md-to="507"><code class="language-rust">        <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span> {
             <span class="tok-k">return</span> <span class="tok-t">Some</span>(<span class="tok-k">self</span>.items.len());
         }</code></pre>
-<p class="md-marker" data-marker="rust-t-16-3"><a href="../docs/samples/Cart.rs#legacy/count">samples/Cart.rs#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="rust-t-16-3" data-md-from="486" data-md-to="490"><code class="language-rust">    <span class="tok-k">fn</span> legacy(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; usize { <span class="tok-c">//count</span>
+<p class="md-marker" data-marker="rust-t-17-3"><a href="../docs/samples/Cart.rs#legacy/count">samples/Cart.rs#legacy/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-17-3" data-md-from="511" data-md-to="515"><code class="language-rust">    <span class="tok-k">fn</span> legacy(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; usize { <span class="tok-c">//count</span>
         <span class="tok-k">self</span>.items.len()
     }</code></pre>
+</section>
+<section class="md-section" data-md-section="3">
+<h2 data-md-from="518" data-md-to="518">Rust: an envelope is the impl</h2>
+<p data-md-from="520" data-md-to="520">A Rust type's members live in <code>impl</code> blocks, and there are usually several: this file has three for <code>Cart</code>. The marks <strong>retry them the way a path does</strong>, and the member decides which one the envelope is about — so <code>#Cart/^,add,$</code> is the first <code>impl</code> and <code>#Cart/^,remove,Cart/$</code> is the second. The type's name alone would be ambiguous; the envelope is what makes it not.</p>
+<p class="md-marker" data-marker="rust-t-18-1"><a href="../docs/samples/Cart.rs#Cart/^,add,$">samples/Cart.rs#Cart/^,add,$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-18-1" data-md-from="524" data-md-to="530"><code class="language-rust"><span class="tok-k">impl</span> <span class="tok-t">Cart</span> {
+    <span class="tok-k">fn</span> add(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>, x: <span class="tok-t">String</span>) {
+        <span class="tok-k">self</span>.items.push(x);
+    }
+}</code></pre>
+<p class="md-marker" data-marker="rust-t-18-2"><a href="../docs/samples/Cart.rs#Cart/^,remove,Cart/$">samples/Cart.rs#Cart/^,remove,Cart/$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="rust-t-18-2" data-md-from="534" data-md-to="540"><code class="language-rust"><span class="tok-k">impl</span> <span class="tok-t">Cart</span> {
+    <span class="tok-k">fn</span> remove(&amp;<span class="tok-k">mut</span> <span class="tok-k">self</span>) -&gt; <span class="tok-t">Option</span>&lt;<span class="tok-t">String</span>&gt; {
+        <span class="tok-k">self</span>.items.pop()
+    }
+}</code></pre>
 </section>
 </article>
 </div>

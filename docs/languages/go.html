@@ -75,7 +75,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -89,17 +89,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -263,27 +269,27 @@ body {
 <span class="menu-bars" aria-hidden="true"></span>
 <span class="menu-word">Examples</span>
 </button>
-<nav class="menu" id="menu" popover aria-label="Example pages">
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
 <p class="menu-head">One page per language</p>
-<span class="menu-group" role="presentation">This page</span><a class="menu-item" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
-<span class="menu-group" role="presentation">Languages</span><a class="menu-item" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
-<a class="menu-item" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
-<a class="menu-item current" href="go.html" aria-current="page"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
-<a class="menu-item" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
-<a class="menu-item" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
-<a class="menu-item" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
-<a class="menu-item" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
-<a class="menu-item" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
-<a class="menu-item" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
-<a class="menu-item" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
-<a class="menu-item" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
-<a class="menu-item" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
-<a class="menu-item" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
-<span class="menu-group" role="presentation">Config formats</span><a class="menu-item" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
-<a class="menu-item" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
-<a class="menu-item" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
-<a class="menu-item" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
-<span class="menu-group" role="presentation">Styles</span><a class="menu-item" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item with-sample" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item current with-sample" href="go.html" aria-current="page"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item with-sample" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item with-sample" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item with-sample" href="ruby.html"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item with-sample" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item with-sample" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item with-sample" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
 </nav>
 </div>
 <h1>Go</h1>
@@ -303,16 +309,16 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>Go: regions and declarations</h3>
 <ul class="targets">
-<li class="target-item" id="go-t-13-1"><button class="target" type="button" data-file="samples/Cart.go" data-section="13" data-from="5" data-to="5" data-ranges="5-5" aria-pressed="false" aria-controls="go-t-13-1-desc" title="[samples/Cart.go#catalog](./samples/Cart.go#catalog)"><span class="chip-file">Cart.go</span><span class="chip-ref">#catalog</span></button></li>
-<li class="target-item" id="go-t-13-2"><button class="target" type="button" data-file="samples/Cart.go" data-section="13" data-from="10" data-to="12" data-ranges="10-12" aria-pressed="false" aria-controls="go-t-13-2-desc" title="[samples/Cart.go#Add](./samples/Cart.go#Add)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Add</span></button></li>
-<li class="target-item" id="go-t-13-3"><button class="target" type="button" data-file="samples/Cart.go" data-section="13" data-from="11" data-to="11" data-ranges="11-11" aria-pressed="false" aria-controls="go-t-13-3-desc" title="[samples/Cart.go#Add/-](./samples/Cart.go#Add/-)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Add/-</span></button></li>
+<li class="target-item" id="go-t-14-1"><button class="target" type="button" data-file="samples/Cart.go" data-section="14" data-from="5" data-to="5" data-ranges="5-5" aria-pressed="false" aria-controls="go-t-14-1-desc" title="[samples/Cart.go#catalog](./samples/Cart.go#catalog)"><span class="chip-file">Cart.go</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="go-t-14-2"><button class="target" type="button" data-file="samples/Cart.go" data-section="14" data-from="10" data-to="12" data-ranges="10-12" aria-pressed="false" aria-controls="go-t-14-2-desc" title="[samples/Cart.go#Add](./samples/Cart.go#Add)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Add</span></button></li>
+<li class="target-item" id="go-t-14-3"><button class="target" type="button" data-file="samples/Cart.go" data-section="14" data-from="11" data-to="11" data-ranges="11-11" aria-pressed="false" aria-controls="go-t-14-3-desc" title="[samples/Cart.go#Add/-](./samples/Cart.go#Add/-)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Add/-</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
 <h3><span class="num">2</span>Go: a switch literal and a trailing comment</h3>
 <ul class="targets">
-<li class="target-item" id="go-t-14-1"><button class="target" type="button" data-file="samples/Cart.go" data-section="14" data-from="17" data-to="20" data-ranges="17-20" aria-pressed="false" aria-controls="go-t-14-1-desc" title="[samples/Cart.go#Dispatch/count](./samples/Cart.go#Dispatch/count)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Dispatch/count</span></button></li>
-<li class="target-item" id="go-t-14-2"><button class="target" type="button" data-file="samples/Cart.go" data-section="14" data-from="24" data-to="26" data-ranges="24-26" aria-pressed="false" aria-controls="go-t-14-2-desc" title="[samples/Cart.go#Legacy/count](./samples/Cart.go#Legacy/count)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Legacy/count</span></button></li>
+<li class="target-item" id="go-t-15-1"><button class="target" type="button" data-file="samples/Cart.go" data-section="15" data-from="17" data-to="20" data-ranges="17-20" aria-pressed="false" aria-controls="go-t-15-1-desc" title="[samples/Cart.go#Dispatch/count](./samples/Cart.go#Dispatch/count)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Dispatch/count</span></button></li>
+<li class="target-item" id="go-t-15-2"><button class="target" type="button" data-file="samples/Cart.go" data-section="15" data-from="24" data-to="26" data-ranges="24-26" aria-pressed="false" aria-controls="go-t-15-2-desc" title="[samples/Cart.go#Legacy/count](./samples/Cart.go#Legacy/count)"><span class="chip-file">Cart.go</span><span class="chip-ref">#Legacy/count</span></button></li>
 </ul>
 </li>
 </ol>
@@ -321,23 +327,23 @@ body {
 <div class="col-head">Description<span class="col-note">of the selected example</span></div>
 <div class="desc-panel">
 <p class="desc-empty">Click an example link above to read what it demonstrates.</p>
-<div class="desc" id="go-t-13-1-desc" data-desc="go-t-13-1">
-<h2><span class="num">1</span>Go: regions and declarations</h2>
-<p>A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
-</div>
-<div class="desc" id="go-t-13-2-desc" data-desc="go-t-13-2">
-<h2><span class="num">1</span>Go: regions and declarations</h2>
-<p>A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
-</div>
-<div class="desc" id="go-t-13-3-desc" data-desc="go-t-13-3">
-<h2><span class="num">1</span>Go: regions and declarations</h2>
-<p>A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
-</div>
 <div class="desc" id="go-t-14-1-desc" data-desc="go-t-14-1">
+<h2><span class="num">1</span>Go: regions and declarations</h2>
+<p>A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
+</div>
+<div class="desc" id="go-t-14-2-desc" data-desc="go-t-14-2">
+<h2><span class="num">1</span>Go: regions and declarations</h2>
+<p>A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
+</div>
+<div class="desc" id="go-t-14-3-desc" data-desc="go-t-14-3">
+<h2><span class="num">1</span>Go: regions and declarations</h2>
+<p>A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
+</div>
+<div class="desc" id="go-t-15-1-desc" data-desc="go-t-15-1">
 <h2><span class="num">2</span>Go: a switch literal and a trailing comment</h2>
 <p>A function body is a scope, so a <code>case</code> arm is named from inside it — by the literal the switch tests, because an arm is not a block of its own. A trailing comment names the function it opens.</p>
 </div>
-<div class="desc" id="go-t-14-2-desc" data-desc="go-t-14-2">
+<div class="desc" id="go-t-15-2-desc" data-desc="go-t-15-2">
 <h2><span class="num">2</span>Go: a switch literal and a trailing comment</h2>
 <p>A function body is a scope, so a <code>case</code> arm is named from inside it — by the literal the switch tests, because an arm is not a block of its own. A trailing comment names the function it opens.</p>
 </div>
@@ -358,27 +364,27 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="382" data-md-to="382">Go: regions and declarations</h2>
-<p data-md-from="384" data-md-to="384">A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
-<p class="md-marker" data-marker="go-t-13-1"><a href="../docs/samples/Cart.go#catalog">samples/Cart.go#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-13-1" data-md-from="388" data-md-to="390"><code class="language-go"><span class="tok-k">var</span> <span class="tok-t">Catalog</span> = []string{<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>}</code></pre>
-<p class="md-marker" data-marker="go-t-13-2"><a href="../docs/samples/Cart.go#Add">samples/Cart.go#Add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-13-2" data-md-from="394" data-md-to="398"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Add</span>(items []string, item string) []string {
+<h2 data-md-from="407" data-md-to="407">Go: regions and declarations</h2>
+<p data-md-from="409" data-md-to="409">A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
+<p class="md-marker" data-marker="go-t-14-1"><a href="../docs/samples/Cart.go#catalog">samples/Cart.go#catalog</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="go-t-14-1" data-md-from="413" data-md-to="415"><code class="language-go"><span class="tok-k">var</span> <span class="tok-t">Catalog</span> = []string{<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>}</code></pre>
+<p class="md-marker" data-marker="go-t-14-2"><a href="../docs/samples/Cart.go#Add">samples/Cart.go#Add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="go-t-14-2" data-md-from="419" data-md-to="423"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Add</span>(items []string, item string) []string {
 	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)
 }</code></pre>
-<p class="md-marker" data-marker="go-t-13-3"><a href="../docs/samples/Cart.go#Add/-">samples/Cart.go#Add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-13-3" data-md-from="402" data-md-to="404"><code class="language-go">	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)</code></pre>
+<p class="md-marker" data-marker="go-t-14-3"><a href="../docs/samples/Cart.go#Add/-">samples/Cart.go#Add/-</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="go-t-14-3" data-md-from="427" data-md-to="429"><code class="language-go">	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="406" data-md-to="406">Go: a switch literal and a trailing comment</h2>
-<p data-md-from="408" data-md-to="408">A function body is a scope, so a <code>case</code> arm is named from inside it — by the literal the switch tests, because an arm is not a block of its own. A trailing comment names the function it opens.</p>
-<p class="md-marker" data-marker="go-t-14-1"><a href="../docs/samples/Cart.go#Dispatch/count">samples/Cart.go#Dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-14-1" data-md-from="412" data-md-to="417"><code class="language-go">	<span class="tok-k">switch</span> <span class="tok-s">&quot;count&quot;</span> {
+<h2 data-md-from="431" data-md-to="431">Go: a switch literal and a trailing comment</h2>
+<p data-md-from="433" data-md-to="433">A function body is a scope, so a <code>case</code> arm is named from inside it — by the literal the switch tests, because an arm is not a block of its own. A trailing comment names the function it opens.</p>
+<p class="md-marker" data-marker="go-t-15-1"><a href="../docs/samples/Cart.go#Dispatch/count">samples/Cart.go#Dispatch/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="go-t-15-1" data-md-from="437" data-md-to="442"><code class="language-go">	<span class="tok-k">switch</span> <span class="tok-s">&quot;count&quot;</span> {
 	<span class="tok-k">case</span> methodName:
 		<span class="tok-k">return</span> <span class="tok-k">len</span>(<span class="tok-t">Catalog</span>)
 	}</code></pre>
-<p class="md-marker" data-marker="go-t-14-2"><a href="../docs/samples/Cart.go#Legacy/count">samples/Cart.go#Legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-14-2" data-md-from="421" data-md-to="425"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Legacy</span>() { <span class="tok-c">//count</span>
+<p class="md-marker" data-marker="go-t-15-2"><a href="../docs/samples/Cart.go#Legacy/count">samples/Cart.go#Legacy/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="go-t-15-2" data-md-from="446" data-md-to="450"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Legacy</span>() { <span class="tok-c">//count</span>
 	println(<span class="tok-k">len</span>(<span class="tok-t">Catalog</span>))
 }</code></pre>
 </section>

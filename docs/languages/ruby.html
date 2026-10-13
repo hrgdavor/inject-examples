@@ -75,7 +75,7 @@ body {
   .menu:not([data-open]) { display: none; }
 }
 .menu {
-  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(23rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
+  margin: .4rem 0 0; margin-top: .4rem; padding: .4rem; width: min(28rem, 82vw); max-height: min(70vh, 34rem); overflow: auto;
   background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .18); inset: auto;
 }
@@ -89,17 +89,23 @@ body {
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
 }
 .menu-item {
-  display: grid; gap: .1rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: .1rem .5rem; padding: .35rem .5rem; border-radius: 7px; color: inherit;
   text-decoration: none; border: 1px solid transparent;
 }
 .menu-item:hover { background: var(--chip); }
 .menu-item.current { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
-.menu-label { font-weight: 600; }
+/* Flex, and never a column: the language stays on the left and the file it reads
+   is pushed to the right edge, so the file names scan down the menu as one
+   column. Nothing here may wrap, so a layout that disagrees still cannot put the
+   file on a line of its own. */
+.menu-item.with-sample { gap: 1rem; }
+.menu-label { flex: none; font-weight: 600; white-space: nowrap; }
 .menu-item.current .menu-label::after { content: " · current"; font-weight: 400; opacity: .7; }
-.menu-blurb { color: var(--muted); font-size: .8rem; }
+.menu-blurb { flex: 1 0 100%; color: var(--muted); font-size: .8rem; }
 .menu-item.current .menu-blurb { color: inherit; opacity: .8; }
 .menu-sample {
-  display: block; margin-top: .15rem; color: var(--muted); font-size: .74rem;
+  display: block; flex: none; color: var(--muted); font-size: .74rem; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .menu-item.current .menu-sample { color: inherit; opacity: .75; }
@@ -263,27 +269,27 @@ body {
 <span class="menu-bars" aria-hidden="true"></span>
 <span class="menu-word">Examples</span>
 </button>
-<nav class="menu" id="menu" popover aria-label="Example pages">
+<nav class="menu" id="menu" popover aria-label="Example pages" style="width: min(28rem, 82vw)">
 <p class="menu-head">One page per language</p>
-<span class="menu-group" role="presentation">This page</span><a class="menu-item" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
-<span class="menu-group" role="presentation">Languages</span><a class="menu-item" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
-<a class="menu-item" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
-<a class="menu-item" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
-<a class="menu-item" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
-<a class="menu-item" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
-<a class="menu-item" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
-<a class="menu-item" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
-<a class="menu-item" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
-<a class="menu-item current" href="ruby.html" aria-current="page"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
-<a class="menu-item" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
-<a class="menu-item" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
-<a class="menu-item" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
-<a class="menu-item" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
-<span class="menu-group" role="presentation">Config formats</span><a class="menu-item" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
-<a class="menu-item" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
-<a class="menu-item" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
-<a class="menu-item" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
-<span class="menu-group" role="presentation">Styles</span><a class="menu-item" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
+<span class="menu-group" role="presentation">This page</span><a class="menu-item with-blurb" href="../index.html"><span class="menu-label">Overview</span><span class="menu-blurb">the examples that are about the tool itself, whatever language the sample is written in</span></a>
+<span class="menu-group" role="presentation">Languages</span><a class="menu-item with-sample" href="java.html"><span class="menu-label">Java</span><span class="menu-sample">samples/Inventory.java</span></a>
+<a class="menu-item with-sample" href="javascript.html"><span class="menu-label">JavaScript / TypeScript</span><span class="menu-sample">samples/cart.js</span></a>
+<a class="menu-item with-sample" href="go.html"><span class="menu-label">Go</span><span class="menu-sample">samples/Cart.go</span></a>
+<a class="menu-item with-sample" href="rust.html"><span class="menu-label">Rust</span><span class="menu-sample">samples/Cart.rs</span></a>
+<a class="menu-item with-sample" href="python.html"><span class="menu-label">Python</span><span class="menu-sample">samples/Cart.py</span></a>
+<a class="menu-item with-sample" href="csharp.html"><span class="menu-label">C#</span><span class="menu-sample">samples/Cart.cs</span></a>
+<a class="menu-item with-sample" href="kotlin.html"><span class="menu-label">Kotlin</span><span class="menu-sample">samples/Cart.kt</span></a>
+<a class="menu-item with-sample" href="php.html"><span class="menu-label">PHP</span><span class="menu-sample">samples/Cart.php</span></a>
+<a class="menu-item current with-sample" href="ruby.html" aria-current="page"><span class="menu-label">Ruby</span><span class="menu-sample">samples/Cart.rb</span></a>
+<a class="menu-item with-sample" href="shell.html"><span class="menu-label">Shell</span><span class="menu-sample">samples/run.sh</span></a>
+<a class="menu-item with-sample" href="vb.html"><span class="menu-label">VB</span><span class="menu-sample">samples/Form.vb</span></a>
+<a class="menu-item with-sample" href="haskell.html"><span class="menu-label">Haskell</span><span class="menu-sample">samples/Main.hs</span></a>
+<a class="menu-item with-sample" href="zig.html"><span class="menu-label">Zig</span><span class="menu-sample">samples/Nesting.zig</span></a>
+<span class="menu-group" role="presentation">Config formats</span><a class="menu-item with-sample" href="yaml.html"><span class="menu-label">YAML</span><span class="menu-sample">samples/app.yaml</span></a>
+<a class="menu-item with-sample" href="toml.html"><span class="menu-label">TOML</span><span class="menu-sample">samples/app.toml</span></a>
+<a class="menu-item with-sample" href="ini.html"><span class="menu-label">INI</span><span class="menu-sample">samples/app.ini</span></a>
+<a class="menu-item with-sample" href="json.html"><span class="menu-label">JSON</span><span class="menu-sample">samples/api.json</span></a>
+<span class="menu-group" role="presentation">Styles</span><a class="menu-item with-sample" href="css.html"><span class="menu-label">CSS</span><span class="menu-sample">samples/site.css</span></a>
 </nav>
 </div>
 <h1>Ruby</h1>
@@ -303,17 +309,24 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>Ruby: regions, defs and end</h3>
 <ul class="targets">
-<li class="target-item" id="ruby-t-25-1"><button class="target" type="button" data-file="samples/Cart.rb" data-section="25" data-from="4" data-to="4" data-ranges="4-4" aria-pressed="false" aria-controls="ruby-t-25-1-desc" title="[samples/Cart.rb#catalog](./samples/Cart.rb#catalog)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#catalog</span></button></li>
-<li class="target-item" id="ruby-t-25-2"><button class="target" type="button" data-file="samples/Cart.rb" data-section="25" data-from="8" data-to="10" data-ranges="8-10" aria-pressed="false" aria-controls="ruby-t-25-2-desc" title="[samples/Cart.rb#add!](./samples/Cart.rb#add!)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#add!</span></button></li>
-<li class="target-item" id="ruby-t-25-3"><button class="target" type="button" data-file="samples/Cart.rb" data-section="25" data-from="12" data-to="14" data-ranges="12-14" aria-pressed="false" aria-controls="ruby-t-25-3-desc" title="[samples/Cart.rb#add](./samples/Cart.rb#add)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#add</span></button></li>
-<li class="target-item" id="ruby-t-25-4"><button class="target" type="button" data-file="samples/Cart.rb" data-section="25" data-from="13" data-to="13" data-ranges="13-13" aria-pressed="false" aria-controls="ruby-t-25-4-desc" title="[samples/Cart.rb#add/-](./samples/Cart.rb#add/-)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#add/-</span></button></li>
+<li class="target-item" id="ruby-t-31-1"><button class="target" type="button" data-file="samples/Cart.rb" data-section="31" data-from="4" data-to="4" data-ranges="4-4" aria-pressed="false" aria-controls="ruby-t-31-1-desc" title="[samples/Cart.rb#catalog](./samples/Cart.rb#catalog)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="ruby-t-31-2"><button class="target" type="button" data-file="samples/Cart.rb" data-section="31" data-from="8" data-to="10" data-ranges="8-10" aria-pressed="false" aria-controls="ruby-t-31-2-desc" title="[samples/Cart.rb#add!](./samples/Cart.rb#add!)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#add!</span></button></li>
+<li class="target-item" id="ruby-t-31-3"><button class="target" type="button" data-file="samples/Cart.rb" data-section="31" data-from="12" data-to="14" data-ranges="12-14" aria-pressed="false" aria-controls="ruby-t-31-3-desc" title="[samples/Cart.rb#add](./samples/Cart.rb#add)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#add</span></button></li>
+<li class="target-item" id="ruby-t-31-4"><button class="target" type="button" data-file="samples/Cart.rb" data-section="31" data-from="13" data-to="13" data-ranges="13-13" aria-pressed="false" aria-controls="ruby-t-31-4-desc" title="[samples/Cart.rb#add/-](./samples/Cart.rb#add/-)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#add/-</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
 <h3><span class="num">2</span>Ruby: a condition and an anchor</h3>
 <ul class="targets">
-<li class="target-item" id="ruby-t-26-1"><button class="target" type="button" data-file="samples/Cart.rb" data-section="26" data-from="18" data-to="19" data-ranges="18-19" aria-pressed="false" aria-controls="ruby-t-26-1-desc" title="[samples/Cart.rb#dispatch/count](./samples/Cart.rb#dispatch/count)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#dispatch/count</span></button></li>
-<li class="target-item" id="ruby-t-26-2"><button class="target" type="button" data-file="samples/Cart.rb" data-section="26" data-from="26" data-to="28" data-ranges="26-28" aria-pressed="false" aria-controls="ruby-t-26-2-desc" title="[samples/Cart.rb#legacy/count](./samples/Cart.rb#legacy/count)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#legacy/count</span></button></li>
+<li class="target-item" id="ruby-t-32-1"><button class="target" type="button" data-file="samples/Cart.rb" data-section="32" data-from="18" data-to="19" data-ranges="18-19" aria-pressed="false" aria-controls="ruby-t-32-1-desc" title="[samples/Cart.rb#dispatch/count](./samples/Cart.rb#dispatch/count)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#dispatch/count</span></button></li>
+<li class="target-item" id="ruby-t-32-2"><button class="target" type="button" data-file="samples/Cart.rb" data-section="32" data-from="26" data-to="28" data-ranges="26-28" aria-pressed="false" aria-controls="ruby-t-32-2-desc" title="[samples/Cart.rb#legacy/count](./samples/Cart.rb#legacy/count)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#legacy/count</span></button></li>
+</ul>
+</li>
+<li class="example" id="ex-3">
+<h3><span class="num">3</span>Ruby: an envelope around a method</h3>
+<ul class="targets">
+<li class="target-item" id="ruby-t-33-1"><button class="target" type="button" data-file="samples/Cart.rb" data-section="33" data-from="1" data-to="32" data-ranges="1-1,12-14,32-32" aria-pressed="false" aria-controls="ruby-t-33-1-desc" title="[samples/Cart.rb#Cart/^,add,$](./samples/Cart.rb#Cart/^,add,$)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#Cart/^,add,$</span></button></li>
+<li class="target-item" id="ruby-t-33-2"><button class="target" type="button" data-file="samples/Cart.rb" data-section="33" data-from="1" data-to="32" data-ranges="1-1,12-14,32-32" aria-pressed="false" aria-controls="ruby-t-33-2-desc" title="[samples/Cart.rb#Cart/^,Cart/add,Cart/$](./samples/Cart.rb#Cart/^,Cart/add,Cart/$)"><span class="chip-file">Cart.rb</span><span class="chip-ref">#Cart/^,Cart/add,Cart/$</span></button></li>
 </ul>
 </li>
 </ol>
@@ -322,29 +335,37 @@ body {
 <div class="col-head">Description<span class="col-note">of the selected example</span></div>
 <div class="desc-panel">
 <p class="desc-empty">Click an example link above to read what it demonstrates.</p>
-<div class="desc" id="ruby-t-25-1-desc" data-desc="ruby-t-25-1">
+<div class="desc" id="ruby-t-31-1-desc" data-desc="ruby-t-31-1">
 <h2><span class="num">1</span>Ruby: regions, defs and end</h2>
 <p><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append and not a heredoc; only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one. A name may end in <code>!</code> or <code>?</code>, and that is part of the name, not a modifier.</p>
 </div>
-<div class="desc" id="ruby-t-25-2-desc" data-desc="ruby-t-25-2">
+<div class="desc" id="ruby-t-31-2-desc" data-desc="ruby-t-31-2">
 <h2><span class="num">1</span>Ruby: regions, defs and end</h2>
 <p><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append and not a heredoc; only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one. A name may end in <code>!</code> or <code>?</code>, and that is part of the name, not a modifier.</p>
 </div>
-<div class="desc" id="ruby-t-25-3-desc" data-desc="ruby-t-25-3">
+<div class="desc" id="ruby-t-31-3-desc" data-desc="ruby-t-31-3">
 <h2><span class="num">1</span>Ruby: regions, defs and end</h2>
 <p><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append and not a heredoc; only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one. A name may end in <code>!</code> or <code>?</code>, and that is part of the name, not a modifier.</p>
 </div>
-<div class="desc" id="ruby-t-25-4-desc" data-desc="ruby-t-25-4">
+<div class="desc" id="ruby-t-31-4-desc" data-desc="ruby-t-31-4">
 <h2><span class="num">1</span>Ruby: regions, defs and end</h2>
 <p><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append and not a heredoc; only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one. A name may end in <code>!</code> or <code>?</code>, and that is part of the name, not a modifier.</p>
 </div>
-<div class="desc" id="ruby-t-26-1-desc" data-desc="ruby-t-26-1">
+<div class="desc" id="ruby-t-32-1-desc" data-desc="ruby-t-32-1">
 <h2><span class="num">2</span>Ruby: a condition and an anchor</h2>
 <p>A condition literal names the <code>if</code> or <code>elsif</code> whose header carries the string, and a trailing comment names the method it opens. A <code>case</code> is not a block here, so <code>when</code> arms are named by the region or the method around them.</p>
 </div>
-<div class="desc" id="ruby-t-26-2-desc" data-desc="ruby-t-26-2">
+<div class="desc" id="ruby-t-32-2-desc" data-desc="ruby-t-32-2">
 <h2><span class="num">2</span>Ruby: a condition and an anchor</h2>
 <p>A condition literal names the <code>if</code> or <code>elsif</code> whose header carries the string, and a trailing comment names the method it opens. A <code>case</code> is not a block here, so <code>when</code> arms are named by the region or the method around them.</p>
+</div>
+<div class="desc" id="ruby-t-33-1-desc" data-desc="ruby-t-33-1">
+<h2><span class="num">3</span>Ruby: an envelope around a method</h2>
+<p>A Ruby method is <code>def … end</code>, which is valid on its own but says nothing about what it belongs to. <code>#Cart/^,add,$</code> is <code>class Cart</code>, the method, and the class's <code>end</code>.</p>
+</div>
+<div class="desc" id="ruby-t-33-2-desc" data-desc="ruby-t-33-2">
+<h2><span class="num">3</span>Ruby: an envelope around a method</h2>
+<p>A Ruby method is <code>def … end</code>, which is valid on its own but says nothing about what it belongs to. <code>#Cart/^,add,$</code> is <code>class Cart</code>, the method, and the class's <code>end</code>.</p>
 </div>
 </div>
 </div>
@@ -363,30 +384,46 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="715" data-md-to="715">Ruby: regions, defs and end</h2>
-<p data-md-from="717" data-md-to="717"><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append and not a heredoc; only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one. A name may end in <code>!</code> or <code>?</code>, and that is part of the name, not a modifier.</p>
-<p class="md-marker" data-marker="ruby-t-25-1"><a href="../docs/samples/Cart.rb#catalog">samples/Cart.rb#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-25-1" data-md-from="721" data-md-to="723"><code class="language-ruby">  <span class="tok-t">CATALOG</span> = %w[bolt nut washer].freeze</code></pre>
-<p class="md-marker" data-marker="ruby-t-25-2"><a href="../docs/samples/Cart.rb#add!">samples/Cart.rb#add!</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-25-2" data-md-from="727" data-md-to="731"><code class="language-ruby">  <span class="tok-k">def</span> add!(item)
+<h2 data-md-from="880" data-md-to="880">Ruby: regions, defs and end</h2>
+<p data-md-from="882" data-md-to="882"><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append and not a heredoc; only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one. A name may end in <code>!</code> or <code>?</code>, and that is part of the name, not a modifier.</p>
+<p class="md-marker" data-marker="ruby-t-31-1"><a href="../docs/samples/Cart.rb#catalog">samples/Cart.rb#catalog</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="ruby-t-31-1" data-md-from="886" data-md-to="888"><code class="language-ruby">  <span class="tok-t">CATALOG</span> = %w[bolt nut washer].freeze</code></pre>
+<p class="md-marker" data-marker="ruby-t-31-2"><a href="../docs/samples/Cart.rb#add!">samples/Cart.rb#add!</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="ruby-t-31-2" data-md-from="892" data-md-to="896"><code class="language-ruby">  <span class="tok-k">def</span> add!(item)
     <span class="tok-a">@items</span> &lt;&lt; item
   <span class="tok-k">end</span></code></pre>
-<p class="md-marker" data-marker="ruby-t-25-3"><a href="../docs/samples/Cart.rb#add">samples/Cart.rb#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-25-3" data-md-from="735" data-md-to="739"><code class="language-ruby">  <span class="tok-k">def</span> add(item)
+<p class="md-marker" data-marker="ruby-t-31-3"><a href="../docs/samples/Cart.rb#add">samples/Cart.rb#add</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="ruby-t-31-3" data-md-from="900" data-md-to="904"><code class="language-ruby">  <span class="tok-k">def</span> add(item)
     <span class="tok-a">@items</span> &lt;&lt; item
   <span class="tok-k">end</span></code></pre>
-<p class="md-marker" data-marker="ruby-t-25-4"><a href="../docs/samples/Cart.rb#add/-">samples/Cart.rb#add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-25-4" data-md-from="743" data-md-to="745"><code class="language-ruby">    <span class="tok-a">@items</span> &lt;&lt; item</code></pre>
+<p class="md-marker" data-marker="ruby-t-31-4"><a href="../docs/samples/Cart.rb#add/-">samples/Cart.rb#add/-</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="ruby-t-31-4" data-md-from="908" data-md-to="910"><code class="language-ruby">    <span class="tok-a">@items</span> &lt;&lt; item</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="747" data-md-to="747">Ruby: a condition and an anchor</h2>
-<p data-md-from="749" data-md-to="749">A condition literal names the <code>if</code> or <code>elsif</code> whose header carries the string, and a trailing comment names the method it opens. A <code>case</code> is not a block here, so <code>when</code> arms are named by the region or the method around them.</p>
-<p class="md-marker" data-marker="ruby-t-26-1"><a href="../docs/samples/Cart.rb#dispatch/count">samples/Cart.rb#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-26-1" data-md-from="753" data-md-to="756"><code class="language-ruby">    <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span>
+<h2 data-md-from="912" data-md-to="912">Ruby: a condition and an anchor</h2>
+<p data-md-from="914" data-md-to="914">A condition literal names the <code>if</code> or <code>elsif</code> whose header carries the string, and a trailing comment names the method it opens. A <code>case</code> is not a block here, so <code>when</code> arms are named by the region or the method around them.</p>
+<p class="md-marker" data-marker="ruby-t-32-1"><a href="../docs/samples/Cart.rb#dispatch/count">samples/Cart.rb#dispatch/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="ruby-t-32-1" data-md-from="918" data-md-to="921"><code class="language-ruby">    <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span>
       <span class="tok-a">@items</span>.size</code></pre>
-<p class="md-marker" data-marker="ruby-t-26-2"><a href="../docs/samples/Cart.rb#legacy/count">samples/Cart.rb#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-26-2" data-md-from="760" data-md-to="764"><code class="language-ruby">  <span class="tok-k">def</span> legacy <span class="tok-c"># count</span>
+<p class="md-marker" data-marker="ruby-t-32-2"><a href="../docs/samples/Cart.rb#legacy/count">samples/Cart.rb#legacy/count</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="ruby-t-32-2" data-md-from="925" data-md-to="929"><code class="language-ruby">  <span class="tok-k">def</span> legacy <span class="tok-c"># count</span>
     <span class="tok-a">@items</span>.size
+  <span class="tok-k">end</span></code></pre>
+</section>
+<section class="md-section" data-md-section="3">
+<h2 data-md-from="932" data-md-to="932">Ruby: an envelope around a method</h2>
+<p data-md-from="934" data-md-to="934">A Ruby method is <code>def … end</code>, which is valid on its own but says nothing about what it belongs to. <code>#Cart/^,add,$</code> is <code>class Cart</code>, the method, and the class's <code>end</code>.</p>
+<p class="md-marker" data-marker="ruby-t-33-1"><a href="../docs/samples/Cart.rb#Cart/^,add,$">samples/Cart.rb#Cart/^,add,$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="ruby-t-33-1" data-md-from="938" data-md-to="944"><code class="language-ruby"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
+  <span class="tok-k">def</span> add(item)
+    <span class="tok-a">@items</span> &lt;&lt; item
+  <span class="tok-k">end</span>
+  <span class="tok-k">end</span></code></pre>
+<p class="md-marker" data-marker="ruby-t-33-2"><a href="../docs/samples/Cart.rb#Cart/^,Cart/add,Cart/$">samples/Cart.rb#Cart/^,Cart/add,Cart/$</a><span class="md-badge">inject</span></p>
+<pre class="md-pre" data-inject="ruby-t-33-2" data-md-from="948" data-md-to="954"><code class="language-ruby"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
+  <span class="tok-k">def</span> add(item)
+    <span class="tok-a">@items</span> &lt;&lt; item
+  <span class="tok-k">end</span>
   <span class="tok-k">end</span></code></pre>
 </section>
 </article>

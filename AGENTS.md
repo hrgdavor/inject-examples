@@ -39,10 +39,13 @@
   the top layer come from the platform) positioned against the button with CSS
   anchor positioning (`anchor-name`/`position-anchor`/`position-area`, with a
   `@supports` fallback for browsers without it). The menu lists every page, marks
-  the current one, and is how a reader crosses from one language to another. A
-  language entry is its name and its sample; **only the Overview describes
-  itself**, because a blurb under every entry turns the menu into a paragraph to
-  read instead of a list to scan.
+  the current one, and is how a reader crosses from one language to another. An
+  entry is a **wrapping flex row**: the label bold on the left and, when it has one
+  (`with-sample`), the file it reads (`samples/Cart.rs`) pushed to the right edge,
+  so the file names scan down the menu as one column. **Only the Overview describes
+  itself**, whose blurb takes a row of its own (`flex: 1 0 100%`), because a blurb
+  under every entry turns the menu into a paragraph to read instead of a list to
+  scan. The menu is `min(28rem, 82vw)` wide.
 - **A target's id is per page** (`<slug>-t<section>-<target>`, and `t…` for the
   overview), because an id is an element id on one page while two pages may show
   the same reference.
@@ -73,13 +76,17 @@
   VB's `If x = "y" Then` header, Shell's `case` arms, Haskell's `case`, CSS's
   ambiguous `.card` — the page shows the nearest example that *does* resolve and
   says why in the prose; no page carries a fence the generator cannot verify.
-- **An envelope** (`Inventory/^,toString,$`) is the Java page's answer to a method
-  that reads as a fragment: the parent's declaration line, the member, and the
-  parent's closing line, injected as three pieces with three ranges. `^` and `$`
-  are whole path segments, and the parent may be named on either end. It is
-  specified under [Envelopes](./doc/section-matching.md#envelopes) and recorded in
-  the RFC change log; a language page may use it wherever a member needs the
-  declaration that holds it.
+- **An envelope** (`Inventory/^,toString,$`) is the answer to a member that reads
+  as a fragment: the parent's declaration line, the member, and the parent's
+  closing line, injected as three pieces with three ranges. `^` and `$` are whole
+  path segments, the parent may be named on either end, and the marks **retry a
+  name several blocks answer to** — which is what makes Rust's `Cart/^,add,$` name
+  the `impl` that holds `add`. It is specified under
+  [Envelopes](./doc/section-matching.md#envelopes) and recorded in the RFC change
+  log. **Eight pages use it** (Java, JavaScript, Rust, Python, C#, Kotlin, PHP,
+  Ruby, VB); the other four cannot, and say so: Go, Zig and Shell declare their
+  members at the top level, and Haskell's `data Cart` has no body — a language gets
+  an envelope section only where there is a declaration to wrap.
 - Generator: `tools/build-demo.mjs`, run with Bun:
   `bun tools/build-demo.mjs` (or `npm run demo`) writes every page,
   `bun tools/build-demo.mjs --check` (or `npm run demo:check`) exits 1 when one
@@ -223,9 +230,10 @@
   same `headerFrom`, so the corpus rows it asserts are unchanged, but it has no
   `base` — so `#add!` resolves in JavaScript and not there yet, while `#add` is
   unaffected in both. **Envelopes** (`Inventory/^,toString,$`) are likewise
-  JavaScript-only for now: the 22 corpus rows carrying a `^` or `$` are rows every
+  JavaScript-only for now: the 29 corpus rows carrying a `^` or `$` are rows every
   port must answer, and a port fails on the first one it cannot. A port that adds
-  them needs the two marks in its parser and the head/tail piece in its planner
+  them needs the two marks in its parser, the head/tail piece in its planner, and
+  the candidate retry that lets the member choose among a type's `impl` blocks
   ([Envelopes](./doc/section-matching.md#envelopes)).
 - The Java library has no runtime dependencies and no I/O; everything a caller
   needs is a `String` and a reference. `rust/section/src/tokenizer.rs` carries one

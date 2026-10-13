@@ -3686,13 +3686,17 @@ test('demo: every page is three titled columns with the shared header', () => {
         // are how a reader crosses from one language to another.
         assert.match(html, /<button class="menu-toggle" type="button" popovertarget="menu"/,
             `${page.slug}: the header carries the menu button`);
-        assert.match(html, /<nav class="menu" id="menu" popover aria-label="Example pages">/,
+        assert.match(html, /<nav class="menu" id="menu" popover aria-label="Example pages"[^>]*>/,
             `${page.slug}: the menu is a popover`);
+        assert.match(html, /<nav class="menu"[^>]*style="width: min\(28rem, 82vw\)">/,
+            `${page.slug}: the menu carries its width inline, so a cached stylesheet cannot narrow it`);
         for (const item of page.menu) {
             assert.ok(html.includes(`href="${item.href}"`), `${page.slug}: the menu links ${item.slug}`);
         }
-        assert.ok(html.includes(`<a class="menu-item current" href="${page.menu.find((item) => item.slug === page.slug).href}" aria-current="page">`),
-            `${page.slug}: the menu marks the current page`);
+        // The current entry's class list carries `current` first, and may carry
+        // the layout flags the entry's own content earns it.
+        const marked = new RegExp(`<a class="menu-item current[^"]*" href="${page.menu.find((item) => item.slug === page.slug).href}" aria-current="page">`);
+        assert.match(html, marked, `${page.slug}: the menu marks the current page`);
     }
 
     // The menu is a list to scan, not a paragraph to read: only the Overview
@@ -3706,6 +3710,40 @@ test('demo: every page is three titled columns with the shared header', () => {
         assert.ok(!menu.includes(escapeHtml(page.blurb)),
             `${page.slug}: its description is not under its menu entry`);
     }
+
+    // An entry that reads a file is one line: the language on the left and the
+    // file pushed to the right edge by the grid, so the sample column scans.
+    const entries = [...menu.matchAll(/<a class="(menu-item[^"]*)" href="([^"]+)"/g)]
+        .map((match) => ({ classes: match[1], href: match[2] }));
+    assert.ok(entries.length >= 19, 'every page is in the menu');
+    for (const entry of entries) {
+        const body = menu.slice(menu.indexOf(`href="${entry.href}"`), menu.indexOf('</a>', menu.indexOf(`href="${entry.href}"`)));
+        const hasSample = body.includes('class="menu-sample"');
+        assert.equal(entry.classes.includes('with-sample'), hasSample,
+            `${entry.href}: with-sample means it names a file`);
+        assert.equal(entry.classes.includes('with-blurb'), body.includes('class="menu-blurb"'),
+            `${entry.href}: with-blurb means it describes itself`);
+        if (hasSample) {
+            assert.ok(body.indexOf('menu-label') < body.indexOf('menu-sample'),
+                `${entry.href}: the label comes before the sample`);
+        }
+    }
+    assert.match(overviewMenu, /\.menu-item \{\n  display: flex; flex-wrap: wrap;/,
+        'an entry is a wrapping flex row, so nothing lands on a line of its own');
+    assert.match(overviewMenu, /\.menu-item \{[^}]*justify-content: space-between;/,
+        'the label and the file are pushed to the two edges of the row');
+    assert.match(overviewMenu, /\.menu-sample \{[\s\S]*?\}/,
+        'the file name has a rule of its own');
+    assert.match(overviewMenu, /\.menu-sample \{[^}]*flex: none;/,
+        'the file name never stretches');
+    assert.match(overviewMenu, /\.menu-sample \{[^}]*white-space: nowrap;/,
+        'the file name never wraps');
+    assert.match(overviewMenu, /\.menu-label \{[^}]*white-space: nowrap;/,
+        'the language never wraps');
+    assert.match(overviewMenu, /\.menu-blurb \{ flex: 1 0 100%;/,
+        'the overview blurb takes a row of its own, below the label');
+    assert.match(overviewMenu, /\.menu \{[\s\S]*?width: min\(28rem, 82vw\)/,
+        'the menu is 28rem wide where the viewport allows it');
 });
 
 test('demo: one page per language, and the pages tile the document', () => {
