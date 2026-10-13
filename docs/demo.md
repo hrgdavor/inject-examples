@@ -267,6 +267,43 @@ public class Inventory {
     }
 ```
 
+
+## Java: an envelope around a member
+
+A method copied out of a class reads as a fragment — indented under nothing, with no sign of the type it belongs to. An **envelope** is that type's own first and last lines, taken verbatim around the member: `^` is the head (the declaration line through the line its body opens on) and `$` is the tail (the line the block ends on). The parent is named once, on either mark, and everything between them is read inside it — so `#Inventory/^,toString,$` is the class's opening line, the whole `toString` method, and the class's closing brace.
+
+The long form says the same thing with the parent on every selector, and takes byte for byte the same text.
+
+[samples/Inventory.java#Inventory/^,toString,$](./samples/Inventory.java#Inventory/^,toString,$)
+
+```java
+public class Inventory {
+    public String toString() {
+        return items.size() + " item(s)";
+    }
+}
+```
+
+[samples/Inventory.java#Inventory/^,Inventory/toString,Inventory/$](./samples/Inventory.java#Inventory/^,Inventory/toString,Inventory/$)
+
+```java
+public class Inventory {
+    public String toString() {
+        return items.size() + " item(s)";
+    }
+}
+```
+
+The marks compose with the rest of the grammar: a modifier selects less of the member, and a line range may take its place.
+
+[samples/Inventory.java#Inventory/^,toString/-,Inventory/$](./samples/Inventory.java#Inventory/^,toString/-,Inventory/$)
+
+```java
+public class Inventory {
+        return items.size() + " item(s)";
+}
+```
+
 ## JavaScript: regions, declarations and modifiers
 
 A class member is named directly: `#render/-` is the body without the signature, and `#render/+` brings the `@deprecated` annotation along. A static field is addressed by the region directive around it, because a field is a statement rather than a block.

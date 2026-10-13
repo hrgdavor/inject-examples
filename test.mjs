@@ -4143,9 +4143,9 @@ test('RFC §5.3: the Reference exposes exactly the documented fields', () => {
 test('RFC §5.3: a Selector is a path or a line range, and each carries its own detail', () => {
     const path = planSection(JAVA, 'Line', lexerFor('Example.java')).reference.selectors;
     assert.equal(path.length, 1);
-    assert.deepEqual(Object.keys(path[0]).sort(), ['kind', 'raw', 'scope', 'segments']);
+    assert.deepEqual(Object.keys(path[0]).sort(), ['envelope', 'kind', 'raw', 'scope', 'segments']);
     assert.deepEqual(path[0], {
-        kind: 'path', raw: 'Line', segments: ['Line'], scope: 'declaration',
+        kind: 'path', raw: 'Line', segments: ['Line'], scope: 'declaration', envelope: null,
     });
 
     const lines = planSection(JAVA, 'L1:3-L2', lexerFor('Example.java')).reference.selectors;

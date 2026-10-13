@@ -85,7 +85,8 @@ export const PAGES = [
     // language has annotations to bring along.
     { slug: 'java', label: 'Java', title: 'Java', group: 'Languages', order: 1, sample: 'samples/Inventory.java',
         blurb: 'the scopes inside a file, the literal a block tests, and line numbers',
-        sections: ['Java: a path into the file', 'Java: line numbers, and several pieces at once'] },
+        sections: ['Java: a path into the file', 'Java: line numbers, and several pieces at once',
+            'Java: an envelope around a member'] },
     { slug: 'javascript', label: 'JavaScript / TypeScript', title: 'JavaScript and TypeScript', group: 'Languages',
         order: 2, sample: 'samples/cart.js', blurb: 'a template that hides its braces',
         sections: ['JavaScript: regions, declarations and modifiers', 'JavaScript: a template, a condition and an anchor'] },

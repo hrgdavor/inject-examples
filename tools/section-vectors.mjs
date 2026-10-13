@@ -109,6 +109,10 @@ const cases = [
         'L40', 'L40:12', 'L40-L44', 'L40:12-L44:3', 'L1-L1',
         // …and a range as one selector among several.
         'add,L40-L44', 'L40-L44,add', 'L40,L50-L52', 'add,L40:2-L40:8,remove',
+        // An envelope: a mark is a whole segment, so it is a canonical spelling of
+        // its own, and a `$` inside a longer segment is a name character.
+        'Cart/^,render,Cart/$', 'Cart/^,render,$', 'Cart/^,Cart/render,Cart/$',
+        'a/b/^,c,$', 'foo$', 'a/^x,render,a/$y',
     ].map((reference) => ({ name: `grammar:${reference}`, mode: 'parse', reference })),
 
     // Grammar errors — parse only: the thrown message.
@@ -129,6 +133,9 @@ const cases = [
         ['add,', 'empty-first-selector'], [',add', 'empty-last-selector'],
         ['add,,render', 'empty-middle-selector'],
         ['L40-', 'range-open-ended'], ['L40:x', 'range-column-not-a-number'],
+        // An envelope mark that is not a whole segment is a name; one that *is*
+        // and is written alone has no parent, so there is nothing to open or close.
+        ['^', 'envelope-bare-open'], ['$', 'envelope-bare-close'], ['/^', 'envelope-leading-slash'],
         ['L0', 'range-line-zero'], ['L1:0', 'range-column-zero'],
         ['L44-L40', 'range-backwards'], ['L40-L44:0', 'range-end-column-zero'],
         ['L40:x-L44', 'range-start-column-not-a-number'],
@@ -162,6 +169,29 @@ const cases = [
     { name: 'ex-selectors-modifier-on-the-last', input: EXAMPLE, reference: 'toString,Line/-' },
     { name: 'ex-selectors-modifier-on-an-earlier-one', input: EXAMPLE, reference: 'toString/-,Line' },
     { name: 'ex-selectors-one-missing', input: EXAMPLE, reference: 'toString,missing' },
+
+    // Resolution — an envelope: a parent declaration's own first and last lines,
+    // wrapped around the member selected from inside it. The short form names the
+    // parent once (on the `^`) and the interior member is read inside it; the long
+    // form names it on both ends and must answer byte for byte the same. The
+    // fixture's `Cart` opens on line 7 and closes on line 30, and its `toString`
+    // is lines 12–14.
+    { name: 'envelope-short-form', input: EXAMPLE, reference: 'Cart/^,toString,$' },
+    { name: 'envelope-long-form', input: EXAMPLE, reference: 'Cart/^,Cart/toString,Cart/$' },
+    { name: 'envelope-prefix-only-on-the-close', input: EXAMPLE, reference: 'Cart/^,toString,Cart/$' },
+    { name: 'envelope-member-with-a-modifier', input: EXAMPLE, reference: 'Cart/^,toString/-,Cart/$' },
+    { name: 'envelope-around-a-nested-member', input: EXAMPLE, reference: 'Cart/^,Line/render,Cart/$' },
+    { name: 'envelope-of-a-nested-block', input: EXAMPLE, reference: 'Cart/^,Line/^,render,Line/$,Cart/$' },
+    { name: 'envelope-with-a-line-range', input: EXAMPLE, reference: 'Cart/^,L12-L14,Cart/$' },
+    { name: 'envelope-lone-open', input: EXAMPLE, reference: 'Cart/^' },
+    { name: 'envelope-lone-close', input: EXAMPLE, reference: 'Cart/$' },
+    { name: 'envelope-backwards', input: EXAMPLE, reference: 'Cart/$,toString,Cart/^' },
+    { name: 'envelope-open-not-first', input: EXAMPLE, reference: 'toString,Cart/^,Cart/$' },
+    { name: 'envelope-close-not-last', input: EXAMPLE, reference: 'Cart/^,Cart/$,toString' },
+    { name: 'envelope-two-opens', input: EXAMPLE, reference: 'Cart/^,Line/^,render,Cart/$' },
+    { name: 'envelope-bare-marks', input: EXAMPLE, reference: '^,$' },
+    { name: 'envelope-different-parents', input: EXAMPLE, reference: 'Cart/^,Line/render,Line/$' },
+    { name: 'envelope-region-parent', input: EXAMPLE, reference: 'Cart/^,nope,$' },
 
     // Resolution — Wrapped.java: a declaration whose header does not fit on one
     // line. The parameters, the `throws` clause and the class's type parameters

@@ -45,11 +45,11 @@ normalise because it is written where it means something. Four questions fully
 specify it, and this document keeps each in its own section so they do not blur
 into one another:
 
-| Question | In one line | Expanded in |
-| --- | --- | --- |
-| How do several selectors combine? | A reference is a list; each selector contributes its own text, and the pieces are joined with a newline in the order written. | [Selectors](#selectors) |
-| How does a path with one or more `/` resolve? | Every name except the last **narrows the scope** to the block it finds; only the **last** name selects content; a single name searches the whole file. | [Paths and scopes](#paths-and-scopes) |
-| How is one name found inside a scope? | Inside that scope — the whole file, or a block a parent narrowed it to — the six matchers run in order against the scope's own members; the first match wins, and a shallower sibling always beats a deeper block. | [Searching one element in a scope](#searching-one-element-in-a-scope) |
+| Question                                               | In one line | Expanded in                                                           |
+| ------------------------------------------------------ | ----------- | --------------------------------------------------------------------- |
+| How do several selectors combine?                      | A reference is a list; each selector contributes its own text, and the pieces are joined with a newline in the order written. | [Selectors](#selectors) |
+| How does a path with one or more `/` resolve?          | Every name except the last **narrows the scope** to the block it finds; only the **last** name selects content; a single name searches the whole file. | [Paths and scopes](#paths-and-scopes) |
+| How is one name found inside a scope?                  | Inside that scope — the whole file, or a block a parent narrowed it to — the six matchers run in order against the scope's own members; the first match wins, and a shallower sibling always beats a deeper block. | [Searching one element in a scope](#searching-one-element-in-a-scope) |
 | Where do `+`, `++` and `-` apply, and what do they do? | A modifier is the **last segment of a path**, so it belongs to the selector that path carries; it chooses **how much** of the match to take, never **which** match. | [Applying the modifiers](#applying-the-modifiers) |
 
 [Grammar](#grammar) gives the syntax, [Selectors](#selectors) the composition and
@@ -75,6 +75,7 @@ detail.
   - [Canonicalisation](#canonicalisation)
   - [Modifiers](#modifiers)
   - [Two modifiers on one path is an error](#two-modifiers-on-one-path-is-an-error)
+- [Envelopes](#envelopes)
 - [Errors](#errors)
 - [Worked examples](#worked-examples)
 - [Not a parser](#not-a-parser)
@@ -88,9 +89,10 @@ section-reference := selector ( ',' selector )*     ; at most 8 path segments pe
 selector          := path
                    | line-range
 path              := segment ( '/' segment )*
-segment           := name | modifier
+segment           := name | modifier | envelope-mark
 name              := token
 modifier          := '++' | '+' | '-'               ; only as the last segment of a path
+envelope-mark     := '^' | '$'                      ; only as the last segment of a path
 token             := /[A-Za-z_$][\w$-]*/ | 'new'    ; `-` is a name character, `+` never is
 line-range        := point [ '-' point ]
 point             := 'L' digits [ ':' digits ]      ; lines and columns from 1
@@ -101,7 +103,10 @@ A `token` contains no `/`, `+`, `,` or whitespace. A name may contain `-`
 may be dotted (`Foo.Bar` is one token, because dotted names occur in JS/TS code);
 dots are never path separators. The three **modifier** spellings are segments of
 their own, not suffixes: `render/-` is a path of two segments whose last one is a
-modifier, which is why `+` can be excluded from every name. A selector that opens
+modifier, which is why `+` can be excluded from every name. The two **envelope
+marks** are whole segments in the same way, and only these two readings: `foo$` is
+the name `foo$`, while `foo/$` is a path that ends in a mark
+([Envelopes](#envelopes)). A selector that opens
 `L<digit>` is a line range or a typo, never a name — which is what reserves the
 `L<digit>` spelling — while `Lx` is an ordinary name. The syntax alone says
 nothing about resolution — the rules below do, and each is expanded in its own
@@ -126,11 +131,11 @@ missing piece fails the whole reference, naming the selector that failed.
 A selector may name lines instead of a block, for a file whose structure the
 matchers cannot see:
 
-| Reference | Selects |
-| --- | --- |
-| `L40` | line 40 alone, without its newline |
-| `L40:12` | line 40 from its twelfth character to the end of the line |
-| `L40-L44` | lines 40 through 44, inclusive, verbatim |
+| Reference      | Selects                                                                        |
+| -------------- | ------------------------------------------------------------------------------ |
+| `L40`          | line 40 alone, without its newline                                             |
+| `L40:12`       | line 40 from its twelfth character to the end of the line                      |
+| `L40-L44`      | lines 40 through 44, inclusive, verbatim                                       |
 | `L40:12-L44:3` | from character 12 of line 40 to character 3 of line 44, inclusive at both ends |
 
 Lines and columns are counted **from 1**, both ends are inclusive, and an
@@ -343,14 +348,14 @@ Within one scope the matchers below are tried in this order; the first that
 matches ends the lookup *for that scope*. In a single-segment reference that
 also ends the whole search.
 
-| # | Matcher | What it finds | Selects |
-| --- | --- | --- | --- |
-| 1 | **Region directive** | `#region <name>` … `#endregion` whose enclosing block is this scope (the whole file for a top-level region) | the lines strictly between the directives |
-| 2 | **Class-like declaration** | `class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`, `union` named `<name>` in this scope | the declaration, or the modified part |
-| 3 | **Method / function** | a named method, constructor, function or arrow-valued property in this scope **that has a body** | the declaration, or the modified part |
-| 4 | **Property** | a field or constant named `<name>` (`private int getUsers = 0;`, `static final String X = …`) | the whole statement |
-| 5 | **Condition literal** | a statement block **in this scope** whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace |
-| 6 | **Comment anchor** | a braced block **in this scope** whose first non-blank line is `//<name>` or `/*<name>*/` | the block, anchor comment through closing brace |
+| #   | Matcher                    | What it finds                                                                                    | Selects                                         |
+| --- | -------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| 1   | **Region directive**       | `#region <name>` … `#endregion` whose enclosing block is this scope (the whole file for a top-level region) | the lines strictly between the directives |
+| 2   | **Class-like declaration** | `class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`, `union` named `<name>` in this scope | the declaration, or the modified part  |
+| 3   | **Method / function**      | a named method, constructor, function or arrow-valued property in this scope **that has a body** | the declaration, or the modified part           |
+| 4   | **Property**               | a field or constant named `<name>` (`private int getUsers = 0;`, `static final String X = …`)    | the whole statement                             |
+| 5   | **Condition literal**      | a statement block **in this scope** whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace |
+| 6   | **Comment anchor**         | a braced block **in this scope** whose first non-blank line is `//<name>` or `/*<name>*/`        | the block, anchor comment through closing brace |
 
 A class-like name beats a same-named constructor. Body-less members (interface
 methods, `abstract` declarations) have nothing to inject and are skipped. A
@@ -426,20 +431,20 @@ scope to widen.
 Nowhere but the end of a path, and as a whole segment. The spellings that make
 that visible:
 
-| Written | Read as | Result |
-| --- | --- | --- |
-| `add`, `Cart/Line`, `Cart/Line/render` | paths of names | the declaration itself |
-| `add/-`, `Cart/Line/-`, `Cart/Line/render/-` | a modifier as the last segment | that block's body |
-| `add/+`, `add/++` | a modifier as the last segment | the declaration with its annotations, then with its doc comment |
-| `add/-,render/++` | two selectors, each with its own path | two pieces, each taking its own scope |
-| `add-`, `render-` | **names** — a `-` between name characters is one | `no section named "add-"` |
-| `add++`, `render+` | a `+` inside a name | error: `"++" is a path segment now; write "#add/++"` |
-| `+add`, `++add`, `-add` | a modifier as the *first* segment | error: it follows the path, not leads it |
-| `a/++/b`, `a/-/b` | a modifier mid-path | error: `may only modify the last path segment` |
-| `a/++/-`, `a/-/++` | two modifiers on one path | error, naming the first as misplaced |
-| `a/+++`, `a/---` | a segment that is nothing but modifiers | error: `carries more than one modifier` |
-| `a/--`, `--brand` | names, in every segment | a CSS custom property is a name |
-| `L40`, `L40-L44` | a line range | unchanged; `L40/+` and `L40-L44/-` are not ranges |
+| Written                                      | Read as                                          | Result                                                          |
+| -------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------- |
+| `add`, `Cart/Line`, `Cart/Line/render`       | paths of names                                   | the declaration itself                                          |
+| `add/-`, `Cart/Line/-`, `Cart/Line/render/-` | a modifier as the last segment                   | that block's body                                               |
+| `add/+`, `add/++`                            | a modifier as the last segment                   | the declaration with its annotations, then with its doc comment |
+| `add/-,render/++`                            | two selectors, each with its own path            | two pieces, each taking its own scope                           |
+| `add-`, `render-`                            | **names** — a `-` between name characters is one | `no section named "add-"`                                       |
+| `add++`, `render+`                           | a `+` inside a name                              | error: `"++" is a path segment now; write "#add/++"`            |
+| `+add`, `++add`, `-add`                      | a modifier as the *first* segment                | error: it follows the path, not leads it                        |
+| `a/++/b`, `a/-/b`                            | a modifier mid-path                              | error: `may only modify the last path segment`                  |
+| `a/++/-`, `a/-/++`                           | two modifiers on one path                        | error, naming the first as misplaced                            |
+| `a/+++`, `a/---`                             | a segment that is nothing but modifiers          | error: `carries more than one modifier`                         |
+| `a/--`, `--brand`                            | names, in every segment                          | a CSS custom property is a name                                 |
+| `L40`, `L40-L44`                             | a line range                                     | unchanged; `L40/+` and `L40-L44/-` are not ranges               |
 
 **A `+` is never part of a name.** That is the one character the grammar spends
 to keep names and modifiers unmistakable: a `-` may sit inside a name, a `+` may
@@ -458,37 +463,37 @@ There is nothing to canonicalise: the modifier is written where it means
 something, so the canonical spelling of a reference is its parsed path with its
 modifier segment re-joined:
 
-| Written | Canonical |
-| --- | --- |
-| `add`, `add/-`, `add/+`, `add/++` | unchanged |
-| `Cart/Line`, `Cart/Line/-`, `Cart/Line/++` | unchanged |
-| ` a , b ` | `a,b` (the whitespace around a selector is not part of it) |
-| `L40-L44`, `L40:12-L44:3` | unchanged (a range has no modifier to move) |
+| Written                                    | Canonical                                                  |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| `add`, `add/-`, `add/+`, `add/++`          | unchanged                                                  |
+| `Cart/Line`, `Cart/Line/-`, `Cart/Line/++` | unchanged                                                  |
+| ` a , b `                                  | `a,b` (the whitespace around a selector is not part of it) |
+| `L40-L44`, `L40:12-L44:3`                  | unchanged (a range has no modifier to move)                |
 
-| Rejected (errors) | Message |
-| --- | --- |
+| Rejected (errors)                                                    | Message                                                                                   |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `a/++/b`, `a/+/b`, `a/-/b` — a modifier that is not the last segment | `"<the modifier>" may only modify the last path segment of "#<the reference as written>"` |
-| `add++`, `add+`, `+add`, `a/b++` — the old suffix or prefix spelling | `"<the modifier>" is a path segment now; write "#<path>/<the modifier>"` |
-| `a/+++`, `a/---` — more than one modifier on one segment | `"#<the reference as written>" carries more than one modifier` |
-| `a//b`, `a/`, `/a` — an empty path segment | `"#<the reference as written>" has an empty path segment` |
-| `L40-`, `L40:x`, `L40-L44/+` — a range that is not one | `"#<the reference as written>" is not a line range; write L<line> or L<line>:<column>` |
-| `L0`, `L1:0` — a line or column below 1 | `"#<the reference as written>" counts lines and columns from 1` |
-| `L44-L40` — a range that ends before it starts | `"#<the reference as written>" ends before it starts` |
-| `add,`, `,add`, `add,,render` — an empty selector | `"#<the reference as written>" has an empty selector` |
+| `add++`, `add+`, `+add`, `a/b++` — the old suffix or prefix spelling | `"<the modifier>" is a path segment now; write "#<path>/<the modifier>"`                  |
+| `a/+++`, `a/---` — more than one modifier on one segment             | `"#<the reference as written>" carries more than one modifier`                            |
+| `a//b`, `a/`, `/a` — an empty path segment                           | `"#<the reference as written>" has an empty path segment`                                 |
+| `L40-`, `L40:x`, `L40-L44/+` — a range that is not one               | `"#<the reference as written>" is not a line range; write L<line> or L<line>:<column>`    |
+| `L0`, `L1:0` — a line or column below 1                              | `"#<the reference as written>" counts lines and columns from 1`                           |
+| `L44-L40` — a range that ends before it starts                       | `"#<the reference as written>" ends before it starts`                                     |
+| `add,`, `,add`, `add,,render` — an empty selector                    | `"#<the reference as written>" has an empty selector`                                     |
 
 ### Modifiers
 
 The modifier segment selects how much of the match comes with it:
 
-| Reference | Injection |
-| --- | --- |
-| `Cart/Line` | the whole inner class declaration |
-| `Cart/Line/-` | `Line`'s body only (no class line, no closing brace) |
-| `Cart/toString/+` | `toString`'s declaration including the annotations above it |
-| `Cart/toString/++` | declaration, its annotations, and the doc comment above them |
-| `getUsers/-` | the body inside the brace pair |
-| `getUsers/+` / `getUsers/++` | the header line, plus a leading doc/annotation block for `++` |
-| `count/-` (property) | the initialiser expression, or the declaration when there is none |
+| Reference                    | Injection                                                         |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `Cart/Line`                  | the whole inner class declaration                                 |
+| `Cart/Line/-`                | `Line`'s body only (no class line, no closing brace)              |
+| `Cart/toString/+`            | `toString`'s declaration including the annotations above it       |
+| `Cart/toString/++`           | declaration, its annotations, and the doc comment above them      |
+| `getUsers/-`                 | the body inside the brace pair                                    |
+| `getUsers/+` / `getUsers/++` | the header line, plus a leading doc/annotation block for `++`     |
+| `count/-` (property)         | the initialiser expression, or the declaration when there is none |
 
 Modifier semantics per match kind:
 
@@ -513,16 +518,72 @@ Modifier semantics per match kind:
 A path has one modifier, because a modifier describes the selection and a
 selection ends where the path does:
 
-| Case | Kind | Behaviour |
-| --- | --- | --- |
-| A modifier before the last segment (`a/++/b`, `a/-/b`) | Error | `"<the modifier>" may only modify the last path segment of "#a/++/b"` |
-| Two modifiers where one is last (`a/++/-`, `a/-/++`) | Error | The first is misplaced, and the message names it |
-| A segment that is nothing but modifiers (`a/+++`, `a/---`) | Error | `"#a/+++" carries more than one modifier` |
-| A modifier on each of two selectors (`add/-,render/++`) | Neither | Each path carries its own; two selectors are not one path |
+| Case                                                       | Kind    | Behaviour                                                             |
+| ---------------------------------------------------------- | ------- | --------------------------------------------------------------------- |
+| A modifier before the last segment (`a/++/b`, `a/-/b`)     | Error   | `"<the modifier>" may only modify the last path segment of "#a/++/b"` |
+| Two modifiers where one is last (`a/++/-`, `a/-/++`)       | Error   | The first is misplaced, and the message names it                      |
+| A segment that is nothing but modifiers (`a/+++`, `a/---`) | Error   | `"#a/+++" carries more than one modifier`                             |
+| A modifier on each of two selectors (`add/-,render/++`)    | Neither | Each path carries its own; two selectors are not one path             |
 
 There is no **warning** anywhere in this grammar: a reference either resolves or
 fails, and the run never exits 1 with every block written. Nothing is guessed,
 so nothing has to be reported as a guess.
+
+## Envelopes
+
+*How a member is selected together with the declaration that holds it. Rules 1
+and 2.*
+
+A method copied out of a class reads as a fragment: indented under nothing, with
+no sign of the type it belongs to. An **envelope** is that declaration's own first
+and last lines, taken verbatim around whatever is selected from inside it, and it
+is written with two marks at the ends of the path that names the holder:
+
+```text
+[Inventory.java#Inventory/^,toString,$]
+                     │         │      └── the class's closing line
+                     │         └── the member, read inside the class
+                     └── the class's declaration line and the line its body opens on
+```
+
+- `^` is the **head**: the declaration line of the block its path names, through
+  the line that block's body opens on — so a wrapped signature comes whole, and a
+  block whose body opens below its header brings that line with it.
+- `$` is the **tail**: the line the same block ends on, which is the closing
+  brace, the `end`, or the line a block with no closing line ends on.
+
+The head and the tail are **one envelope**, not two selections: they must be the
+first and the last selector, the mark is the last segment of its path, and the
+parent may be named on **either** end. The other end then inherits it, which is
+what keeps a reference short:
+
+| Written                                   | Reads as                                               |
+| ----------------------------------------- | ------------------------------------------------------ |
+| `Cart/^,toString,$`                       | `Cart`'s head, `toString`, `Cart`'s tail               |
+| `Cart/^,Cart/toString,Cart/$`             | The same three, with the parent named every time       |
+| `Cart/^,toString,Cart/$`                  | The same three, the parent named on each mark          |
+| `Cart/^,toString/-,Cart/$`                | `Cart`'s head, `toString`'s **body**, `Cart`'s tail    |
+| `Cart/^,Line/render,Cart/$`               | `Cart`'s head, a method of its nested `Line`, its tail |
+
+**What sits between the marks is read inside the block they name.** The parent is
+written once, and every selector between the marks is scoped to it, so a member
+that is not unique in the file — `toString` — needs no qualification. A selector
+that *does* name the parent is left as written, because saying it again says the
+same thing: the long form above resolves byte for byte like the short one.
+
+An envelope is **verbatim**, like every other code selection: the head and the
+tail are the file's own lines, indentation included, so the pieces join into text
+that reads as the declaration with the selected member still inside it. The
+answer's `ranges` are one range per selector, so a host can highlight the head,
+the member and the tail as three places — or merge them, since the envelope's
+bounds already span the block.
+
+An envelope **composes** with the rest of the grammar: a line range may take the
+place of the member (`Cart/^,L12-L14,Cart/$`), and a modifier may select less of
+one (`toString/-`). What an envelope may not be is *nested*: one reference has one
+`^` and one `$`, so a second pair inside the first is the error below rather than
+a deeper reading. Selecting a nested member inside its own block's envelope is
+written as one pair for the outer block, as the fourth row above shows.
 
 ## Errors
 
@@ -531,27 +592,32 @@ Every message quotes the reference **exactly as the user wrote it** (call it
 the modifier is written where it means something). Where the message names a
 selector, it is that selector as written (`L40-`), not the whole reference:
 
-| Condition | Message shape |
-| --- | --- |
-| empty reference | `"#" names nothing` |
-| empty segment, leading/trailing `/`, `//` | `"#<raw>" has an empty path segment` |
-| a modifier that is not the last segment (`a/++/b`, `a/-/b`) | `"<the modifier>" may only modify the last path segment of "#<raw>"` |
-| the old suffix or prefix spelling (`add++`, `+add`) | `"<the modifier>" is a path segment now; write "#<path>/<the modifier>"` |
-| more than one modifier on one segment (`a/+++`, `a/---`) | `"#<raw>" carries more than one modifier` |
-| more than 8 segments | `"#<raw>" is deeper than 8 sections` |
-| an empty selector (`a,`, `,a`, `a,,b`) | `"#<raw>" has an empty selector` |
-| a range that is not one, or one carrying a modifier (`L40-`, `L40:x`, `L40-L44/+`) | `"#<selector>" is not a line range; write L<line> or L<line>:<column>` |
-| a line or column below 1 (`L0`, `L1:0`) | `"#<selector>" counts lines and columns from 1` |
-| a range that ends before it starts (`L44-L40`) | `"#<selector>" ends before it starts` |
-| a line the file does not have (`L31` in a 30-line file) | `"#<selector>": the file has <n> line(s)` |
-| a column past the end of its line | `"#<selector>": line <n> has <m> character(s)` |
+| Condition                                                                             | Message shape                                                                        |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| empty reference                                                                       | `"#" names nothing`                                                                  |
+| empty segment, leading/trailing `/`, `//`                                             | `"#<raw>" has an empty path segment`                                                 |
+| a modifier that is not the last segment (`a/++/b`, `a/-/b`)                           | `"<the modifier>" may only modify the last path segment of "#<raw>"`                 |
+| the old suffix or prefix spelling (`add++`, `+add`)                                   | `"<the modifier>" is a path segment now; write "#<path>/<the modifier>"`             |
+| more than one modifier on one segment (`a/+++`, `a/---`)                              | `"#<raw>" carries more than one modifier`                                            |
+| more than 8 segments                                                                  | `"#<raw>" is deeper than 8 sections`                                                 |
+| an empty selector (`a,`, `,a`, `a,,b`)                                                | `"#<raw>" has an empty selector`                                                     |
+| a range that is not one, or one carrying a modifier (`L40-`, `L40:x`, `L40-L44/+`)    | `"#<selector>" is not a line range; write L<line> or L<line>:<column>`               |
+| a line or column below 1 (`L0`, `L1:0`)                                               | `"#<selector>" counts lines and columns from 1`                                      |
+| a range that ends before it starts (`L44-L40`)                                        | `"#<selector>" ends before it starts`                                                |
+| a line the file does not have (`L31` in a 30-line file)                               | `"#<selector>": the file has <n> line(s)`                                            |
+| a column past the end of its line                                                     | `"#<selector>": line <n> has <m> character(s)`                                       |
 | a line range in a rule that renders its selection (`.json`, `.yaml`, `.toml`, `.ini`) | `"#<selector>" is a line range, which only the code rule reads; "<rule>" reads keys` |
-| a segment matches nothing anywhere | `no "#region <name>" found, and no section named "<name>"` |
-| a class/block is matched but path remains | `"<name>" is not a container` |
-| a mid-path scope does not exist | `no section named "<name>" in "<previous>"` |
-| two blocks at one level answer to the selection's name | `"<name>" is declared <n> times; names must be unique` |
-| a key, table or section appears twice (YAML, TOML, INI) | `"<path>": key "<key>" appears <n> times; names must be unique` (the `describe` names the format's own thing: `key`, `table "[a]"`, `section "[a]"`) |
-| two CSS rules at one level answer to one selector | `"<selector>" matches <n> blocks; the name must be unique` |
+| a segment matches nothing anywhere                                                    | `no "#region <name>" found, and no section named "<name>"`                           |
+| a class/block is matched but path remains                                             | `"<name>" is not a container`                                                        |
+| a mid-path scope does not exist                                                       | `no section named "<name>" in "<previous>"`                                          |
+| two blocks at one level answer to the selection's name                                | `"<name>" is declared <n> times; names must be unique`                               |
+| a key, table or section appears twice (YAML, TOML, INI)                               | `"<path>": key "<key>" appears <n> times; names must be unique` (the `describe` names the format's own thing: `key`, `table "[a]"`, `section "[a]"`) |
+| two CSS rules at one level answer to one selector                                     | `"<selector>" matches <n> blocks; the name must be unique`                           |
+| an envelope mark written alone (`Cart/^`, `Cart/$`)                                   | `"#Cart/^": a lone "^" has nothing to close` (and `to open` for `$`)                 |
+| an envelope whose ends are not first and last                                         | `"#<raw>": an envelope is "^" first and "$" last, around what they open and close`   |
+| more than one `^` or more than one `$`                                                | `"#<raw>": an envelope has one "^" and one "$"`                                      |
+| an envelope whose ends name different blocks                                          | `"#<raw>": "^" opens "<a>" and "$" closes "<b>"; they must be the same block`        |
+| neither end names a block (`^,$`)                                                     | `"#<raw>": neither "^" nor "$" names a block, so there is nothing to open or close`  |
 
 A missing, duplicate or unclosed `#region`/`#endregion` directive is reported by
 the region directive itself (see `extractRegion`) and is not part of this
@@ -576,29 +642,35 @@ line, and describes the rest (read the fixture for the full bytes).
 Given `test/fixtures/Example.java` — a `Cart` class containing an annotated,
 documented `toString()` and an inner `Line` with a `render()`:
 
-| Reference | Result |
-| --- | --- |
-| `toString` | `public String toString() { … }`, signature line through closing brace |
-| `toString/-` | `        return String.join(",", items);` |
-| `toString/+` | the declaration plus the `@Override` above it |
-| `toString/++` | that plus the `/** Add one item to this cart. */` doc comment |
-| `Line` | the `public static class Line { … }` declaration, doc comment excluded |
-| `Cart/Line` | identical to `Line` |
-| `Cart/toString` | identical to `toString` |
-| `Cart/Line/render` | the `render` declaration, line through closing brace |
-| `Cart/Line/render/-` | `            return name + " x" + quantity;` |
-| `Cart/Line/-` | `Line`'s body, without the class line or the closing brace |
-| `Line/toString` | error: `no section named "toString" in "Line"` |
-| `Cart/Line/render/extra` | error: `render` is not a container |
-| `Cart/Cart` | error: `Cart` is not a container (a class is a scope, not a section) |
-| `L12-L14` | the same three lines as `toString`, byte for byte |
-| `L13` | the same line as `toString/-` |
-| `L13:9` | `        return String.join(",", items);` from its ninth character: `return String.join(",", items);` |
-| `L4:8-L4:21` | `java.util.List` — the import's class, from column to column |
-| `L31` | error: `"#L31": the file has 30 line(s)` |
-| `toString,L1-L3` | `toString`'s three lines, then the first three lines of the file, joined with a newline |
-| `toString,L16-L20` | the `toString` declaration and the opening of the `Line` class — two pieces, two `ranges` entries |
-| `add/-,render/++` | the body of `add` and the annotated declaration of `render`, each taking the modifier written on its own path |
+| Reference                     | Result                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| `toString`                    | `public String toString() { … }`, signature line through closing brace                            |
+| `toString/-`                  | `        return String.join(",", items);`                                                         |
+| `toString/+`                  | the declaration plus the `@Override` above it                                                     |
+| `toString/++`                 | that plus the `/** Add one item to this cart. */` doc comment                                     |
+| `Line`                        | the `public static class Line { … }` declaration, doc comment excluded                            |
+| `Cart/Line`                   | identical to `Line`                                                                               |
+| `Cart/toString`               | identical to `toString`                                                                           |
+| `Cart/Line/render`            | the `render` declaration, line through closing brace                                              |
+| `Cart/Line/render/-`          | `            return name + " x" + quantity;`                                                      |
+| `Cart/Line/-`                 | `Line`'s body, without the class line or the closing brace                                        |
+| `Line/toString`               | error: `no section named "toString" in "Line"`                                                    |
+| `Cart/Line/render/extra`      | error: `render` is not a container                                                                |
+| `Cart/Cart`                   | error: `Cart` is not a container (a class is a scope, not a section)                              |
+| `L12-L14`                     | the same three lines as `toString`, byte for byte                                                 |
+| `L13`                         | the same line as `toString/-`                                                                     |
+| `L13:9`                       | `        return String.join(",", items);` from its ninth character: `return String.join(",", items);` |
+| `L4:8-L4:21`                  | `java.util.List` — the import's class, from column to column                                      |
+| `L31`                         | error: `"#L31": the file has 30 line(s)`                                                          |
+| `toString,L1-L3`              | `toString`'s three lines, then the first three lines of the file, joined with a newline           |
+| `toString,L16-L20`            | the `toString` declaration and the opening of the `Line` class — two pieces, two `ranges` entries |
+| `add/-,render/++`             | the body of `add` and the annotated declaration of `render`, each taking the modifier written on its own path |
+| `Cart/^,toString,$`           | `Cart`'s head, the three lines of `toString`, then `Cart`'s tail — three pieces, three `ranges` entries |
+| `Cart/^,Cart/toString,Cart/$` | byte for byte the same as the row above, with the parent named on every selector                  |
+| `Cart/^,Line/render,Cart/$`   | `Cart`'s head, `Line`'s `render`, `Cart`'s tail — the member is read inside `Cart`                |
+| `Cart/^,L12-L14,Cart/$`       | the same text, with a line range in place of the member                                           |
+| `Cart/^`                      | error: `"#Cart/^": a lone "^" has nothing to close`                                               |
+| `Cart/^,Line/render,Line/$`   | error: `"#Cart/^,Line/render,Line/$": "^" opens "Cart" and "$" closes "Line"; they must be the same block` |
 
 A reference of several selectors answers with one `text` — the pieces joined by a
 newline — and a `ranges` list with one entry per selector, so a consumer can
@@ -609,16 +681,16 @@ Given `test/fixtures/Anchors.java` — a method `dispatch` whose body holds an
 the anchor comment `{ //getUsers`, and an `other` method whose body opens with
 `//getOrders`:
 
-| Reference | Result |
-| --- | --- |
-| `getUsers` | the `handler` anchor block — `handler` is a member of the class scope, so it is matched before the `if` block nested inside `dispatch`, even though `dispatch` comes sooner |
-| `getUsers/-` | `handler`'s body only, the anchor comment excluded |
-| `getOrders` | the `other` anchor block, for the same reason — it beats the `else if ("getOrders"…)` inside `dispatch` |
-| `dispatch/getUsers` | the `if` block, header line through closing brace, reached explicitly via the method's scope |
-| `dispatch/getOrders` | the `else if` segment, header line through closing brace |
-| `handler/getUsers` | identical to `getUsers` |
-| `other/getOrders` | identical to `getOrders` |
-| `getusers` | error: case-sensitive exact-byte matching |
+| Reference            | Result                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| `getUsers`           | the `handler` anchor block — `handler` is a member of the class scope, so it is matched before the `if` block nested inside `dispatch`, even though `dispatch` comes sooner |
+| `getUsers/-`         | `handler`'s body only, the anchor comment excluded                                           |
+| `getOrders`          | the `other` anchor block, for the same reason — it beats the `else if ("getOrders"…)` inside `dispatch` |
+| `dispatch/getUsers`  | the `if` block, header line through closing brace, reached explicitly via the method's scope |
+| `dispatch/getOrders` | the `else if` segment, header line through closing brace                                     |
+| `handler/getUsers`   | identical to `getUsers`                                                                      |
+| `other/getOrders`    | identical to `getOrders`                                                                     |
+| `getusers`           | error: case-sensitive exact-byte matching                                                    |
 
 The rule that decided the first row, in its minimal shape — a method and a
 same-named block inside an earlier method of the same class:
@@ -632,10 +704,10 @@ class Svc {
 }
 ```
 
-| Reference | Result |
-| --- | --- |
-| `doSomeAction` | the method — matched at the class's depth, before the walk descends into `bar` |
-| `bar/doSomeAction` | the `if` block inside `bar`, reached explicitly via the method's scope |
+| Reference          | Result                                                                         |
+| ------------------ | ------------------------------------------------------------------------------ |
+| `doSomeAction`     | the method — matched at the class's depth, before the walk descends into `bar` |
+| `bar/doSomeAction` | the `if` block inside `bar`, reached explicitly via the method's scope         |
 
 ## Not a parser
 
@@ -753,35 +825,35 @@ unknown type, which then takes the default engine). The lexers are built on a
 shared one-pass tokenizer, `src/js/scanner/tokenizer.js`, parameterised by
 syntax; three files carry the work:
 
-| File | What it is |
-| --- | --- |
-| `syntaxes.js` | the language table: one object per language, all data |
+| File           | What it is                                             |
+| -------------- | ------------------------------------------------------ |
+| `syntaxes.js`  | the language table: one object per language, all data  |
 | `tokenizer.js` | the one-pass engine: mask, comment spans, `if` clauses |
-| `lexers.js` | extension → lexer, built from the table (`lexerFor`) |
+| `lexers.js`    | extension → lexer, built from the table (`lexerFor`)   |
 
 A language that is not in the table takes the default engine — the same answer
 an unknown type gets — so an entry earns its keep only where the union is wrong
 for that language:
 
-| Language | Extensions | The construct the entry exists for |
-| --- | --- | --- |
-| JavaScript / TypeScript | `js` `mjs` `cjs` `jsx` `ts` `tsx` `mts` `cts` | backtick templates |
-| Java | `java` | text blocks `"""` |
-| Zig | `zig` | **nested** block comments, `\\` multiline strings |
-| Go | `go` | backtick raw strings (no escapes at all) |
-| Rust | `rs` | nested block comments, `r#"…"#`, and `'a` (lifetime) versus `'a'` (char) |
-| Python | `py` `pyi` | `"""` / `'''`, raw `r"…"` |
-| C# | `cs` | verbatim `@"…""…"`, raw `"""` |
-| Kotlin | `kt` `kts` | nested block comments, `"""` |
-| PHP | `php` `phtml` | `<<<EOT` heredocs; `#[Attribute]` is not a `#` comment |
-| Ruby | `rb` `rake` `gemspec` | `=begin` / `=end`, `<<~TAG` heredocs (`<<` stays a shift) |
-| SQL | `sql` | `''` doubling, `$$ … $$` |
-| Shell | `sh` `bash` `zsh` | `<<EOF` heredocs, `'…'` takes no escapes |
-| VB | `vb` `bas` `vbs` | `""` doubling |
-| Haskell | `hs` `lhs` | nested `{- -}` |
-| YAML | `yaml` `yml` | `'…'` doubling, both quoted forms folding across lines |
-| TOML | `toml` | `"""` / `'''` |
-| INI | `ini` `cfg` `properties` | `;` and `#` comments |
+| Language                | Extensions                                    | The construct the entry exists for                                       |
+| ----------------------- | --------------------------------------------- | ------------------------------------------------------------------------ |
+| JavaScript / TypeScript | `js` `mjs` `cjs` `jsx` `ts` `tsx` `mts` `cts` | backtick templates                                                       |
+| Java                    | `java`                                        | text blocks `"""`                                                        |
+| Zig                     | `zig`                                         | **nested** block comments, `\\` multiline strings                        |
+| Go                      | `go`                                          | backtick raw strings (no escapes at all)                                 |
+| Rust                    | `rs`                                          | nested block comments, `r#"…"#`, and `'a` (lifetime) versus `'a'` (char) |
+| Python                  | `py` `pyi`                                    | `"""` / `'''`, raw `r"…"`                                                |
+| C#                      | `cs`                                          | verbatim `@"…""…"`, raw `"""`                                            |
+| Kotlin                  | `kt` `kts`                                    | nested block comments, `"""`                                             |
+| PHP                     | `php` `phtml`                                 | `<<<EOT` heredocs; `#[Attribute]` is not a `#` comment                   |
+| Ruby                    | `rb` `rake` `gemspec`                         | `=begin` / `=end`, `<<~TAG` heredocs (`<<` stays a shift)                |
+| SQL                     | `sql`                                         | `''` doubling, `$$ … $$`                                                 |
+| Shell                   | `sh` `bash` `zsh`                             | `<<EOF` heredocs, `'…'` takes no escapes                                 |
+| VB                      | `vb` `bas` `vbs`                              | `""` doubling                                                            |
+| Haskell                 | `hs` `lhs`                                    | nested `{- -}`                                                           |
+| YAML                    | `yaml` `yml`                                  | `'…'` doubling, both quoted forms folding across lines                   |
+| TOML                    | `toml`                                        | `"""` / `'''`                                                            |
+| INI                     | `ini` `cfg` `properties`                      | `;` and `#` comments                                                     |
 
 The knobs an entry may use — several line-comment spellings, several block pairs
 (`nested`, `lineStart`), string forms (`escape: 'doubling'`, `multiline`,
@@ -855,12 +927,12 @@ A resolution is four answers rather than one, because the consumers of it need
 different ones — and answering the same question twice is how two answers start
 to disagree:
 
-| Field | What it is | Who needs it |
-| --- | --- | --- |
-| `text` | the bytes the section stands for — every selector's text, joined with a newline in the order written | an injector, which writes them into a document |
-| `ranges` | one **1-based inclusive** line range per selector, in the order written | a host, which highlights or navigates to each piece rather than to everything between them |
-| `startLine`, `endLine` | the outermost bounds of `ranges` | a host that wants the one span the selection occupies |
-| `kind` | the matcher that found a single selector: `region`, `declaration`, `property`, `condition`, `anchor` or `lines` (a line range); `multiple` when the reference named several | anything that has to explain the answer, which is what makes a heuristic arguable instead of mysterious |
+| Field                  | What it is                                                              | Who needs it                                                                               |
+| ---------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `text`                 | the bytes the section stands for — every selector's text, joined with a newline in the order written | an injector, which writes them into a document                |
+| `ranges`               | one **1-based inclusive** line range per selector, in the order written | a host, which highlights or navigates to each piece rather than to everything between them |
+| `startLine`, `endLine` | the outermost bounds of `ranges`                                        | a host that wants the one span the selection occupies                                      |
+| `kind`                 | the matcher that found a single selector: `region`, `declaration`, `property`, `condition`, `anchor` or `lines` (a line range); `multiple` when the reference named several | anything that has to explain the answer, which is what makes a heuristic arguable instead of mysterious |
 
 The ranges are computed from the same slices the text was made from, so they
 cannot disagree with it; a rendering that prepends a line of its own — the `if`

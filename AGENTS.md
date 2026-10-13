@@ -73,6 +73,13 @@
   VB's `If x = "y" Then` header, Shell's `case` arms, Haskell's `case`, CSS's
   ambiguous `.card` — the page shows the nearest example that *does* resolve and
   says why in the prose; no page carries a fence the generator cannot verify.
+- **An envelope** (`Inventory/^,toString,$`) is the Java page's answer to a method
+  that reads as a fragment: the parent's declaration line, the member, and the
+  parent's closing line, injected as three pieces with three ranges. `^` and `$`
+  are whole path segments, and the parent may be named on either end. It is
+  specified under [Envelopes](./doc/section-matching.md#envelopes) and recorded in
+  the RFC change log; a language page may use it wherever a member needs the
+  declaration that holds it.
 - Generator: `tools/build-demo.mjs`, run with Bun:
   `bun tools/build-demo.mjs` (or `npm run demo`) writes every page,
   `bun tools/build-demo.mjs --check` (or `npm run demo:check`) exits 1 when one
@@ -209,13 +216,17 @@
   `rust/section/src/syntaxes.rs` are the tables; the Rust declaration matchers are
   hand-written in `rust/section/src/tokenizer.rs` (no regex engine, by design),
   which is exactly why the shape rows matter there.
-- **One known port gap.** A Ruby name may end in `!`, `?` or `=` (`add!`,
+- **Two known port gaps.** A Ruby name may end in `!`, `?` or `=` (`add!`,
   `empty?`, `add=`), and the JavaScript resolver reads such a segment as that name
   rather than as a name plus a modifier; the lexer reports the name without its
   suffix as `base` for that lookup. The Rust port reports the whole name and the
   same `headerFrom`, so the corpus rows it asserts are unchanged, but it has no
   `base` — so `#add!` resolves in JavaScript and not there yet, while `#add` is
-  unaffected in both.
+  unaffected in both. **Envelopes** (`Inventory/^,toString,$`) are likewise
+  JavaScript-only for now: the 22 corpus rows carrying a `^` or `$` are rows every
+  port must answer, and a port fails on the first one it cannot. A port that adds
+  them needs the two marks in its parser and the head/tail piece in its planner
+  ([Envelopes](./doc/section-matching.md#envelopes)).
 - The Java library has no runtime dependencies and no I/O; everything a caller
   needs is a `String` and a reference. `rust/section/src/tokenizer.rs` carries one
   hard rule worth knowing: every offset counts **UTF-16 code units**, as the

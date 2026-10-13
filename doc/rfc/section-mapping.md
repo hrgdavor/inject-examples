@@ -1,14 +1,14 @@
 # RFC 1 — Section mapping syntax
 
-| | |
-| --- | --- |
-| **Status** | Release candidate for 1.0 — **not** 1.0 yet. The design questions are settled ([§9](#9-decisions)); what remains is to exercise the document against a fresh port. |
-| **Version** | `0.9-rc` (see [Document status](#10-document-status-and-versioning)) |
-| **Supersedes** | nothing |
-| **Normative detail** | [`doc/section-matching.md`](../section-matching.md) — the resolution rules |
-| **Conformance data** | [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json), [`test/vectors/lexical-vectors.json`](../../test/vectors/lexical-vectors.json), [`test/vectors/manifest.json`](../../test/vectors/manifest.json) |
+|                              |                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| **Status**                   | Release candidate for 1.0 — **not** 1.0 yet. The design questions are settled ([§9](#9-decisions)); what remains is to exercise the document against a fresh port. |
+| **Version**                  | `0.9-rc` (see [Document status](#10-document-status-and-versioning))       |
+| **Supersedes**               | nothing                                                                    |
+| **Normative detail**         | [`doc/section-matching.md`](../section-matching.md) — the resolution rules |
+| **Conformance data**         | [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json), [`test/vectors/lexical-vectors.json`](../../test/vectors/lexical-vectors.json), [`test/vectors/manifest.json`](../../test/vectors/manifest.json) |
 | **Reference implementation** | [`lib/section.mjs`](../../lib/section.mjs) (matcher), [`index.mjs`](../../index.mjs) (document rules) |
-| **Discussion** | the eight settled questions are in [§9](#9-decisions) |
+| **Discussion**               | the eight settled questions are in [§9](#9-decisions)                      |
 
 ---
 
@@ -125,16 +125,16 @@ block, or several in a written order, injected into a fenced code block.
 
 ### 3.3 The boundary, stated once
 
-| | **A — navigation** | **B — injection (primary)** |
-| --- | --- | --- |
-| Consumer | IDE, editor, site link | documentation pipeline |
-| Needs the text | no | **yes, byte-exact** |
-| Needs ranges | yes | yes |
-| Several selectors | usually one | **composed, in order** |
-| Non-code files (YAML/TOML/INI/JSON) | not necessarily | **must work** |
-| Failure policy | host falls back | **hard error** |
-| May modify the target | never | never (it only reads) |
-| Precision | exact range or error; *closeness* is the host's call | exact, no approximation tolerated |
+|                                     | **A — navigation**                                   | **B — injection (primary)**       |
+| ----------------------------------- | ---------------------------------------------------- | --------------------------------- |
+| Consumer                            | IDE, editor, site link                               | documentation pipeline            |
+| Needs the text                      | no                                                   | **yes, byte-exact**               |
+| Needs ranges                        | yes                                                  | yes                               |
+| Several selectors                   | usually one                                          | **composed, in order**            |
+| Non-code files (YAML/TOML/INI/JSON) | not necessarily                                      | **must work**                     |
+| Failure policy                      | host falls back                                      | **hard error**                    |
+| May modify the target               | never                                                | never (it only reads)             |
+| Precision                           | exact range or error; *closeness* is the host's call | exact, no approximation tolerated |
 
 **The dividing rule.** Both use cases call the *same* resolution function and get
 the same answer object. They differ only in what they do *afterwards*: A may
@@ -205,13 +205,13 @@ That division is what the table below assumes; where the host's AST is used, the
 rows are satisfied by the host plus the mapper's grammar, and the mapper's own
 scan is not involved at all.
 
-| The server wants | Built from | What the mapper supplies |
-| --- | --- | --- |
-| completion of a reference (after `#`, after `/`, after `,`) | `parseSelectors`/`parseReference` | a pure, context-free parse that reads no file, so it is safe to call on every keystroke |
-| a preview of a completion item | `parseSelectors` | the structured `Reference`: `segments`, `scope`, `selectors[]`, and the canonical spelling |
-| go-to-definition, and document highlight | `planSection`, or the host's AST | `startLine`/`endLine`, and one range per selector so each piece is highlighted separately |
-| a diagnostic for a broken fragment | `planSection` | a specific message that names the selector at fault; a reference either resolves or fails, so there is nothing halfway to report |
-| semantic tokens, folding, "find all references to this section" | `planSection`, or the host's AST | `reference.selectors[]` and `ranges` |
+| The server wants                                                | Built from                        | What the mapper supplies                                                                   |
+| --------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
+| completion of a reference (after `#`, after `/`, after `,`)     | `parseSelectors`/`parseReference` | a pure, context-free parse that reads no file, so it is safe to call on every keystroke    |
+| a preview of a completion item                                  | `parseSelectors`                  | the structured `Reference`: `segments`, `scope`, `selectors[]`, and the canonical spelling |
+| go-to-definition, and document highlight                        | `planSection`, or the host's AST  | `startLine`/`endLine`, and one range per selector so each piece is highlighted separately  |
+| a diagnostic for a broken fragment                              | `planSection`                     | a specific message that names the selector at fault; a reference either resolves or fails, so there is nothing halfway to report |
+| semantic tokens, folding, "find all references to this section" | `planSection`, or the host's AST  | `reference.selectors[]` and `ranges`                                                       |
 
 **Two properties make this work, and both are already in the interface.**
 
@@ -281,19 +281,19 @@ given declaration change invalidates them is the writer's problem.
 
 ## 4. Terminology
 
-| Term | Meaning |
-| --- | --- |
-| **source** | the bytes being mapped (one file), LF-normalised for scanning |
-| **mask** | the source with comments and string literals blanked to spaces, same length, every newline at its own offset |
-| **block** | a braced or indented span: a class-like body, a method body, a statement body, or a block introduced by an anchor comment |
-| **scope** | the file (scope 0), or a block (its members are the next scope down) |
-| **selector** | one element of a reference: a path, or a line range |
-| **reference** | a `,`-separated list of selectors, in the order written |
-| **modifier** | `-`, `+`, `++` — chooses *how much* of a match to take, never *which* |
-| **scope name** | the four renderings a modifier selects: `declaration`, `body`, `annotated`, `documented` |
-| **selection** | one resolved selector: its text and its line range |
-| **answer** | the whole result: composed text, outermost range, one range per selector, per-selection kind |
-| **lexer** | the language-specific half: masking, comment spans, and optionally the declaration shapes and annotation spelling a language adds |
+| Term           | Meaning                                                                                      |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| **source**     | the bytes being mapped (one file), LF-normalised for scanning                                |
+| **mask**       | the source with comments and string literals blanked to spaces, same length, every newline at its own offset |
+| **block**      | a braced or indented span: a class-like body, a method body, a statement body, or a block introduced by an anchor comment |
+| **scope**      | the file (scope 0), or a block (its members are the next scope down)                         |
+| **selector**   | one element of a reference: a path, or a line range                                          |
+| **reference**  | a `,`-separated list of selectors, in the order written                                      |
+| **modifier**   | `-`, `+`, `++` — chooses *how much* of a match to take, never *which*                        |
+| **scope name** | the four renderings a modifier selects: `declaration`, `body`, `annotated`, `documented`     |
+| **selection**  | one resolved selector: its text and its line range                                           |
+| **answer**     | the whole result: composed text, outermost range, one range per selector, per-selection kind |
+| **lexer**      | the language-specific half: masking, comment spans, and optionally the declaration shapes and annotation spelling a language adds |
 
 ---
 
@@ -351,7 +351,8 @@ Reference := {
   scope:     'declaration' | 'body' | 'annotated' | 'documented'
 }
 
-Selector := { kind: 'path',  raw: string, segments: string[], scope: Scope }
+Selector := { kind: 'path',  raw: string, segments: string[], scope: Scope,
+              envelope?: { mark: '^' | '$', parent: string[] | null } }
           | { kind: 'lines', raw: string, from: LinePoint, to: LinePoint | null }
 ```
 
@@ -385,18 +386,18 @@ One error type (a `SectionReferenceError`, or a language equivalent that carries
 the same message text). Messages are part of the contract — the conformance
 suite asserts them — and they always quote the reference or selector at fault:
 
-| Situation | Message shape |
-| --- | --- |
-| empty reference | `"#" names nothing` |
-| empty selector | `"#a," has an empty selector` |
-| malformed range | `"#L40-" is not a line range; write L<line> or L<line>:<column>` |
-| zero/negative | `"#L0" counts lines and columns from 1` |
-| reversed | `"#L44-L40" ends before it starts` |
-| past the end | `"#L31": the file has 30 line(s)` |
-| too deep | `"#a/b/c/d/e/f/g/h/i" is deeper than 8 sections` |
-| a modifier that is not the last segment | `"++" may only modify the last path segment of "#a/++/b"` |
-| the old suffix or prefix spelling | `"++" is a path segment now; write "#a/++"` |
-| not found | `no section named "render" in "Cart"` |
+| Situation                               | Message shape                                                    |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| empty reference                         | `"#" names nothing`                                              |
+| empty selector                          | `"#a," has an empty selector`                                    |
+| malformed range                         | `"#L40-" is not a line range; write L<line> or L<line>:<column>` |
+| zero/negative                           | `"#L0" counts lines and columns from 1`                          |
+| reversed                                | `"#L44-L40" ends before it starts`                               |
+| past the end                            | `"#L31": the file has 30 line(s)`                                |
+| too deep                                | `"#a/b/c/d/e/f/g/h/i" is deeper than 8 sections`                 |
+| a modifier that is not the last segment | `"++" may only modify the last path segment of "#a/++/b"`        |
+| the old suffix or prefix spelling       | `"++" is a path segment now; write "#a/++"`                      |
+| not found                               | `no section named "render" in "Cart"`                            |
 
 **Nothing in this grammar is a warning.** A reference either resolves or fails, so
 there is no third answer to carry: a modifier written twice on one path is
@@ -478,15 +479,15 @@ bug in the *port* by definition.
 
 ### 7.1 The three corpora
 
-| Corpus | Rows | Asserts | Read by |
-| --- | --- | --- | --- |
-| `test/vectors/section-vectors.json` | 195 | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust |
-| — of which grammar-only (`input: null`) | 58 | canonical spelling and the thrown message; no file, no lexer | do. |
-| — of which resolution | 137 | text and ranges against a fixture | do. |
-| — of which expect an **error** | 65 | the failure path: a missing name, an ambiguous name, a malformed selector, a range past the end, a second `#`, a misplaced modifier | do. |
-| `test/vectors/lexical-vectors.json` → `masks` | 46 | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust |
-| `test/vectors/lexical-vectors.json` → `shapes` | 43 | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line` | JS, Zig, Java, Rust |
-| `test/vectors/manifest.json` | — | the machine-readable map of the above (see §7.3) | tooling, humans |
+| Corpus                                         | Rows | Asserts                                                                                            | Read by             |
+| ---------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------- | ------------------- |
+| `test/vectors/section-vectors.json`            | 195  | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust |
+| — of which grammar-only (`input: null`)        | 58   | canonical spelling and the thrown message; no file, no lexer                                       | do.                 |
+| — of which resolution                          | 137  | text and ranges against a fixture                                                                  | do.                 |
+| — of which expect an **error**                 | 65   | the failure path: a missing name, an ambiguous name, a malformed selector, a range past the end, a second `#`, a misplaced modifier | do. |
+| `test/vectors/lexical-vectors.json` → `masks`  | 46   | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust |
+| `test/vectors/lexical-vectors.json` → `shapes` | 43   | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line`     | JS, Zig, Java, Rust |
+| `test/vectors/manifest.json`                   | —    | the machine-readable map of the above (see §7.3)                                                   | tooling, humans     |
 
 The `kind` a resolution row reports, as a census of the suite:
 `declaration` 68, `property` 10, `anchor` 9, `lines` 6, `region` 5,
@@ -583,13 +584,13 @@ error messages, the same conformance rows.
 
 **What changes when one exists.**
 
-| | Standalone (heuristic) engine | AST variant |
-| --- | --- | --- |
-| Correctness for its language | best-effort by shape, per §6 | **source of truth for that language** |
-| Which constructs it resolves | the shapes it recognises | everything the grammar defines |
-| Cost | no parse; microseconds | a parse of the file, or **none, when the host has already parsed it** |
-| Dependencies | none, vendorable | the language's parser |
-| Status | the general engine, all languages; **the fallback wherever a host AST exists** | the authority for its own language, and **the preferred engine in an IDE that holds one** |
+|                              | Standalone (heuristic) engine                                                  | AST variant                                                                               |
+| ---------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Correctness for its language | best-effort by shape, per §6                                                   | **source of truth for that language**                                                     |
+| Which constructs it resolves | the shapes it recognises                                                       | everything the grammar defines                                                            |
+| Cost                         | no parse; microseconds                                                         | a parse of the file, or **none, when the host has already parsed it**                     |
+| Dependencies                 | none, vendorable                                                               | the language's parser                                                                     |
+| Status                       | the general engine, all languages; **the fallback wherever a host AST exists** | the authority for its own language, and **the preferred engine in an IDE that holds one** |
 
 **The rules that follow.**
 
@@ -654,13 +655,13 @@ error messages, the same conformance rows.
 
 **The two environments, side by side.** The same contract, served two ways:
 
-| | IDE / LSP host | Documentation pipeline (this project) |
-| --- | --- | --- |
-| AST available | usually, for the edited language | no |
-| Preferred engine | **the host's AST** | the standalone engine |
-| Standalone engine's role | fallback, and coverage for languages the host lacks | the only engine |
-| Cost that matters | per keystroke, inside an already-warm document | per build, over many files |
-| What must not differ | the resolved range and the messages | the same |
+|                          | IDE / LSP host                                      | Documentation pipeline (this project) |
+| ------------------------ | --------------------------------------------------- | ------------------------------------- |
+| AST available            | usually, for the edited language                    | no                                    |
+| Preferred engine         | **the host's AST**                                  | the standalone engine                 |
+| Standalone engine's role | fallback, and coverage for languages the host lacks | the only engine                       |
+| Cost that matters        | per keystroke, inside an already-warm document      | per build, over many files            |
+| What must not differ     | the resolved range and the messages                 | the same                              |
 
 **Nothing here is scheduled**, and none of it is needed for 1.0. The point of
 writing it down now is that 1.0 does not have to be redesigned to allow it: the
@@ -674,15 +675,15 @@ arbiter, and the engine is already a parameter.
 The suite is deliberately layered, cheapest first. An implementer should work
 down this list and expect to stop at the first layer that fails.
 
-| Layer | Where | What it proves | Depends on |
-| --- | --- | --- | --- |
-| **1. Grammar** | `grammar:*` rows | the reference is parsed and canonicalised; malformed input throws the specified message | nothing (no file, no lexer) |
-| **2. Lexical** | `masks` rows | comments and strings are blanked; length and newlines preserved | a lexer table |
-| **3. Shapes** | `shapes` rows | the language's own declaration spellings are read | layer 2 |
-| **4. Blocks** | `scanBlocks:*` tests in `test.mjs` | the block tree: nesting, anchors, regions, conditions, Allman/indented/arrow bodies | layers 2–3 |
-| **5. Resolution** | resolution rows | names, paths, scopes, modifiers, line ranges, several selectors | layers 1–4 |
-| **6. Document rules** | `test.mjs` document tests | markers, gitignore, `--lenient`, region directives, JSON/TOML/INI/YAML rules, round trips | layer 5 |
-| **7. Differential** | `tools/compare-zig.mjs` | two implementations agree byte for byte, including on generated inputs | a second implementation |
+| Layer                 | Where                              | What it proves                                                                            | Depends on                  |
+| --------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------- |
+| **1. Grammar**        | `grammar:*` rows                   | the reference is parsed and canonicalised; malformed input throws the specified message   | nothing (no file, no lexer) |
+| **2. Lexical**        | `masks` rows                       | comments and strings are blanked; length and newlines preserved                           | a lexer table               |
+| **3. Shapes**         | `shapes` rows                      | the language's own declaration spellings are read                                         | layer 2                     |
+| **4. Blocks**         | `scanBlocks:*` tests in `test.mjs` | the block tree: nesting, anchors, regions, conditions, Allman/indented/arrow bodies       | layers 2–3                  |
+| **5. Resolution**     | resolution rows                    | names, paths, scopes, modifiers, line ranges, several selectors                           | layers 1–4                  |
+| **6. Document rules** | `test.mjs` document tests          | markers, gitignore, `--lenient`, region directives, JSON/TOML/INI/YAML rules, round trips | layer 5                     |
+| **7. Differential**   | `tools/compare-zig.mjs`            | two implementations agree byte for byte, including on generated inputs                    | a second implementation     |
 
 Two organizational rules that keep this honest as implementations multiply:
 
@@ -851,6 +852,20 @@ through the fragment.
   changing incompatibly. New languages, lexer entries, conformance rows, `kind`
   members and fields are **minor**; a removal, a rename, a changed message or a
   changed resolution is **major**.- **Change log.**
+  - `0.9-rc` (this revision) — **an envelope holds a member in its declaration.**
+    A new *additive* grammar feature for use case B: `Cart/^,toString,$` injects
+    `Cart`'s declaration line, the `toString` method, and `Cart`'s closing line, so
+    a method copied out of a class reads as code rather than as a fragment. `^`
+    (the head: the declaration line through the line the body opens on) and `$`
+    (the tail: the line the block ends on) are whole path segments at the ends of
+    the reference, the parent is named on either end, and everything between them
+    is read inside it. Nothing existing resolves differently — an envelope needs a
+    whole segment that used to be a name, and no corpus reference or fixture named
+    `^` or `$` — and use case A is unaffected, which is what this addition is for:
+    the range is *useful to inject and not to open*, and a host that only navigates
+    ignores the extra pieces. The `Selector` gains an optional `envelope` field
+    ([§5.3](#53-plan-the-whole-contract)); the corpus gains 22 rows (9 grammar, 13
+    resolution).
   - `0.9-rc` (this revision) — **a comment is any spelling, and a block need not
     brace.** Three matchers were reachable only through C-style spellings, and are
     now reachable through the language's own: a region directive accepts a `#`
