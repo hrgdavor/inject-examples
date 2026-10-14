@@ -380,6 +380,108 @@ public final class SectionResolver {
                 || "property".equals(block.kind);
     }
 
+    /**
+     * The deepest prefix of a path that still resolves, with the line it starts on — the first rung of
+     * the best-effort ladder a <em>navigating</em> host climbs
+     * ({@code doc/rfc/code-jump.md} §4.3). This is {@code deepestResolvablePrefix} in
+     * {@code lib/section.mjs}, and the two answer identically.
+     *
+     * <p>A host asks for it when the whole reference failed and the reader would rather land on the
+     * enclosing thing they can see: for {@code Cart/Line/render}, try {@code Cart/Line}, then
+     * {@code Cart}, and take the first that answers. It <b>probes, it does not guess</b>: every
+     * candidate is a prefix of the reference the user wrote, longest first, and the answer is the line
+     * that prefix actually resolves to. The policy — whether to use the answer, and what to call it —
+     * belongs to the host, which is why this is a probe and not a fallback.
+     *
+     * <p>Three facts a caller has to know, because they are the function's contract rather than
+     * accidents of it:
+     *
+     * <ul>
+     *   <li><b>Strictly shorter.</b> The walk starts one segment below what was written, so a
+     *       one-segment path has no prefix to try and the answer is {@code null} — even when that
+     *       path <em>does</em> resolve. A caller asks after a failed resolve
+     *       ({@code doc/rfc/code-jump.md} §4.3, rung 1), where the deepest prefix cannot be the
+     *       reference itself.</li>
+     *   <li><b>Only the first selector.</b> The path walked is the first selector's, and a reference
+     *       whose first selector is a line range, or is not a path at all, has no prefix to offer. A
+     *       later selector's failure does not make an earlier one approximate.</li>
+     *   <li><b>Nothing throws.</b> A malformed reference has no prefix, rather than an error: the
+     *       probe exists to be asked about references that do not resolve, and a prefix that fails is
+     *       simply not the answer.</li>
+     * </ul>
+     *
+     * @param text      the target file's content
+     * @param reference the {@code #} fragment content
+     * @return the longest prefix of the first path selector that resolves, or {@code null} when none
+     *         does
+     */
+    public static Prefix deepestResolvablePrefix(String text, String reference) {
+        return deepestResolvablePrefix(text, reference, BlockScanner.DEFAULT);
+    }
+
+    /**
+     * The deepest prefix that resolves, with the file type's lexer.
+     *
+     * @param text      the target file's content
+     * @param reference the {@code #} fragment content
+     * @param lexer     the file type's lexer, or {@link BlockScanner#DEFAULT}
+     * @return the longest prefix of the first path selector that resolves, or {@code null} when none
+     *         does
+     */
+    public static Prefix deepestResolvablePrefix(String text, String reference,
+                                                 BlockScanner.Lexer lexer) {
+        SectionReference parsed;
+        try {
+            parsed = SectionReference.parse(reference);
+        } catch (SectionReferenceException malformed) {
+            return null;
+        }
+        if (parsed.selectors().isEmpty()) {
+            return null;
+        }
+        SectionReference.Selector first = parsed.selectors().get(0);
+        if (!SectionReference.Selector.PATH.equals(first.kind())) {
+            return null;
+        }
+
+        // Longest first, and never the whole path: the rung this serves is the one *below* a resolve.
+        List<String> segments = first.segments();
+        for (int depth = segments.size() - 1; depth >= 1; depth--) {
+            String prefix = String.join("/", segments.subList(0, depth));
+            Plan plan;
+            try {
+                plan = planSection(text, prefix, lexer);
+            } catch (SectionError | SectionReferenceException notThisPrefix) {
+                // A prefix that does not resolve is not the answer, and neither is one that is itself
+                // malformed: the walk simply tries a shorter prefix. Nothing here throws.
+                continue;
+            }
+            return new Prefix(prefix, plan.startLine(), List.copyOf(segments.subList(0, depth)));
+        }
+        return null;
+    }
+
+    /**
+     * What {@link #deepestResolvablePrefix} found: the prefix that resolves, the line it starts on,
+     * and its segments.
+     *
+     * <p>It is the Java counterpart of the object {@code deepestResolvablePrefix} returns in
+     * {@code lib/section.mjs}, field for field, and it carries the <b>segments</b> as well as the
+     * reference because the two are not the same text: a prefix is spelled by joining the segments,
+     * which is how a host that wants to descend one more level builds the reference it writes next.
+     *
+     * @param reference the prefix as a reference — the segments joined with {@code /}
+     * @param firstLine the prefix's first line, 1-based, exactly as a {@link Plan}'s
+     *                  {@link Plan#startLine()} reports it
+     * @param segments  the prefix's path segments, in order
+     */
+    public record Prefix(String reference, int firstLine, List<String> segments) {
+
+        public Prefix {
+            segments = List.copyOf(segments);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Line ranges
     // ------------------------------------------------------------------

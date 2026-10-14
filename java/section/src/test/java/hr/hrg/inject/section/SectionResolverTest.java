@@ -6,6 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -312,7 +316,100 @@ class SectionResolverTest {
         assertEquals("-a-", SectionReference.parse("-a-").canonical());
     }
 
-    private static String referenceError(String raw) {
+    // ------------------------------------------------------------------
+    // The best-effort prefix probe (`deepestResolvablePrefix`, RFC 2 §4.3)
+    // ------------------------------------------------------------------
+
+    /**
+     * The probe a <em>navigating</em> host climbs first ({@code doc/rfc/code-jump.md} §4.3): a name
+     * that is gone lands on the enclosing thing that is not.
+     *
+     * <p>The expected answer is {@code deepestResolvablePrefix} in {@code lib/section.mjs}, run over
+     * the same fixtures — the port mirrors it, so the landing lines here are the ones the JavaScript
+     * reports, not ones derived from the map. The rows that matter are the two <em>kinds</em> of
+     * failure: a parent that exists is a landing line ({@code Cart/Line/renderr} → {@code Line}),
+     * while a name that resolves nowhere has no prefix at all ({@code missing/deeper} → {@code null}),
+     * which is what lets a host land on the file head only in the second case.
+     */
+    @Test
+    void theDeepestResolvablePrefixIsTheParentThatStillExists() {
+        String example = fixture("Example.java");
+
+        // The child is gone, the holder is not: `Cart/Line` outlives `renderr`, and it is where a
+        // reader who followed a stale link is best served.
+        SectionResolver.Prefix rendered = SectionResolver.deepestResolvablePrefix(example,
+                "Cart/Line/renderr", BlockScanner.DEFAULT);
+        assertEquals("Cart/Line", rendered.reference());
+        assertEquals(17, rendered.firstLine(), "`Line` is declared on line 17");
+        assertEquals(List.of("Cart", "Line"), rendered.segments());
+
+        // A member directly under a class: the parent is the class, and the answer is one segment.
+        SectionResolver.Prefix member = SectionResolver.deepestResolvablePrefix(example,
+                "Cart/toString/sub", BlockScanner.DEFAULT);
+        assertEquals("Cart/toString", member.reference());
+        assertEquals(12, member.firstLine(), "`toString` is declared on line 12");
+        assertEquals(List.of("Cart", "toString"), member.segments());
+
+        // A name the file has nowhere has no prefix either — that is the file-head case, and the
+        // probe must not answer it with something shorter to be helpful.
+        assertNull(SectionResolver.deepestResolvablePrefix(example, "missing/deeper", BlockScanner.DEFAULT));
+        assertNull(SectionResolver.deepestResolvablePrefix(example, "missing", BlockScanner.DEFAULT));
+
+        // A property is a match but not a container, which is the other failure the rung covers.
+        SectionResolver.Prefix property = SectionResolver.deepestResolvablePrefix(example,
+                "Cart/items/nope", BlockScanner.DEFAULT);
+        assertEquals("Cart/items", property.reference());
+        assertEquals(8, property.firstLine());
+    }
+
+    /**
+     * The three facts the probe's contract fixes, asserted here because each one is a way a caller
+     * could misuse it — and the JavaScript answers all three the same way.
+     */
+    @Test
+    void thePrefixProbeIsStrictlyShorterAndNeverThrows() {
+        String example = fixture("Example.java");
+
+        // Strictly shorter: the walk starts below what was written, so a one-segment reference has no
+        // prefix to try *even when it resolves*. A caller asks after a failed resolve.
+        assertNull(SectionResolver.deepestResolvablePrefix(example, "toString", BlockScanner.DEFAULT));
+        assertNull(SectionResolver.deepestResolvablePrefix(example, "Cart", BlockScanner.DEFAULT));
+
+        // Only the first selector's path is walked, so a later selector's failure cannot make an
+        // earlier one approximate.
+        assertNull(SectionResolver.deepestResolvablePrefix(example, "missing,toString", BlockScanner.DEFAULT));
+        assertEquals("Cart/Line", SectionResolver.deepestResolvablePrefix(example,
+                "Cart/Line/renderr,toString", BlockScanner.DEFAULT).reference());
+
+        // Nothing throws: a malformed reference, a line range, and a reference that names nothing all
+        // have no prefix rather than an error.
+        assertNull(SectionResolver.deepestResolvablePrefix(example, "L40-", BlockScanner.DEFAULT));
+        assertNull(SectionResolver.deepestResolvablePrefix(example, "L40", BlockScanner.DEFAULT));
+        assertNull(SectionResolver.deepestResolvablePrefix(example, "", BlockScanner.DEFAULT));
+    }
+
+    /**
+     * The fixture, found from either the module directory (how Surefire runs) or the repository root
+     * (how an IDE sometimes does) — the same walk {@code SectionVectorsTest} makes for the corpus.
+     */
+    private static String fixture(String name) {
+        Path directory = Paths.get("").toAbsolutePath();
+        for (int level = 0; level < 8 && directory != null; level++) {
+            Path candidate = directory.resolve("test/fixtures").resolve(name);
+            if (Files.isRegularFile(candidate)) {
+                try {
+                    return Files.readString(candidate);
+                } catch (IOException unreadable) {
+                    throw new AssertionError("cannot read " + candidate, unreadable);
+                }
+            }
+            directory = directory.getParent();
+        }
+        throw new AssertionError("test/fixtures/" + name + " not found above "
+                + Paths.get("").toAbsolutePath());
+    }
+
+        private static String referenceError(String raw) {
         return referenceError(() -> SectionReference.parse(raw));
     }
 
