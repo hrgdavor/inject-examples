@@ -1032,7 +1032,10 @@ pub fn extract_declaration(
         .into());
     }
     Ok(Some(
-        render_declaration(&chosen[0], scope, &scan.lex, lexer).text,
+        // The same renderer the resolver uses, so the two entry points cannot disagree about what a
+        // declaration's text is — a property reads its own statement here rather than going through the
+        // body-less declaration path.
+        render_block(&chosen[0], scope, &scan.lex, lexer, "text").text,
     ))
 }
 
@@ -1056,7 +1059,14 @@ fn collect(scope: &BlockRef, name: &str, found: &mut Vec<BlockRef>) {
 }
 
 fn has_body(block: &Block) -> bool {
-    block.single_line || block.expression.is_some() || block.indented || block.open_line.is_some()
+    block.single_line
+        || block.expression.is_some()
+        || block.indented
+        || block.open_line.is_some()
+        // A property — a field, and an enum's constant — is a selection even with no body at all: the statement
+        // (or the constant) *is* what is injected, which is why `plan_section` has always resolved one.
+        // Extraction used to skip them, which made the two entry points disagree (2026-10-13).
+        || block.kind == "property"
 }
 
 // ---------------------------------------------------------------------------
@@ -1564,7 +1574,7 @@ fn render_block(
         return render_declaration(block, scope, lex, lexer);
     }
     if !is_anchor && block_kind == "property" {
-        let (decl_line, line_end, equals_at, statement_to) = {
+        let (decl_line, line_end, equals_at, statement_to, enum_constant, name_end) = {
             let block_ref = block.borrow();
             (
                 block_ref.decl_line,
@@ -1574,9 +1584,22 @@ fn render_block(
                     .max(block_ref.decl_line),
                 block_ref.equals_at,
                 block_ref.statement_to,
+                block_ref.enum_constant,
+                block_ref.name_end,
             )
         };
         if scope == Scope::Body {
+            // An enum constant's "body" is what follows its name — the arguments it is built with, and the
+            // body it declares — because that is the part of a constant that is not its name (2026-10-13).
+            if enum_constant {
+                let (Some(name_end), Some(statement_to)) = (name_end, statement_to) else {
+                    return single(String::new(), decl_line);
+                };
+                if name_end >= statement_to {
+                    return single(String::new(), decl_line);
+                }
+                return trimmed_slice(&lex.source, &lex.starts, name_end, statement_to);
+            }
             // `-` selects the initialiser expression: the bytes between the `=` that opens it and the
             // `;` that ends the statement. A member with no initialiser has an empty body, reported on
             // its own line.
@@ -1928,6 +1951,43 @@ mod tests {
         parse_selectors(raw)
             .expect("a well-formed reference")
             .canonical
+    }
+
+    /// A property — a field, and an enum's constant — is a selection with no body of its own: the statement *is*
+    /// what is injected. Extraction used to skip every one of them, so the two entry points disagreed on exactly
+    /// the declarations this rule names (2026-10-13).
+    #[test]
+    fn extraction_reads_a_property_and_an_enum_constant() {
+        let lexer = DefaultLexer;
+        let field = "public class A {\n    private final String plain = \"x\";\n}\n";
+        assert_eq!(
+            Some("    private final String plain = \"x\";".to_string()),
+            extract_declaration(field, "plain", Scope::Declaration, &lexer).expect("no failure")
+        );
+        assert_eq!(
+            extract_declaration(field, "plain", Scope::Declaration, &lexer).expect("no failure"),
+            Some(plan_section(field, "plain", &lexer).expect("a plan").text)
+        );
+
+        let enums =
+            "public enum E {\n    CALL,\n    /** the paid tier */\n    @Deprecated\n    PAID(1);\n}\n";
+        assert_eq!(
+            Some("    CALL,".to_string()),
+            extract_declaration(enums, "CALL", Scope::Declaration, &lexer).expect("no failure")
+        );
+        assert_eq!(
+            Some("    @Deprecated\n    PAID(1);".to_string()),
+            extract_declaration(enums, "PAID", Scope::Annotated, &lexer).expect("no failure")
+        );
+        assert_eq!(
+            Some("    /** the paid tier */\n    @Deprecated\n    PAID(1);".to_string()),
+            extract_declaration(enums, "PAID", Scope::Documented, &lexer).expect("no failure")
+        );
+        // A bare constant has no body to select, so its `-` is empty rather than missing.
+        assert_eq!(
+            Some(String::new()),
+            extract_declaration(enums, "CALL", Scope::Body, &lexer).expect("no failure")
+        );
     }
 
     /// The spelling the vectors do not carry: `canonical` is an answer the grammar owes, but the

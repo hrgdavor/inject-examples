@@ -1,6 +1,8 @@
 package hr.hrg.inject.section;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -46,6 +48,72 @@ class SectionResolverTest {
         assertEquals(SectionResolver.resolveSection(JAVA, "add"),
                 SectionResolver.extractDeclaration(JAVA, "add"));
         assertEquals(null, SectionResolver.extractDeclaration(JAVA, "missing"));
+    }
+
+    @Test
+    void extractDeclarationReadsAPropertyAndAnEnumConstant() {
+        // A property is a selection with no body of its own: the statement *is* what is injected. Extraction used
+        // to skip every one of them, so the two entry points disagreed on exactly the declarations this rule names
+        // (2026-10-13).
+        String field = "public class A {\n    private final String plain = \"x\";\n}\n";
+        assertEquals("    private final String plain = \"x\";",
+                SectionResolver.extractDeclaration(field, "plain"));
+        assertEquals(SectionResolver.resolveSection(field, "plain"),
+                SectionResolver.extractDeclaration(field, "plain"));
+
+        String enums = "public enum E {\n    CALL,\n    /** the paid tier */\n    @Deprecated\n    PAID(1);\n}\n";
+        assertEquals("    CALL,", SectionResolver.extractDeclaration(enums, "CALL"));
+        assertEquals("    PAID(1);", SectionResolver.extractDeclaration(enums, "PAID"));
+        assertEquals("    @Deprecated\n    PAID(1);",
+                SectionResolver.extractDeclaration(enums, "PAID", Scope.ANNOTATED));
+        assertEquals("    /** the paid tier */\n    @Deprecated\n    PAID(1);",
+                SectionResolver.extractDeclaration(enums, "PAID", Scope.DOCUMENTED));
+        // A bare constant has no body to select, so its `-` is empty rather than missing.
+        assertEquals("", SectionResolver.extractDeclaration(enums, "CALL", Scope.BODY));
+    }
+
+    @Test
+    void everyBlockRecordsTheScopeThatDeclaredIt() {
+        // The four facts every port records — the owning block, the same link named `scope`, that scope's own
+        // name and its declaration line — set at the same four places: the root's children, a `descend`, an
+        // enum's constants, and a declared variable. No rule reads them today (the walk carries the scope as it
+        // descends), so this test is what keeps them from silently becoming null (2026-10-14).
+        String source = "class Runner {\n    void run(String title) {\n        int count;\n    }\n"
+                + "    enum Suit { HEARTS }\n}\n";
+        BlockScanner.Scan scan = BlockScanner.scanBlocks(source);
+
+        BlockScanner.Block klass = scan.root().children().get(0);
+        assertEquals("Runner", klass.name());
+        // A top-level block belongs to the root, which has no name or line of its own.
+        assertSame(scan.root(), klass.parent);
+        assertSame(scan.root(), klass.scope);
+        assertNull(klass.scopeName);
+        assertNull(klass.scopeLine);
+
+        BlockScanner.Block method = klass.children().get(0);
+        assertEquals("run", method.name());
+        assertSame(klass, method.parent);
+        assertEquals("Runner", method.scopeName);
+        assertEquals(Integer.valueOf(0), method.scopeLine);
+
+        // A parameter is registered by `declareVariable`, a local by the scope scan: both name the method.
+        BlockScanner.Block parameter = method.children().get(0);
+        BlockScanner.Block local = method.children().get(1);
+        assertEquals("title", parameter.name());
+        assertEquals("count", local.name());
+        for (BlockScanner.Block member : List.of(parameter, local)) {
+            assertSame(method, member.parent);
+            assertEquals("run", member.scopeName);
+            assertEquals(Integer.valueOf(1), member.scopeLine);
+        }
+
+        BlockScanner.Block suit = klass.children().get(1);
+        assertEquals("Suit", suit.name());
+        BlockScanner.Block constant = suit.children().get(0);
+        assertEquals("HEARTS", constant.name());
+        assertSame(suit, constant.parent);
+        assertEquals("Suit", constant.scopeName);
+        assertEquals(Integer.valueOf(4), constant.scopeLine);
     }
 
     @Test

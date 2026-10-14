@@ -22,7 +22,9 @@ public enum OrgFeature {
 
     /** A constant that carries arguments, so its line does not end on a comma. */
     enum Tier {
+        /** The free tier, and the doc comment a `++` selection adds. */
         FREE(0),
+        @Deprecated
         PAID(1);
 
         private final int rank;

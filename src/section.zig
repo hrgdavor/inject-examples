@@ -864,6 +864,14 @@ pub const Block = struct {
     kind: Kind,
     name: ?Str,
     decl_line: usize,
+    /// The block this one was declared in, and the same link named `scope`. The walker carries the scope as it
+    /// descends, so no rule reads these today — but every port records them, so a member can answer "which
+    /// scope declared me?" without the walk, exactly as the JavaScript, Java and Rust ports do (2026-10-14).
+    parent: ?*Block = null,
+    scope: ?*Block = null,
+    /// The owning scope's own name and declaration line, when it has them: the root has neither.
+    scope_name: ?Str = null,
+    scope_line: ?usize = null,
     open: ?usize = null,
     close: ?usize = null,
     open_line: ?usize = null,
@@ -883,6 +891,12 @@ pub const Block = struct {
     /// One past the `;` that ended a property's statement, which is where its
     /// initialiser stops.
     statement_to: ?usize = null,
+    /// For an enum constant: one past its name, where its arguments and its body
+    /// begin.
+    name_end: ?usize = null,
+    /// True when this property is an enum constant, whose `-` scope is what
+    /// follows its name.
+    enum_constant: bool = false,
     single_line: bool = false,
     shared_close: bool = false,
     children: std.ArrayList(*Block) = .empty,
@@ -987,7 +1001,13 @@ pub fn scanFacts(facts: Facts) Error!Scan {
     const root = try alloc.create(Block);
     root.* = makeBlock(.root, null, 0);
     const top = try build.buildScope(0, facts.lines.len - 1);
-    for (top) |child| try root.children.append(alloc, child);
+    for (top) |child| {
+        // A top-level block belongs to the file's root, which has no name of its own — the same two facts the
+        // other ports set on the root's children (2026-10-14).
+        child.parent = root;
+        child.scope = root;
+        try root.children.append(alloc, child);
+    }
 
     const pairs = try pairRegions(alloc, facts.lines);
     for (pairs) |region| try root.regions.append(alloc, region);
@@ -2101,11 +2121,301 @@ fn typeTokenEnd(text: Str, start: usize) ?usize {
 
 // --- buildScope -------------------------------------------------------------
 
+/// A word a declaration may put before its type, or instead of it (`var`/`const`/`let`).
+const DECLARATION_MODIFIERS = [_][]const u8{
+    "public",   "protected", "private",  "static",   "final",    "abstract", "transient",
+    "volatile", "native",    "strictfp", "default",  "const",    "let",      "var",
+    "readonly", "internal",  "open",     "sealed",   "lateinit", "override", "suspend",
+    "inline",   "external",  "partial",  "ref",
+};
+
+/// The words that stand where a type would but declare nothing.
+const NOT_A_TYPE_WORDS = [_][]const u8{
+    "return", "throw", "new", "else",  "do",
+    "case",   "await", "yield", "delete", "typeof",
+};
+
+/// One variable declaration: its name, where the name starts, its `=` (or null), and where it ends.
+const Variable = struct {
+    name: Str,
+    name_at: usize,
+    equals_at: ?usize,
+    end: usize,
+};
+
+/// Whether a `Str` spells exactly `spelling`.
+fn isWord(word: Str, spelling: []const u8) bool {
+    if (word.len != spelling.len) return false;
+    for (spelling, 0..) |ch, at| {
+        if (word[at] != @as(u16, ch)) return false;
+    }
+    return true;
+}
+
+fn isDeclarationModifier(word: Str) bool {
+    for (DECLARATION_MODIFIERS) |modifier| {
+        if (isWord(word, modifier)) return true;
+    }
+    return false;
+}
+
+fn isNotATypeWord(word: Str) bool {
+    for (NOT_A_TYPE_WORDS) |spelling| {
+        if (isWord(word, spelling)) return true;
+    }
+    return false;
+}
+
+fn isVariableSpace(unit: u16) bool {
+    return unit == ' ' or unit == '\t' or unit == '\r' or unit == '\n';
+}
+
+/// The identifier at `at` and where it ends, or null when there is none.
+fn variableWord(mask: Str, at: usize, to: usize) ?struct { name: Str, end: usize } {
+    if (at >= to or !js.isIdentStart(mask[at])) return null;
+    var end = at + 1;
+    while (end < to and js.isIdentPart(mask[end])) end += 1;
+    return .{ .name = mask[at..end], .end = end };
+}
+
+/// Where the type at `at` ends, or null: a dotted name, a **counted** generic list, array brackets.
+///
+/// Types nest, so the generic list is counted rather than matched by a pattern that cannot see past the first
+/// `>`: `Map<Long, List<Session>> perOrg` is a declaration, and a type pattern that stops at the first `>`
+/// makes it no declaration at all — which is what it used to do (2026-10-13).
+fn balancedTypeEnd(mask: Str, at: usize, to: usize) ?usize {
+    const first = variableWord(mask, at, to) orelse return null;
+    var scan = first.end;
+    while (scan + 1 < to and mask[scan] == '.' and js.isIdentStart(mask[scan + 1])) {
+        const part = variableWord(mask, scan + 1, to) orelse break;
+        scan = part.end;
+    }
+    if (scan < to and mask[scan] == '<') {
+        var depth: isize = 0;
+        var cursor = scan;
+        while (cursor < to) : (cursor += 1) {
+            const unit = mask[cursor];
+            if (unit == '<') {
+                depth += 1;
+            } else if (unit == '>') {
+                depth -= 1;
+                if (depth == 0) {
+                    cursor += 1;
+                    break;
+                }
+            } else if (unit == ';' or unit == '{' or unit == '}' or unit == '\n' or unit == '=') {
+                return null;
+            }
+        }
+        if (depth != 0) return null;
+        scan = cursor;
+    }
+    while (true) {
+        var cursor = scan;
+        while (cursor < to and isVariableSpace(mask[cursor])) cursor += 1;
+        if (cursor + 1 < to and mask[cursor] == '[') {
+            var after = cursor + 1;
+            while (after < to and isVariableSpace(mask[after])) after += 1;
+            if (after < to and mask[after] == ']') {
+                scan = after + 1;
+                continue;
+            }
+        }
+        break;
+    }
+    return scan;
+}
+
+/// The annotation at `at` (`@NotNull`, `@Foo(1)`), or null: what follows the `@` is not one.
+fn skipAnnotation(mask: Str, at: usize, to: usize) ?usize {
+    const first = variableWord(mask, at + 1, to) orelse return null;
+    var scan = first.end;
+    while (scan + 1 < to and mask[scan] == '.' and js.isIdentStart(mask[scan + 1])) {
+        const part = variableWord(mask, scan + 1, to) orelse break;
+        scan = part.end;
+    }
+    if (scan < to and mask[scan] == '(') {
+        const close = matchingBracket(mask, scan, ')') orelse return null;
+        if (close >= to or close <= scan) return null;
+        scan = close + 1;
+    }
+    return scan;
+}
+
+/// The declarator whose name runs `name_at`..: its `=` and where its own text ends.
+fn finishVariable(mask: Str, name: Str, name_at: usize, after_name: usize, to: usize) Variable {
+    var end = to;
+    while (end > name_at and isVariableSpace(mask[end - 1])) end -= 1;
+    var equals_at: ?usize = null;
+    var depth: isize = 0;
+    var scan = after_name;
+    while (scan < end) : (scan += 1) {
+        const unit = mask[scan];
+        if (unit == '(' or unit == '[' or unit == '{' or unit == '<') {
+            depth += 1;
+        } else if (unit == ')' or unit == ']' or unit == '}' or unit == '>') {
+            if (depth > 0) depth -= 1;
+        } else if (unit == '=' and depth == 0 and (scan + 1 >= mask.len or mask[scan + 1] != '=')
+            and (scan == 0 or mask[scan - 1] != '='))
+        {
+            equals_at = scan;
+            break;
+        } else if (unit == ':' and depth == 0) {
+            // An enhanced `for`'s `:` — what follows names the thing iterated, not the variable.
+            end = name_at + name.len;
+            break;
+        }
+    }
+    return .{
+        .name = name,
+        .name_at = name_at,
+        .equals_at = equals_at,
+        .end = @max(end, name_at + name.len),
+    };
+}
+
+/// One declarator out of `mask[from, to)`, or null.
+///
+/// A leading annotation or modifier carries no name and is skipped, and the type must come before the name —
+/// that guard is what keeps `count = 1;` an assignment rather than a variable named `count`. `type_optional`
+/// is for the later declarators of a list (`b` in `int a = 1, b = 2;`), which inherit the type written before
+/// the first one.
+fn parseVariable(mask: Str, from: usize, to: usize, type_optional: bool) ?Variable {
+    var at = from;
+    var typed: usize = 0;
+    var untyped = type_optional;
+    while (true) {
+        while (at < to and isVariableSpace(mask[at])) at += 1;
+        if (at >= to) return null;
+        if (mask[at] == '@') {
+            at = skipAnnotation(mask, at, to) orelse return null;
+            continue;
+        }
+        const spelled = variableWord(mask, at, to) orelse return null;
+        const type_end = balancedTypeEnd(mask, at, to);
+        const after = type_end orelse spelled.end;
+        var next_at = after;
+        while (next_at < to and isVariableSpace(mask[next_at])) next_at += 1;
+        const next: u16 = if (next_at >= to) 0 else mask[next_at];
+        const ends_here = next == 0 or next == '=' or next == ':' or next == ',' or next == ';'
+            or next == ')';
+        if (ends_here and (typed > 0 or untyped)) {
+            return finishVariable(mask, spelled.name, at, after, to);
+        }
+        if (isDeclarationModifier(spelled.name)) {
+            if (isWord(spelled.name, "const") or isWord(spelled.name, "let") or isWord(spelled.name, "var")) {
+                untyped = true;
+            }
+            at = after;
+            continue;
+        }
+        if (type_end == null) return null;
+        typed += 1;
+        if (next_at >= to) return null;
+        at = next_at;
+    }
+}
+
+/// The offset of `wanted` in `mask[from, to)` with every bracket closed, or null.
+fn topLevelIndexOf(mask: Str, from: usize, to: usize, wanted: u16) ?usize {
+    var depth: isize = 0;
+    var at = from;
+    while (at < to) : (at += 1) {
+        const unit = mask[at];
+        if (unit == '(' or unit == '[' or unit == '{' or unit == '<') {
+            depth += 1;
+        } else if (unit == ')' or unit == ']' or unit == '}' or unit == '>') {
+            if (depth > 0) depth -= 1;
+        } else if (unit == wanted and depth == 0) {
+            return at;
+        }
+    }
+    return null;
+}
+
+/// The variables a region declares: every declarator of a statement, a parameter, a loop's own variable, a
+/// resource, a `catch` parameter. `inherited` is for a statement's own list, where the type is written once.
+fn variableDeclarators(
+    alloc: Allocator,
+    mask: Str,
+    from: usize,
+    to: usize,
+    inherited: bool,
+) Error![]Variable {
+    var out = std.ArrayList(Variable).empty;
+    var depth: isize = 0;
+    var piece_start = from;
+    var index: usize = 0;
+    // The sentinel `,` at `to` closes the last declarator: the region's own end is not a separator, and a
+    // piece that ends on the closing bracket of its initialiser (`listOf(\n 1,\n)`) reaches it without one.
+    var at = from;
+    while (at <= to) : (at += 1) {
+        const unit: u16 = if (at == to) ',' else mask[at];
+        if (unit == '(' or unit == '[' or unit == '{' or unit == '<') {
+            depth += 1;
+            continue;
+        }
+        if (unit == ')' or unit == ']' or unit == '}' or unit == '>') {
+            if (depth > 0) depth -= 1;
+            continue;
+        }
+        if ((unit != ',' and unit != ';') or depth != 0) continue;
+        if (parseVariable(mask, piece_start, at, index > 0 and inherited)) |variable| {
+            try out.append(alloc, variable);
+        }
+        piece_start = at + 1;
+        index += 1;
+    }
+    return out.toOwnedSlice(alloc);
+}
+
+/// The variables a statement's header declares: a `for`'s own variable (classic or enhanced), a `catch`
+/// parameter, and the resources a `try (…)` names.
+fn headerVariables(
+    alloc: Allocator,
+    mask: Str,
+    from: usize,
+    to: usize,
+    keyword: []const u8,
+) Error![]Variable {
+    const open = js.indexOfUnit(mask[from..to], '(') orelse return &.{};
+    const list_open = from + open;
+    const list_close = matchingBracket(mask, list_open, ')') orelse return &.{};
+    if (list_close >= to or list_close <= list_open) return &.{};
+    if (std.mem.eql(u8, keyword, "for")) {
+        // A classic `for` declares in its first part; an enhanced one ends the variable at its `:`.
+        const colon = topLevelIndexOf(mask, list_open + 1, list_close, ':');
+        const semicolon = topLevelIndexOf(mask, list_open + 1, list_close, ';');
+        const end = colon orelse semicolon orelse list_close;
+        return variableDeclarators(alloc, mask, list_open + 1, end, false);
+    }
+    return variableDeclarators(alloc, mask, list_open + 1, list_close, false);
+}
+
 const Build = struct {
     // The scala of one scan: the lexical facts, the flat block list every
     // built block is registered in, and the recursive walk that builds them.
     facts: Facts,
     blocks: std.ArrayList(*Block) = .empty,
+
+    /// Register one variable as a member of `parent`, the way `descend` registers the scanned ones.
+    fn declareVariable(self: *Build, parent: *Block, variable: Variable) Error!*Block {
+        const alloc = self.facts.alloc;
+        const block = try alloc.create(Block);
+        block.* = makeBlock(.property, variable.name, lineOf(self.facts.starts, variable.name_at));
+        block.line_end = lineOf(self.facts.starts, @max(variable.name_at, variable.end - 1));
+        block.equals_at = variable.equals_at;
+        block.statement_to = variable.end;
+        // A parameter, a loop's variable, a resource and a `catch` parameter are members of the block their
+        // header opens, and say so on their own block (2026-10-14).
+        block.parent = parent;
+        block.scope = parent;
+        block.scope_name = parent.name;
+        block.scope_line = parent.decl_line;
+        try parent.children.append(alloc, block);
+        try self.blocks.append(alloc, block);
+        return block;
+    }
 
     fn buildScope(self: *Build, from_line: usize, to_line: usize) Error![]*Block {
         const alloc = self.facts.alloc;
@@ -2128,10 +2438,24 @@ const Build = struct {
             }
 
             if (matchDeclarationKeyword(mask_line)) |keyword| {
-                if (!isNotAName(keyword.name)) {
-                    const within = js.indexOf(mask_line[keyword.index..], keyword.name) orelse 0;
-                    const name_at = start + keyword.index + within;
-                    const header_from = start + keyword.index + keyword.length;
+                var lead_end = keyword.index;
+                while (lead_end < mask_line.len and !js.isWhitespace(mask_line[lead_end])) lead_end += 1;
+                const leading = mask_line[keyword.index..lead_end];
+                var name = keyword.name;
+                const within = js.indexOf(mask_line[keyword.index..], keyword.name) orelse 0;
+                var name_at = start + keyword.index + within;
+                // Kotlin spells its enum `enum class Suit`: the word the class-like shape captures is the
+                // language's own `class`, and the name follows it.
+                if (isEnumWord(leading)) {
+                    if (kotlinEnumName(mask_line, keyword)) |declared| {
+                        name = declared.name;
+                        name_at = start + declared.at;
+                    }
+                }
+                // A word that stands where a name would and declares nothing is not a declaration: it is how
+                // a language spells a second keyword (`enum` + `class` above).
+                if (!isNotAName(name) and !isDeclaredNameWord(name)) {
+                    const header_from = name_at + name.len;
                     const span = bodySpan(
                         self.facts.mask,
                         self.facts.mask_lines,
@@ -2142,11 +2466,23 @@ const Build = struct {
                         false,
                     );
                     const block = try alloc.create(Block);
-                    block.* = makeBlock(.class, keyword.name, i);
+                    block.* = makeBlock(.class, name, i);
                     applySpan(block, span);
+                    // An enum's body opens with its constant list, and every constant is a member of its own —
+                    // matcher 4 reads "a field **or constant**" (2026-10-13). The constants are read first, and
+                    // only what follows their `;` is scanned as an ordinary class body.
+                    const enum_body = try enumConstants(self, block, leading, span);
                     applyAnchor(self, block, if (span) |found| found.open else null);
                     try register(self, &list, block);
-                    try descend(self, block, i, span);
+                    switch (enum_body) {
+                        .not_an_enum => try descend(self, block, i, span),
+                        .constants_only => {},
+                        .members => |from| {
+                            var shifted = span;
+                            if (shifted) |*found| found.open_line = from - 1;
+                            try descend(self, block, i, shifted);
+                        },
+                    }
                     i = endLineOf(span, i) + 1;
                     continue;
                 }
@@ -2173,6 +2509,24 @@ const Build = struct {
                     const block = try alloc.create(Block);
                     block.* = makeBlock(.method, read.declaration.name, i);
                     applySpan(block, span);
+                    // The variables a signature declares are members of it: `void render(String title)` names
+                    // `title`, and a parameter is what a reader follows a name to as often as a local is
+                    // (2026-10-13).
+                    if (js.indexOfUnit(self.facts.mask[read.declaration.name_at..], '(')) |list_offset| {
+                        const list_open = read.declaration.name_at + list_offset;
+                        if (matchingBracket(self.facts.mask, list_open, ')')) |list_close| {
+                            const declared = try variableDeclarators(
+                                alloc,
+                                self.facts.mask,
+                                list_open + 1,
+                                list_close,
+                                false,
+                            );
+                            for (declared) |variable| {
+                                _ = try self.declareVariable(block, variable);
+                            }
+                        }
+                    }
                     applyAnchor(self, block, if (span) |found_span| found_span.open else null);
                     try register(self, &list, block);
                     try descend(self, block, i, span);
@@ -2207,6 +2561,18 @@ const Build = struct {
                         const hdr_start = self.facts.starts[seg.header_line];
                         const hdr_end = endOfLine(self.facts.mask, hdr_start);
                         block.conditions = try conditionLiterals(alloc, self.facts.source[hdr_start..hdr_end], seg.cond_offset);
+                        // A `for`, a `catch` and a `try`-with-resources introduce their own variables, and
+                        // they are members of the block the header opens (2026-10-13).
+                        const header_vars = try headerVariables(
+                            alloc,
+                            self.facts.mask,
+                            hdr_start,
+                            hdr_end,
+                            stmt.keyword,
+                        );
+                        for (header_vars) |variable| {
+                            _ = try self.declareVariable(block, variable);
+                        }
 
                         applyAnchor(self, block, seg.open);
                         try register(self, &list, block);
@@ -2255,39 +2621,59 @@ const Build = struct {
                 }
             }
 
-            if (matchProperty(mask_line)) |prop| {
-                if (!isNotAName(prop.name) and !startsWithStatementBefore(mask_line[0..prop.match_end])) {
-                    const skip = prop.typed_head and prop.type_word.len > 0 and isNotAType(prop.type_word);
-                    if (!skip) {
-                        // The whole statement is the selection, `;` and all. The
-                        // scan starts at the top of the declaration's own line,
-                        // where every bracket is closed by construction, and
-                        // follows it to its `;` — so a lambda, an array or an
-                        // anonymous-class initialiser inside it is the statement's
-                        // own brace and not the end of the statement. The `=` is
-                        // the one the matcher's own look-ahead found.
-                        const equals_at = start + prop.equals_at;
-                        // Every level the statement-end rule reads comes from the **source**: the mask
-                        // blanks a literal's delimiters, so its lines are neither the right lengths nor
-                        // the right content for deciding where a statement ends.
-                        const source_lines = try js.splitLines(alloc, self.facts.source);
-                        const source_starts = try lineStarts(alloc, self.facts.source);
-                        const statement = statementEnd(
-                            self.facts.mask,
-                            source_lines,
-                            source_starts,
-                            start,
-                            self.facts.mask.len,
-                        );
+            // A variable declaration: `Type name = …;` — and every other spelling of one. Matcher 4 reads a
+            // *variable*, so a declaration with no initialiser (`int count;`), a list of declarators
+            // (`int a = 1, b = 2;`), an enum's constant and a local whose type nests
+            // (`Map<Long, List<Session>> perOrg = …;`) are all members (2026-10-13).
+            if (parseVariable(self.facts.mask, start, start + mask_line.len, false)) |declared_variable| {
+                // A declaration's type and modifiers are words, so a statement keyword in that position means
+                // this is not one: VB writes `If name = "count" Then` with the same `=` an assignment uses, and
+                // reading it as a property named `name` hides the condition literal that names the block.
+                const prefix = self.facts.mask[start..declared_variable.name_at];
+                if (!isNotAName(declared_variable.name)
+                    and !startsWithStatementBefore(
+                        self.facts.mask[start .. declared_variable.name_at + declared_variable.name.len],
+                    )
+                    and !isNotATypeWord(firstWord(prefix)))
+                {
+                    // The whole statement is followed so its `;` is found — a lambda, an array or an
+                    // anonymous-class initialiser inside it is the statement's own brace and not its end. Every
+                    // level the statement-end rule reads comes from the **source**: the mask blanks a literal's
+                    // delimiters, so its lines are neither the right lengths nor the right content for deciding
+                    // where a statement ends.
+                    const source_lines = try js.splitLines(alloc, self.facts.source);
+                    const source_starts = try lineStarts(alloc, self.facts.source);
+                    const statement = statementEnd(
+                        self.facts.mask,
+                        source_lines,
+                        source_starts,
+                        start,
+                        self.facts.mask.len,
+                    );
+                    const declared_vars = try variableDeclarators(
+                        alloc,
+                        self.facts.mask,
+                        start,
+                        statement.end,
+                        true,
+                    );
+                    for (declared_vars, 0..) |variable, index| {
                         const block = try alloc.create(Block);
-                        block.* = makeBlock(.property, prop.name, i);
-                        block.line_end = statement.last;
-                        block.equals_at = equals_at;
-                        block.statement_to = statement.end;
+                        block.* = makeBlock(.property, variable.name, lineOf(self.facts.starts, variable.name_at));
+                        block.line_end = lineOf(self.facts.starts, @max(variable.name_at, variable.end - 1));
+                        block.equals_at = variable.equals_at;
+                        block.statement_to = variable.end;
+                        if (index + 1 == declared_vars.len) {
+                            // The last declarator reaches the statement's own end, and where that is is a fact
+                            // about the **source**: the mask blanks a raw string it carries, so the mask's own
+                            // last character would cut the declaration short.
+                            block.line_end = statement.last;
+                            block.statement_to = statement.end;
+                        }
                         try register(self, &list, block);
-                        i = @max(i, statement.last) + 1;
-                        continue;
                     }
+                    i = @max(i, statement.last) + 1;
+                    continue;
                 }
             }
 
@@ -2515,6 +2901,158 @@ fn register(self: *Build, list: *std.ArrayList(*Block), block: *Block) Error!voi
     try self.blocks.append(alloc, block);
 }
 
+/// Whether `word` is the class-like keyword `enum`.
+fn isEnumWord(word: Str) bool {
+    return js.startsWithBytes(word, "enum") and word.len == "enum".len;
+}
+
+/// The words the class-like shape itself uses. A language that spells a declaration with two of them
+/// (`enum class Suit` in Kotlin) leaves the second one where the shape wants the *name*, so a captured name
+/// that is one of these declares nothing — it is the rest of the keyword, and the real name follows.
+fn isDeclaredNameWord(name: Str) bool {
+    const words = [_][]const u8{
+        "class", "interface", "enum", "record", "struct", "trait", "object", "union",
+    };
+    for (words) |word| {
+        if (js.startsWithBytes(name, word) and name.len == word.len) return true;
+    }
+    return false;
+}
+
+/// `enum class Suit` — the name Kotlin writes after the language's own `class`.
+fn kotlinEnumName(line: Str, keyword: KeywordMatch) ?struct { name: Str, at: usize } {
+    if (!js.startsWithBytes(line[keyword.index..], "enum")) return null;
+    var scan = keyword.index + "enum".len;
+    while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
+    if (!js.startsWithBytes(line[scan..], "class")) return null;
+    scan += "class".len;
+    while (scan < line.len and js.isWhitespace(line[scan])) scan += 1;
+    if (scan >= line.len or !js.isIdentStart(line[scan])) return null;
+    const name_start = scan;
+    scan += 1;
+    while (scan < line.len and js.isIdentPart(line[scan])) scan += 1;
+    return .{ .name = line[name_start..scan], .at = name_start };
+}
+
+/// What an enum's body contributes besides its declaration (2026-10-13).
+const EnumBody = union(enum) {
+    /// Not an enum at all: the caller descends into the block as a class-like body.
+    not_an_enum,
+    /// The constant list is the whole body, so there is no class body to scan.
+    constants_only,
+    /// The class body starts on this line, after the constant list's `;`.
+    members: usize,
+};
+
+/// One enum constant: its name, where the name starts, and where the constant ends.
+const Constant = struct { name: Str, name_at: usize, end: usize };
+
+/// The members an enum's constant list contributes (2026-10-13) — this port of the reference's rule.
+///
+/// A Java-family enum opens its body with a `,`-separated list of constants — each a bare name, a name with
+/// constructor arguments, or a name with a body of its own — and only after the list's `;` comes an ordinary
+/// class body. Matcher 4 reads "a field **or constant**", so every constant is a member named by its
+/// identifier, selected as the whole constant; the list is read here, before the body's own members, and the
+/// constants become the block's children, which is also what makes an enum written on one line a container.
+fn enumConstants(self: *Build, block: *Block, leading: Str, span: ?Span) Error!EnumBody {
+    const found = span orelse return .not_an_enum;
+    if (!isEnumWord(leading)) return .not_an_enum;
+    const open = found.open orelse return .not_an_enum;
+    const close = found.close orelse return .not_an_enum;
+    if (close <= open) return .not_an_enum;
+    const alloc = self.facts.alloc;
+    const mask = self.facts.mask;
+    const starts = self.facts.starts;
+    // The list ends at the first `;` outside every bracket — a constant's arguments or body may carry
+    // brackets of their own — and a body that writes no `;` is nothing but its constants.
+    var depth: isize = 0;
+    var list_end = close;
+    var semicolon_line: ?usize = null;
+    var at = open + 1;
+    while (at < close) : (at += 1) {
+        const unit = mask[at];
+        if (unit == '(' or unit == '[' or unit == '{') {
+            depth += 1;
+        } else if (unit == ')' or unit == ']' or unit == '}') {
+            depth -= 1;
+        } else if (unit == ';' and depth == 0) {
+            list_end = at;
+            semicolon_line = lineOf(starts, at);
+            break;
+        }
+    }
+    // One constant per top-level `,` of the list; the comma that closes the last one is the loop's sentinel.
+    depth = 0;
+    var from = open + 1;
+    at = open + 1;
+    while (at <= list_end) : (at += 1) {
+        const unit: u16 = if (at == list_end) ',' else mask[at];
+        if (unit == '(' or unit == '[' or unit == '{') {
+            depth += 1;
+        } else if (unit == ')' or unit == ']' or unit == '}') {
+            depth -= 1;
+        }
+        if (unit != ',' or depth != 0) continue;
+        const piece = constantBetween(mask, from, at);
+        from = at + 1;
+        const constant = piece orelse continue;
+        const member = try alloc.create(Block);
+        member.* = makeBlock(.property, constant.name, lineOf(starts, constant.name_at));
+        member.line_end = lineOf(starts, @max(constant.name_at, constant.end - 1));
+        // A constant's "body" — the part a `-` selection means — is everything after its name: the arguments
+        // it is built with and the body it declares, when it has one. A bare constant has none, exactly as a
+        // field with no initialiser has none.
+        member.enum_constant = true;
+        member.name_end = constant.name_at + constant.name.len;
+        member.statement_to = constant.end;
+        // A constant is a member of the enum that holds it, and says so on its own block (2026-10-14).
+        member.parent = block;
+        member.scope = block;
+        member.scope_name = block.name;
+        member.scope_line = block.decl_line;
+        try block.children.append(alloc, member);
+        try self.blocks.append(alloc, member);
+    }
+    const line = semicolon_line orelse return .constants_only;
+    return .{ .members = line + 1 };
+}
+
+/// One enum constant out of `mask[from, to)`.
+///
+/// The name is looked for on the first line of the piece that carries one, because a constant may be
+/// introduced by a doc comment (blank in the mask) or by annotations (`@Deprecated`), and because the widening
+/// scopes walk *up* from the line the name is written on. A piece that names nothing — the empty space a
+/// trailing comma leaves — answers null, and so does a `case`-spelled constant (PHP writes `case Hearts;`),
+/// which this rule does not read yet.
+fn constantBetween(mask: []const u16, from: usize, to: usize) ?Constant {
+    var line_from = from;
+    var at = from;
+    while (at <= to) : (at += 1) {
+        if (at != to and mask[at] != '\n') continue;
+        const raw = mask[line_from..at];
+        const trimmed = js.trimStart(raw);
+        if (trimmed.len != 0) {
+            if (js.isIdentStart(trimmed[0])) {
+                var length: usize = 1;
+                while (length < trimmed.len and js.isIdentPart(trimmed[length])) length += 1;
+                const name_at = line_from + (raw.len - trimmed.len);
+                // The constant runs to the last non-blank byte of its own piece, so a wrapped argument list
+                // or a body still belongs to it and trailing space does not.
+                var last = to;
+                while (last > name_at and js.isWhitespace(mask[last - 1])) last -= 1;
+                return .{
+                    .name = trimmed[0..length],
+                    .name_at = name_at,
+                    .end = @max(name_at + length, last),
+                };
+            }
+            if (js.startsWithBytes(trimmed, "case")) return null;
+        }
+        line_from = at + 1;
+    }
+    return null;
+}
+
 fn descend(self: *Build, block: *Block, decl_line: usize, span: ?Span) Error!void {
     const found = span orelse return;
     if (found.expression != null or block.kind == .property) return;
@@ -2535,7 +3073,15 @@ fn descend(self: *Build, block: *Block, decl_line: usize, span: ?Span) Error!voi
     if (child_from > child_to) return;
 
     const children = try self.buildScope(child_from, child_to);
-    for (children) |child| try block.children.append(self.facts.alloc, child);
+    for (children) |child| {
+        // Where the child was declared, recorded on the child itself — the same four facts the other ports set
+        // on the children a `descend` produces (2026-10-14).
+        child.parent = block;
+        child.scope = block;
+        child.scope_name = block.name;
+        child.scope_line = block.decl_line;
+        try block.children.append(self.facts.alloc, child);
+    }
 }
 
 fn applyAnchor(self: *Build, block: *Block, open: ?usize) void {
@@ -3658,6 +4204,22 @@ fn renderBlock(
         // initialiser, and the same line for a plain field.
         const last = if (block.line_end) |line_end| @max(block.decl_line, line_end) else block.decl_line;
         if (scope == .body) {
+            // An enum constant's "body" is what follows its name — the arguments it is built with, and the body
+            // it declares — because that is the part of a constant that is not its name (2026-10-13).
+            if (block.enum_constant) {
+                const name_end = block.name_end;
+                const statement_to = block.statement_to;
+                if (name_end == null or statement_to == null or name_end.? >= statement_to.?) {
+                    return single(try alloc.dupe(u16, &.{}), block.decl_line);
+                }
+                return trimmedSlice(
+                    alloc,
+                    facts.source,
+                    facts.starts,
+                    name_end.?,
+                    statement_to.?,
+                );
+            }
             // `-` selects the initialiser expression: the bytes between the `=`
             // that opens it and the `;` that ends the statement. A member with no
             // initialiser has an empty body, reported on its own line.
@@ -3783,26 +4345,18 @@ fn extractDeclarationFromScan(
         ));
     }
     const block = chosen[0];
-    // `endLine !== undefined ? endLine : closeLine` — a body-less member leaves
-    // both unset, and `renderDeclaration` reads that as "no last line", while an
-    // expression body prefers the line its expression ends on.
-    const end_line = block.expression_end_line orelse block.end_line orelse block.close_line;
-    const rendered = try renderDeclaration(
-        alloc,
-        scan.facts.lines,
-        scan.facts.source,
-        scan.facts.starts,
-        block,
-        end_line,
-        scope,
-        scan.facts.annotations,
-    );
+    // The same renderer the resolver uses, so the two entry points cannot disagree about what a declaration's
+    // text is — a property reads its own statement here rather than going through the body-less declaration path.
+    const rendered = try renderBlock(alloc, block, scope, .declaration, scan.facts);
     return rendered.text;
 }
 
 fn hasBody(block: *Block) bool {
     if (block.single_line or block.expression != null or block.indented) return true;
-    return block.open_line != null;
+    // A property — a field, and an enum's constant — is a selection even with no body at all: the statement
+    // (or the constant) *is* what is injected, which is why `planSection` has always resolved one. Extraction
+    // used to skip them, which made the two entry points disagree (2026-10-13).
+    return block.open_line != null or block.kind == .property;
 }
 
 fn walkNamed(alloc: Allocator, scope: *Block, name: Str, found: *std.ArrayList(*Block)) !void {
@@ -4764,6 +5318,93 @@ test "every selection reports the lines it came from, regions included" {
         try testing.expectEqual(@as(usize, 2), plan.ranges[0].from);
         try testing.expectEqual(@as(usize, 3), plan.ranges[0].to);
     }
+}
+
+test "every block records the scope that declared it" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // The file's root is the scope of a top-level block, and every other block names the scope that declared
+    // it — the block itself, its name, and the line it is declared on. Those four facts are what the
+    // JavaScript, Java and Rust ports record, and this port records them at the same four places: the root's
+    // children, a `descend`, an enum's constants, and a declared variable (2026-10-14).
+    //
+    // No rule reads them today (the walker carries the scope as it descends), so this test is what keeps them
+    // from silently becoming null when one of those four places is touched again.
+    const source = try js.utf8Decode(
+        alloc,
+        "class Runner {\n    void run(String title) {\n        int count;\n    }\n    enum Suit { HEARTS }\n}\n",
+    );
+    const scan = try scanBlocks(alloc, source, null);
+
+    const class_block = scan.root.children.items[0];
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "Runner"), class_block.name.?);
+    // A top-level block belongs to the root, which has no name or line of its own.
+    try testing.expect(class_block.parent == scan.root);
+    try testing.expect(class_block.scope == scan.root);
+    try testing.expect(class_block.scope_name == null);
+    try testing.expect(class_block.scope_line == null);
+
+    const method = class_block.children.items[0];
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "run"), method.name.?);
+    try testing.expect(method.parent == class_block);
+    try testing.expect(method.scope == class_block);
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "Runner"), method.scope_name.?);
+    try testing.expectEqual(@as(usize, 0), method.scope_line.?);
+
+    // A parameter is registered by `declareVariable`, a local by the scope scan: both name the method.
+    const parameter = method.children.items[0];
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "title"), parameter.name.?);
+    const local = method.children.items[1];
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "count"), local.name.?);
+    for ([_]*Block{ parameter, local }) |member| {
+        try testing.expect(member.parent == method);
+        try testing.expect(member.scope == method);
+        try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "run"), member.scope_name.?);
+        try testing.expectEqual(@as(usize, 1), member.scope_line.?);
+    }
+
+    const suit = class_block.children.items[1];
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "Suit"), suit.name.?);
+    const constant = suit.children.items[0];
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "HEARTS"), constant.name.?);
+    try testing.expect(constant.parent == suit);
+    try testing.expect(constant.scope == suit);
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "Suit"), constant.scope_name.?);
+    try testing.expectEqual(@as(usize, 4), constant.scope_line.?);
+}
+
+test "extractDeclaration reads a property and an enum constant" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // A property — a field, and an enum's constant — is a selection with no body of its own: the statement *is*
+    // what is injected. Extraction used to skip every one of them, so the two entry points disagreed on exactly
+    // the declarations this rule names (2026-10-13).
+    const field = try js.utf8Decode(alloc, "public class A {\n    private final String plain = \"x\";\n}\n");
+    var failure = Failure{};
+    const plain = (try extractDeclaration(alloc, field, try js.utf8Decode(alloc, "plain"), .declaration, &failure)) orelse
+        return error.TestUnexpectedResult;
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "    private final String plain = \"x\";"), plain);
+    const planned = try planSection(alloc, field, try js.utf8Decode(alloc, "plain"), null, &failure);
+    try expectPlanText(alloc, "    private final String plain = \"x\";", planned);
+
+    const enums = try js.utf8Decode(alloc,
+        "public enum E {\n    CALL,\n    /** the paid tier */\n    @Deprecated\n    PAID(1);\n}\n");
+    const call = (try extractDeclaration(alloc, enums, try js.utf8Decode(alloc, "CALL"), .declaration, &failure)) orelse
+        return error.TestUnexpectedResult;
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "    CALL,"), call);
+
+    const annotated = (try extractDeclaration(alloc, enums, try js.utf8Decode(alloc, "PAID"), .annotated, &failure)) orelse
+        return error.TestUnexpectedResult;
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "    @Deprecated\n    PAID(1);"), annotated);
+
+    // A bare constant has no body to select, so its `-` is empty rather than missing.
+    const body = (try extractDeclaration(alloc, enums, try js.utf8Decode(alloc, "CALL"), .body, &failure)) orelse
+        return error.TestUnexpectedResult;
+    try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, ""), body);
 }
 
 test "regionDirective accepts the common comment spellings" {

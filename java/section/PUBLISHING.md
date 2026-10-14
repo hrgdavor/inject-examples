@@ -37,7 +37,7 @@ places pin the version, and neither follows automatically:
 
 - [ ] `D:\programs\mvn\bin\mvn.cmd clean package` succeeds — the JDK 21 build the release uses (the POM
       targets 21 and enforces 21+).
-- [ ] `mvn test` is green: the 124 conformance vectors, the lexical corpus, the API test and the
+- [ ] `mvn test` is green: the 310 conformance vectors, the lexical corpus, the API test and the
       dependency-boundary test.
 - [ ] `<version>` has no `-SNAPSHOT`.
 - [ ] The `hr.hrg.inject` namespace is verified in the Central Portal.

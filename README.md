@@ -188,7 +188,8 @@ One rule covers every type no other rule claims: source code, `.md`, `.txt`,
 anything. An explicit `#region <name>` directive always wins. When the file has
 none, the name is looked for as a **declaration** — a method, constructor,
 function or class-like declaration (`class`, `interface`, `enum`, `record`,
-`struct`, `trait`, `object`), nested or not. The declaration *is* the region, so
+`struct`, `trait`, `object`), nested or not, and an `enum`'s constants are
+declarations too (`#OrgFeature/CALL`). The declaration *is* the region, so
 code needs no region comments added to it:
 
 ````markdown
@@ -966,11 +967,11 @@ module:
 
 | Port | Where                            | Gate         | State                                                                          |
 | ---- | -------------------------------- | ------------ | ------------------------------------------------------------------------------ |
-| Rust | [`rust/section`](./rust/section) | `cargo test` | complete — every one of the 280 resolution vectors, every mask and every declaration shape, envelopes included |
-| Java | [`java/section`](./java/section) | `mvn test`   | complete — all 280 vectors, the language table and the lexical corpus included |
+| Rust | [`rust/section`](./rust/section) | `cargo test` | complete — every one of the 310 vectors, every mask and every declaration shape, enum constants included |
+| Java | [`java/section`](./java/section) | `mvn test`   | complete — all 310 vectors, the language table and the lexical corpus included |
 
 Both read [`test/vectors/section-vectors.json`](./test/vectors/section-vectors.json)
-— the same 280 vectors the JavaScript gate uses — directly, rather than keeping a
+— the same 310 vectors the JavaScript gate uses — directly, rather than keeping a
 generated copy, and both fail if a vector is neither asserted nor counted, so a
 layer still to come stays visible instead of silently skipped. Both read the
 lexical corpus too — [`test/vectors/lexical-vectors.json`](./test/vectors/lexical-vectors.json),

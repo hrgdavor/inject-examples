@@ -2,6 +2,7 @@ package hr.hrg.inject.section;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -179,6 +180,10 @@ public final class BlockScanner {
         Integer equalsAt;
         /** One past the `;` that ended a property's statement, where its initialiser stops. */
         Integer statementTo;
+        /** For an enum constant: one past its name, where its arguments and its body begin. */
+        Integer nameEnd;
+        /** True when this property is an enum constant, whose `-` scope is what follows its name. */
+        Boolean enumConstant;
         Boolean singleLine;
         Boolean sharedClose;
         boolean indented;
@@ -281,6 +286,17 @@ public final class BlockScanner {
     private static final Pattern ANNOTATION_LINE = Pattern.compile("^\\s*(?:@[\\w.$]|#\\[)");
     private static final Pattern DECLARATION_KEYWORD = Pattern.compile(
             "\\b(?:class|interface|enum|record|struct|trait|object|union)\\s+([A-Za-z_$][\\w$]*)\\b");
+    /** Kotlin's `enum class Suit`: the name follows the language's own `class`. */
+    private static final Pattern KOTLIN_ENUM_NAME = Pattern.compile("^enum\\s+class\\s+([A-Za-z_$][\\w$]*)");
+    /** An enum constant's own name, on the first line of its piece that carries one. */
+    private static final Pattern CONSTANT_NAME = Pattern.compile("^\\s*([A-Za-z_$][\\w$]*)");
+    /**
+     * The words the class-like shape itself uses. A language that spells a declaration with two of them
+     * (`enum class Suit` in Kotlin) leaves the second one where the shape wants the *name*, so a captured name
+     * from this set declares nothing — it is the rest of the keyword, and the real name follows.
+     */
+    private static final java.util.Set<String> DECLARED_NAME_WORDS = java.util.Set.of(
+            "class", "interface", "enum", "record", "struct", "trait", "object", "union");
     private static final Pattern STATEMENT_BEFORE =
             Pattern.compile("^(?:return|throw|new|await|yield|delete|typeof|case|else|do)\\b");
     private static final Pattern PREFIX = Pattern.compile("^[\\w$<>\\[\\],.?*&:@\\s]*$");
@@ -404,6 +420,295 @@ public final class BlockScanner {
     }
 
     /** Build the blocks directly inside one scope, in source order. */
+    // ------------------------------------------------------------------
+    // The variables a declaration names (2026-10-13)
+    // ------------------------------------------------------------------
+
+    /** A word a declaration may put before its type, or instead of it (`var`/`const`/`let`). */
+    private static final Set<String> DECLARATION_MODIFIERS = Set.of(
+            "public", "protected", "private", "static", "final", "abstract", "transient", "volatile",
+            "synchronized", "native", "strictfp", "default", "const", "let", "var", "readonly", "internal",
+            "open", "sealed", "lateinit", "override", "suspend", "inline", "external", "partial", "ref");
+    private static final Pattern VARIABLE_NAME = Pattern.compile("[A-Za-z_$][\\w$]*");
+    private static final Pattern VARIABLE_ANNOTATION = Pattern.compile("[A-Za-z_$][\\w$.]*");
+    private static final Pattern VARIABLE_DOTTED = Pattern.compile("\\.[A-Za-z_$][\\w$]*");
+    private static final Pattern VARIABLE_BRACKETS = Pattern.compile("\\s*\\[\\s*\\]");
+
+    /** One variable declaration: its name, where the name starts, its `=` (or null), and where it ends. */
+    record Variable(String name, int nameAt, Integer equalsAt, int end) {
+    }
+
+    /**
+     * Where the type at `at` ends, or -1 when there is none: a (possibly dotted) name, a generic list whose
+     * `&lt;`/`&gt;` are balanced at **any** depth, and array brackets.
+     *
+     * <p>Types nest, so the generic list is counted rather than matched by a pattern that cannot see past the
+     * first `&gt;`: `Map&lt;Long, List&lt;Session&gt;&gt; perOrg` is a declaration, and a type pattern that
+     * stops at the first `&gt;` makes it no declaration at all — which is exactly what it used to do
+     * (2026-10-13).
+     */
+    private static int typeTokenEnd(String mask, int at, int to) {
+        Matcher name = VARIABLE_NAME.matcher(mask);
+        name.region(at, to);
+        if (!name.lookingAt()) {
+            return -1;
+        }
+        int scan = name.end();
+        Matcher dot = VARIABLE_DOTTED.matcher(mask);
+        for (;;) {
+            dot.region(scan, to);
+            if (!dot.lookingAt()) {
+                break;
+            }
+            scan = dot.end();
+        }
+        if (scan < to && mask.charAt(scan) == '<') {
+            int depth = 0;
+            int cursor = scan;
+            for (; cursor < to; cursor++) {
+                char ch = mask.charAt(cursor);
+                if (ch == '<') {
+                    depth++;
+                } else if (ch == '>') {
+                    depth--;
+                    if (depth == 0) {
+                        cursor++;
+                        break;
+                    }
+                } else if (ch == ';' || ch == '{' || ch == '}' || ch == '\n' || ch == '=') {
+                    return -1;
+                }
+            }
+            if (depth != 0) {
+                return -1;
+            }
+            scan = cursor;
+        }
+        Matcher brackets = VARIABLE_BRACKETS.matcher(mask);
+        for (;;) {
+            brackets.region(scan, to);
+            if (!brackets.lookingAt()) {
+                break;
+            }
+            scan = brackets.end();
+        }
+        return scan;
+    }
+
+    /** The annotation at `at` (`@NotNull`, `@Foo(1)`), or -1: what follows the `@` is not one. */
+    private static int skipAnnotation(String mask, int at, int to) {
+        Matcher name = VARIABLE_ANNOTATION.matcher(mask);
+        name.region(at + 1, to);
+        if (!name.lookingAt()) {
+            return -1;
+        }
+        int scan = name.end();
+        if (scan < to && mask.charAt(scan) == '(') {
+            int close = Masker.matchingBracket(mask, scan, ')');
+            if (close == -1 || close >= to) {
+                return -1;
+            }
+            scan = close + 1;
+        }
+        return scan;
+    }
+
+    /**
+     * One declarator out of `mask[from, to)`, or null.
+     *
+     * <p>A leading annotation or modifier carries no name and is skipped, and the type must come before the
+     * name — that guard is what keeps `count = 1;` an assignment rather than a variable named `count`.
+     * {@code typeOptional} is for the later declarators of a list (`b` in `int a = 1, b = 2;`), which inherit
+     * the type written before the first one.
+     */
+    private static Variable parseVariable(String mask, int from, int to, boolean typeOptional) {
+        int at = from;
+        int typed = 0;
+        boolean untyped = typeOptional;
+        Matcher word = VARIABLE_NAME.matcher(mask);
+        for (;;) {
+            while (at < to && Character.isWhitespace(mask.charAt(at))) {
+                at++;
+            }
+            if (at >= to) {
+                return null;
+            }
+            if (mask.charAt(at) == '@') {
+                int next = skipAnnotation(mask, at, to);
+                if (next == -1) {
+                    return null;
+                }
+                at = next;
+                continue;
+            }
+            word.region(at, to);
+            if (!word.lookingAt()) {
+                return null;
+            }
+            String spelled = word.group();
+            int typeEnd = typeTokenEnd(mask, at, to);
+            int after = typeEnd == -1 ? word.end() : typeEnd;
+            int nextAt = after;
+            while (nextAt < to && Character.isWhitespace(mask.charAt(nextAt))) {
+                nextAt++;
+            }
+            char next = nextAt >= to ? '\0' : mask.charAt(nextAt);
+            boolean endsHere = next == '\0' || next == '=' || next == ':' || next == ','
+                    || next == ';' || next == ')';
+            if (endsHere && (typed > 0 || untyped)) {
+                return finishVariable(mask, spelled, at, after, to);
+            }
+            if (DECLARATION_MODIFIERS.contains(spelled)) {
+                if (spelled.equals("const") || spelled.equals("let") || spelled.equals("var")) {
+                    untyped = true;
+                }
+                at = after;
+                continue;
+            }
+            if (typeEnd == -1) {
+                return null;
+            }
+            typed++;
+            if (nextAt >= to) {
+                return null;
+            }
+            at = nextAt;
+        }
+    }
+
+    /** The declarator whose name runs `nameAt`..`nameAt + name.length()`: its `=` and where its text ends. */
+    private static Variable finishVariable(String mask, String name, int nameAt, int afterName, int to) {
+        int end = to;
+        while (end > nameAt && Character.isWhitespace(mask.charAt(end - 1))) {
+            end--;
+        }
+        Integer equalsAt = null;
+        int depth = 0;
+        for (int scan = afterName; scan < end; scan++) {
+            char ch = mask.charAt(scan);
+            if (ch == '(' || ch == '[' || ch == '{' || ch == '<') {
+                depth++;
+            } else if (ch == ')' || ch == ']' || ch == '}' || ch == '>') {
+                if (depth > 0) {
+                    depth--;
+                }
+            } else if (ch == '=' && depth == 0 && (scan + 1 >= mask.length() || mask.charAt(scan + 1) != '=')
+                    && mask.charAt(scan - 1) != '=') {
+                equalsAt = scan;
+                break;
+            } else if (ch == ':' && depth == 0) {
+                // An enhanced `for`'s `:` — what follows names the thing iterated, not the variable.
+                end = nameAt + name.length();
+                break;
+            }
+        }
+        return new Variable(name, nameAt, equalsAt, Math.max(end, nameAt + name.length()));
+    }
+
+    /**
+     * The variables one declaration region introduces: every declarator of a statement, a parameter, a loop's
+     * own variable, a resource, a `catch` parameter. {@code inherited} is for a statement's own declarator list,
+     * where the type is written once before the first name.
+     */
+    private static List<Variable> variableDeclarators(String mask, int from, int to, boolean inherited,
+                                                      int stopAt) {
+        List<Variable> out = new ArrayList<>();
+        int limit = stopAt == -1 ? to : Math.min(to, stopAt);
+        int depth = 0;
+        int pieceStart = from;
+        int index = 0;
+        for (int at = from; at < limit; at++) {
+            char ch = mask.charAt(at);
+            if (ch == '(' || ch == '[' || ch == '{' || ch == '<') {
+                depth++;
+                continue;
+            }
+            if (ch == ')' || ch == ']' || ch == '}' || ch == '>') {
+                if (depth > 0) {
+                    depth--;
+                }
+                continue;
+            }
+            if (ch != ',' && ch != ';') {
+                continue;
+            }
+            if (depth != 0) {
+                continue;
+            }
+            Variable declared = parseVariable(mask, pieceStart, at, index > 0 && inherited);
+            if (declared != null) {
+                out.add(declared);
+            }
+            pieceStart = at + 1;
+            index++;
+        }
+        // Whatever is left is the last declarator: the region's own end is not a separator, and a piece that
+        // ends on the closing bracket of its initialiser (`listOf(\n 1,\n)`) reaches it without one.
+        Variable trailing = parseVariable(mask, pieceStart, limit, index > 0 && inherited);
+        if (trailing != null) {
+            out.add(trailing);
+        }
+        return out;
+    }
+
+    /** The offset of `wanted` in `mask[from, to)` with every bracket closed, or -1. */
+    private static int topLevelIndexOf(String mask, int from, int to, char wanted) {
+        int depth = 0;
+        for (int at = from; at < to; at++) {
+            char ch = mask.charAt(at);
+            if (ch == '(' || ch == '[' || ch == '{' || ch == '<') {
+                depth++;
+            } else if (ch == ')' || ch == ']' || ch == '}' || ch == '>') {
+                if (depth > 0) {
+                    depth--;
+                }
+            } else if (ch == wanted && depth == 0) {
+                return at;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * The variables a statement's header declares: a `for`'s own variable (classic or enhanced), a `catch`
+     * parameter, and the resources a `try (…)` names. Only the header's own parentheses are read, so an
+     * expression like `while (count &gt; 0)` names no variable.
+     */
+    private static List<Variable> headerVariables(String mask, int from, int to, String keyword) {
+        int open = mask.indexOf('(', from);
+        if (open == -1 || open >= to) {
+            return List.of();
+        }
+        int close = Masker.matchingBracket(mask, open, ')');
+        if (close == -1 || close > to) {
+            return List.of();
+        }
+        if ("for".equals(keyword)) {
+            // A classic `for` declares in its first part; an enhanced one ends the variable at its `:`.
+            int colon = topLevelIndexOf(mask, open + 1, close, ':');
+            int semicolon = topLevelIndexOf(mask, open + 1, close, ';');
+            int end = colon != -1 ? colon : semicolon != -1 ? semicolon : close;
+            return variableDeclarators(mask, open + 1, end, false, -1);
+        }
+        return variableDeclarators(mask, open + 1, close, false, -1);
+    }
+
+    /** Register one variable as a member of `parent`, the way `descend` registers the scanned ones. */
+    private static Block declareVariable(Block parent, Variable variable, int[] starts, List<Block> blocks) {
+        Block block = new Block("property", variable.name(), Masker.lineOf(starts, variable.nameAt()));
+        block.lineEnd = Masker.lineOf(starts, Math.max(variable.nameAt(), variable.end() - 1));
+        block.equalsAt = variable.equalsAt();
+        block.statementTo = variable.end();
+        block.parent = parent;
+        block.scope = parent;
+        block.scopeName = parent.name;
+        block.scopeLine = parent.declLine;
+        parent.children.add(block);
+        parent.blocks.add(block);
+        blocks.add(block);
+        return block;
+    }
+
     private static List<Block> buildScope(int fromLine, int toLine, Lex lex, List<Block> blocks) {
         List<Block> list = new ArrayList<>();
         int i = fromLine;
@@ -462,17 +767,47 @@ public final class BlockScanner {
             }
 
             Matcher keyword = DECLARATION_KEYWORD.matcher(maskedLine);
-            if (keyword.find() && !NOT_A_NAME.contains(keyword.group(1))) {
+            if (keyword.find()) {
+                String[] spelled = keyword.group().trim().split("\\s+");
                 String name = keyword.group(1);
-                // The header scan starts at the name; the body's search starts just after it.
                 int nameAt = start + keyword.start() + keyword.group().indexOf(name);
-                int headerFrom = start + keyword.start() + keyword.group().length();
+                // Kotlin spells its enum `enum class Suit`: the word the class-like shape captures is the
+                // language's own `class`, and the name follows it. Reading the name one word on is what makes
+                // a Kotlin enum reachable at all, and it is the same shape every other language writes as
+                // `enum Suit`.
+                boolean kotlinEnum = spelled.length == 2 && "enum".equals(spelled[0]) && "class".equals(spelled[1]);
+                if (kotlinEnum) {
+                    Matcher kotlinName = KOTLIN_ENUM_NAME.matcher(maskedLine.substring(keyword.start()));
+                    if (!kotlinName.find()) {
+                        i++;
+                        continue;
+                    }
+                    name = kotlinName.group(1);
+                    nameAt = start + keyword.start() + kotlinName.end() - name.length();
+                }
+                // A word that stands where a name would and declares nothing is not a declaration: it is how a
+                // language spells a second keyword (`enum` + `class` above).
+                if (NOT_A_NAME.contains(name) || DECLARED_NAME_WORDS.contains(name)) {
+                    i++;
+                    continue;
+                }
+                // The header scan starts at the name; the body's search starts just after it.
+                int headerFrom = nameAt + name.length();
                 Span span = bodySpan(lex, i, headerFrom, nameAt);
                 Block block = new Block("class", name, i);
                 applySpan(block, span);
+                // An enum's body opens with its constant list, and every constant is a member of its own —
+                // matcher 4 reads "a field **or constant**" (2026-10-13). The constants are read first, and
+                // only what follows their `;` is scanned as an ordinary class body.
+                Integer enumBodyFrom = enumConstants(block, spelled[0], span, lex, blocks);
                 applyAnchor(block, lex, span);
                 register(list, block, blocks);
-                descend(block, i, span, lex, blocks);
+                if (enumBodyFrom == null) {
+                    descend(block, i, span, lex, blocks);
+                } else if (enumBodyFrom != -1) {
+                    span.openLine = enumBodyFrom - 1;
+                    descend(block, i, span, lex, blocks);
+                }
                 i = endLineOf(span, i) + 1;
                 continue;
             }
@@ -519,6 +854,17 @@ public final class BlockScanner {
                 }
                 Block block = new Block("method", methodDecl.name(), i);
                 applySpan(block, span);
+                // The variables a signature declares are members of it: `void render(String title)` names
+                // `title`, and a parameter is what a reader follows a name to as often as a local is
+                // (2026-10-13).
+                int parameterList = lex.mask.indexOf('(', methodDecl.nameAt());
+                int parameterEnd = parameterList == -1 ? -1 : Masker.matchingBracket(lex.mask, parameterList, ')');
+                if (parameterEnd > parameterList) {
+                    for (Variable variable : variableDeclarators(lex.mask, parameterList + 1, parameterEnd,
+                            false, -1)) {
+                        declareVariable(block, variable, lex.starts, blocks);
+                    }
+                }
                 applyAnchor(block, lex, span);
                 register(list, block, blocks);
                 descend(block, i, span, lex, blocks);
@@ -547,6 +893,13 @@ public final class BlockScanner {
                         String conditionLine = lex.source.substring(headerStart, headerEnd);
                         block.conditions =
                                 lex.lexer.conditionLiterals(conditionLine, segment.condOffset);
+                        // A `for`, a `catch` and a `try`-with-resources introduce their own variables, and they
+                        // are members of the block the header opens — a loop's `item` is as targetable as a
+                        // local (2026-10-13).
+                        for (Variable variable : headerVariables(lex.mask, headerStart, headerEnd,
+                                segment.headerKeyword)) {
+                            declareVariable(block, variable, lex.starts, blocks);
+                        }
                         Span anchorSpan = new Span();
                         anchorSpan.open = segment.open;
                         applyAnchor(block, lex, anchorSpan);
@@ -595,26 +948,44 @@ public final class BlockScanner {
                 }
             }
 
-            Matcher property = PROPERTY_DECL.matcher(maskedLine);
-            if (property.find() && !NOT_A_NAME.contains(property.group(3))
-                    && !STATEMENT_BEFORE.matcher(property.group().trim()).find()
-                    && !(property.group(2) != null
-                            && NOT_A_TYPE.contains(property.group(2).trim().split("\\s+")[0]))) {
-                Block block = new Block("property", property.group(3), i);
-                // The whole statement is the selection, `;` and all. The scan starts at the top of the
-                // declaration's own line, where every bracket is closed by construction, and follows it
-                // to its `;` — so a lambda, an array or an anonymous-class initialiser inside it is the
-                // statement's own brace and not the end of the statement. The `=` is the one the
-                // matcher's own look-ahead found, so the initialiser is read from the same place in
-                // every shape.
-                int equalsAt = lex.starts[i] + property.end() - 1;
-                int[] propertyStatement =
+            // A variable declaration: `Type name = …;` — and every other spelling of one. Matcher 4 reads a
+            // *variable*, so a declaration with no initialiser (`int count;`), a list of declarators
+            // (`int a = 1, b = 2;`), an enum's constant and a local whose type nests
+            // (`Map<Long, List<Session>> perOrg = …;`) are all members (2026-10-13).
+            Variable declaredVariable = parseVariable(maskedLine, 0, maskedLine.length(), false);
+            // A declaration's type and modifiers are words, so a statement keyword in that position means this
+            // is not one: VB writes `If name = "count" Then` with the same `=` an assignment uses, and reading
+            // it as a property named `name` hides the condition literal that names the block.
+            String variablePrefix = declaredVariable == null
+                    ? null : maskedLine.substring(0, declaredVariable.nameAt()).trim();
+            if (declaredVariable != null && !NOT_A_NAME.contains(declaredVariable.name())
+                    && !STATEMENT_BEFORE.matcher(variablePrefix + " " + declaredVariable.name()).find()
+                    && !(variablePrefix != null && !variablePrefix.isEmpty()
+                            && NOT_A_TYPE.contains(variablePrefix.split("\\s+")[0]))) {
+                // The whole statement is followed so its `;` is found — a lambda, an array or an
+                // anonymous-class initialiser inside it is the statement's own brace and not its end.
+                int[] variableStatement =
                         statementEnd(lex.mask, lex.lines, lex.starts[i], lex.mask.length());
-                block.lineEnd = propertyStatement[1];
-                block.equalsAt = equalsAt;
-                block.statementTo = propertyStatement[0];
-                register(list, block, blocks);
-                i = Math.max(i, propertyStatement[1]) + 1;
+                List<Variable> declaredVars =
+                        variableDeclarators(lex.mask, lex.starts[i], variableStatement[0], true, -1);
+                for (int index = 0; index < declaredVars.size(); index++) {
+                    Variable variable = declaredVars.get(index);
+                    Block block = new Block("property", variable.name(),
+                            Masker.lineOf(lex.starts, variable.nameAt()));
+                    block.lineEnd = Masker.lineOf(lex.starts,
+                            Math.max(variable.nameAt(), variable.end() - 1));
+                    block.equalsAt = variable.equalsAt();
+                    block.statementTo = variable.end();
+                    if (index == declaredVars.size() - 1) {
+                        // The last declarator reaches the statement's own end, and where that is is a fact
+                        // about the **source**: the mask blanks a raw string the statement carries, so the
+                        // mask's own last character would cut the declaration short.
+                        block.lineEnd = variableStatement[1];
+                        block.statementTo = variableStatement[0];
+                    }
+                    register(list, block, blocks);
+                }
+                i = Math.max(i, variableStatement[1]) + 1;
                 continue;
             }
 
@@ -1183,6 +1554,121 @@ public final class BlockScanner {
     private static void register(List<Block> list, Block block, List<Block> blocks) {
         list.add(block);
         blocks.add(block);
+    }
+
+    /**
+     * The members an enum's constant list contributes (2026-10-13) — the Java port of the reference's rule.
+     *
+     * <p>A Java-family enum opens its body with a {@code ,}-separated list of constants — each a bare name, a
+     * name with constructor arguments, or a name with a body of its own — and only after the list's {@code ;}
+     * comes an ordinary class body. Matcher 4 reads "a field <strong>or constant</strong>", so every constant is
+     * a member named by its identifier, selected as the whole constant; the list is read here, before the body's
+     * own members, and the constants become the block's children, which is also what makes an enum written on one
+     * line a container at all.</p>
+     *
+     * @return null when this is not an enum's body, so the caller descends into it as a class-like block
+     *     normally; otherwise the first line of the class body after the constant list, or -1 when the list is
+     *     the whole body
+     */
+    private static Integer enumConstants(Block block, String leading, Span span, Lex lex, List<Block> blocks) {
+        if (!"enum".equals(leading) || span == null || span.open == null || span.close == null
+                || span.close <= span.open) {
+            return null;
+        }
+        String mask = lex.mask;
+        // The list ends at the first `;` outside every bracket — a constant's arguments or body may carry
+        // brackets of their own — and a body that writes no `;` is nothing but its constants.
+        int depth = 0;
+        int listEnd = span.close;
+        int semicolonLine = -1;
+        for (int at = span.open + 1; at < span.close; at++) {
+            char ch = mask.charAt(at);
+            if (ch == '(' || ch == '[' || ch == '{') {
+                depth++;
+            } else if (ch == ')' || ch == ']' || ch == '}') {
+                depth--;
+            } else if (ch == ';' && depth == 0) {
+                listEnd = at;
+                semicolonLine = Masker.lineOf(lex.starts, at);
+                break;
+            }
+        }
+        // One constant per top-level `,` of the list; the comma that closes the last one is the loop's own
+        // sentinel.
+        depth = 0;
+        int from = span.open + 1;
+        for (int at = span.open + 1; at <= listEnd; at++) {
+            char ch = at == listEnd ? ',' : mask.charAt(at);
+            if (ch == '(' || ch == '[' || ch == '{') {
+                depth++;
+            } else if (ch == ')' || ch == ']' || ch == '}') {
+                depth--;
+            }
+            if (ch != ',' || depth != 0) {
+                continue;
+            }
+            Constant constant = constantBetween(mask, from, at);
+            from = at + 1;
+            if (constant == null) {
+                continue;
+            }
+            Block member = new Block("property", constant.name(), Masker.lineOf(lex.starts, constant.nameAt()));
+            member.lineEnd = Masker.lineOf(lex.starts, Math.max(constant.nameAt(), constant.end() - 1));
+            // A constant's "body" — the part a `-` selection means — is everything after its name: the
+            // arguments it is built with and the body it declares, when it has one. A bare constant has none,
+            // exactly as a field with no initialiser has none.
+            member.enumConstant = Boolean.TRUE;
+            member.nameEnd = constant.nameAt() + constant.name().length();
+            member.statementTo = constant.end();
+            member.parent = block;
+            member.scope = block;
+            member.scopeName = block.name;
+            member.scopeLine = block.declLine;
+            block.children.add(member);
+            block.blocks.add(member);
+            blocks.add(member);
+        }
+        return semicolonLine == -1 ? -1 : semicolonLine + 1;
+    }
+
+    /** One enum constant: its name, where the name starts, and where the constant ends. */
+    private record Constant(String name, int nameAt, int end) {
+    }
+
+    /**
+     * One enum constant out of {@code mask[from, to)}.
+     *
+     * <p>The name is looked for on the first line of the piece that carries one, because a constant may be
+     * introduced by a doc comment (blank in the mask) or by annotations ({@code @Deprecated}), and because the
+     * widening scopes walk <em>up</em> from the line the name is written on. A piece that names nothing — the
+     * empty space a trailing comma leaves — answers null, and so does a {@code case}-spelled constant (PHP writes
+     * {@code case Hearts;}), which this rule does not read yet.</p>
+     */
+    private static Constant constantBetween(String mask, int from, int to) {
+        int lineFrom = from;
+        for (int at = from; at <= to; at++) {
+            if (at != to && mask.charAt(at) != '\n') {
+                continue;
+            }
+            String masked = mask.substring(lineFrom, at);
+            Matcher name = CONSTANT_NAME.matcher(masked);
+            if (name.find()) {
+                int nameAt = lineFrom + name.start(1);
+                // The constant runs to the last non-blank byte of its own piece, so a wrapped argument list or a
+                // body still belongs to it and trailing space does not.
+                int last = to;
+                while (last > nameAt && Character.isWhitespace(mask.charAt(last - 1))) {
+                    last--;
+                }
+                return new Constant(name.group(1), nameAt,
+                        Math.max(nameAt + name.group(1).length(), last));
+            }
+            if (masked.trim().startsWith("case")) {
+                return null;
+            }
+            lineFrom = at + 1;
+        }
+        return null;
     }
 
     /** Scan {@code block}'s own body and attach the blocks it directly contains. */

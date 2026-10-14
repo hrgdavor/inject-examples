@@ -63,6 +63,9 @@ const WIDGET = 'test/fixtures/Widget.cs';
 const REPO = 'test/fixtures/Repo.kt';
 const ORDERS = 'test/fixtures/Orders.sql';
 const VB_FORM = 'test/fixtures/Form.vb';
+// The variables a block or a signature declares: locals with and without an initialiser, declarator lists,
+// nested generic types, loop variables, resources, `catch` parameters and parameters (2026-10-13).
+const VARIABLES = 'test/fixtures/Variables.java';
 // The wrapped-header fixtures: a declaration whose parameters, `throws` clause
 // or type parameters do not fit on one line.
 const WRAPPED = 'test/fixtures/Wrapped.java';
@@ -91,6 +94,8 @@ const PROPERTY_TYPES = 'test/fixtures/PropertyTypes.java';
 const WRAPPED_KT = 'test/fixtures/Wrapped.kt';
 const WRAPPED_PY = 'test/fixtures/Wrapped.py';
 const ENUM = 'test/fixtures/Enum.java';
+const ENUM_INLINE = 'test/fixtures/EnumInline.java';
+const ENUM_KT = 'test/fixtures/Enum.kt';
 // A `#`-comment language: the region directive is written `# #region name`, and
 // a condition literal or a trailing-comment anchor has no brace to hang on.
 const HASH_PY = 'test/fixtures/Hash.py';
@@ -263,8 +268,45 @@ const cases = [
     { name: 'enum-member', input: ENUM, reference: 'OrgFeature/label' },
     { name: 'enum-nested', input: ENUM, reference: 'OrgFeature/Tier' },
     { name: 'enum-nested-member', input: ENUM, reference: 'OrgFeature/Tier/rank' },
-    // …and a constant is not a member.
-    { name: 'enum-constant-is-not-a-member', input: ENUM, reference: 'OrgFeature/CALL' },
+    // …and a constant IS a member: matcher 4 reads a field *or constant*, so a constant is selected whole and a
+    // documented or annotated one carries its doc comment and annotations under the widening scopes (2026-10-13).
+    { name: 'enum-constant', input: ENUM, reference: 'OrgFeature/CALL' },
+    { name: 'enum-constant-bare-name', input: ENUM, reference: 'CALL' },
+    { name: 'enum-constant-last', input: ENUM, reference: 'OrgFeature/CHAT_AUDIO' },
+    { name: 'enum-constant-with-arguments', input: ENUM, reference: 'OrgFeature/Tier/FREE' },
+    { name: 'enum-constant-documented', input: ENUM, reference: 'OrgFeature/Tier/FREE/++' },
+    { name: 'enum-constant-annotated', input: ENUM, reference: 'OrgFeature/Tier/PAID/+' },
+    { name: 'enum-constant-body-is-its-arguments', input: ENUM, reference: 'OrgFeature/Tier/FREE/-' },
+    { name: 'enum-constant-missing', input: ENUM, reference: 'OrgFeature/NOPE' },
+    // A body written on one line is a container because what it contains is its constants, and a constant carrying
+    // a body of its own is selected whole — its `-` scope is that body.
+    { name: 'enum-inline-declaration', input: ENUM_INLINE, reference: 'Bunched' },
+    { name: 'enum-inline-constant', input: ENUM_INLINE, reference: 'Bunched/CHAT' },
+    { name: 'enum-inline-constant-bare-name', input: ENUM_INLINE, reference: 'CHAT_AUDIO' },
+    { name: 'enum-inline-with-body', input: ENUM_INLINE, reference: 'WithBodies/PAID' },
+    { name: 'enum-inline-with-body-body', input: ENUM_INLINE, reference: 'WithBodies/PAID/-' },
+    { name: 'enum-inline-arguments-body', input: ENUM_INLINE, reference: 'WithBodies/FREE/-' },
+    // Kotlin writes `enum class`, where the word after `enum` is the language's own `class`.
+    { name: 'enum-kotlin-declaration', input: ENUM_KT, reference: 'Suit' },
+    { name: 'enum-kotlin-constant', input: ENUM_KT, reference: 'Suit/SPADES' },
+    { name: 'enum-kotlin-constant-bare-name', input: ENUM_KT, reference: 'HEARTS' },
+    // A variable is a member wherever it is declared: matcher 4 reads one, so a local inside a method or a
+    // block is as targetable as a field, and a signature's parameters are members of the declaration they
+    // belong to (2026-10-13).
+    { name: 'variable-local-nested-generic', input: VARIABLES, reference: 'perOrg' },
+    { name: 'variable-local-nested-generic-path', input: VARIABLES, reference: 'run/perOrg' },
+    { name: 'variable-local-no-initialiser', input: VARIABLES, reference: 'count' },
+    { name: 'variable-local-no-initialiser-path', input: VARIABLES, reference: 'run/count' },
+    { name: 'variable-declarator-list-first', input: VARIABLES, reference: 'first' },
+    { name: 'variable-declarator-list-second', input: VARIABLES, reference: 'run/second' },
+    { name: 'variable-enhanced-for', input: VARIABLES, reference: 'item' },
+    { name: 'variable-classic-for', input: VARIABLES, reference: 'loops/index' },
+    { name: 'variable-resource', input: VARIABLES, reference: 'input' },
+    { name: 'variable-catch-parameter', input: VARIABLES, reference: 'failure' },
+    { name: 'variable-parameter', input: VARIABLES, reference: 'title' },
+    { name: 'variable-parameter-path', input: VARIABLES, reference: 'render/title' },
+    { name: 'variable-parameter-final', input: VARIABLES, reference: 'render/size' },
+    { name: 'variable-missing', input: VARIABLES, reference: 'render/nope' },
     // Resolution — Example.java.
     { name: 'ex-tostring', input: EXAMPLE, reference: 'toString' },
     { name: 'ex-tostring-body', input: EXAMPLE, reference: 'toString/-' },

@@ -351,8 +351,11 @@ public final class SectionResolver {
                     "\"" + name + "\" is declared " + chosen.size() + " times; names must be unique",
                     ErrorCodes.AMBIGUOUS, name, null, blockCandidates(chosen));
         }
-        return renderDeclaration(lex.lines, lex.source, lex.starts, chosen.get(0), scope,
-                line -> lex.lexer.isAnnotationLine(line)).text();
+        // The same renderer the resolver uses, so the two entry points cannot disagree about what a
+        // declaration's text is — a property reads its own statement here rather than going through the
+        // body-less declaration path.
+        return renderBlock(chosen.get(0), scope, new Ctx(lex.lines, lex.source, lex.starts, lex.lexer), "text")
+                .text();
     }
 
     private static void collect(BlockScanner.Block scope, String name,
@@ -369,7 +372,12 @@ public final class SectionResolver {
 
     private static boolean hasBody(BlockScanner.Block block) {
         return Boolean.TRUE.equals(block.singleLine) || block.expression != null || block.indented
-                || block.openLine != null;
+                || block.openLine != null
+                // A property — a field, and an enum's constant — is a selection even with no body at all: the
+                // statement (or the constant) *is* what is injected, which is why `planSection` has always
+                // resolved one. Extraction used to skip them, which made the two entry points disagree
+                // (2026-10-13).
+                || "property".equals(block.kind);
     }
 
     // ------------------------------------------------------------------
@@ -836,6 +844,15 @@ public final class SectionResolver {
             int last = block.lineEnd == null || block.lineEnd < block.declLine
                     ? block.declLine : block.lineEnd;
             if (scope == Scope.BODY) {
+                // An enum constant's "body" is what follows its name — the arguments it is built with, and the
+                // body it declares — because that is the part of a constant that is not its name (2026-10-13).
+                if (Boolean.TRUE.equals(block.enumConstant)) {
+                    Integer from = block.nameEnd;
+                    if (from == null || block.statementTo == null || from >= block.statementTo) {
+                        return single("", block.declLine);
+                    }
+                    return trimmedSlice(ctx.source, ctx.starts, from, block.statementTo);
+                }
                 // `-` selects the initialiser expression: the bytes between the `=` that opens it and
                 // the `;` that ends the statement. A member with no initialiser has an empty body,
                 // reported on its own line.

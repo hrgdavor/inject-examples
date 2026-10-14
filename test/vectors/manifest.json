@@ -163,7 +163,7 @@
       "name": "resolution",
       "owner": "RFC 1 (core)",
       "file": "test/vectors/section-vectors.json",
-      "rows": 212,
+      "rows": 242,
       "selector": "rows with input !== null (they name a fixture)",
       "asserts": [
         "text",
@@ -227,7 +227,7 @@
   "corpora": [
     {
       "path": "test/vectors/section-vectors.json",
-      "rows": 280,
+      "rows": 310,
       "shape": "array",
       "row_fields": {
         "name": "unique; `<category>:<case>` for parse rows, a slug for resolution rows",
@@ -243,18 +243,18 @@
         "errorCode": "the stable code of the failure (RFC 1 §3.6): `grammar/*` when no file was consulted, `resolution/*` when the file cannot answer. Proposed, not yet a row field: the codes exist on every thrown failure and are asserted in test.mjs, and a row gains the field when band rows land"
       },
       "counts": {
-        "total": 280,
+        "total": 310,
         "parse": 68,
-        "resolution": 212,
-        "errors": 93,
+        "resolution": 242,
+        "errors": 94,
         "by_kind": {
           "anchor": 12,
           "condition": 4,
-          "declaration": 77,
+          "declaration": 79,
           "lines": 6,
           "multiple": 13,
-          "null": 55,
-          "property": 39,
+          "null": 56,
+          "property": 66,
           "region": 6
         }
       },

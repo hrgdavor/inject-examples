@@ -192,6 +192,66 @@ test('extractDeclaration matches a method and a class-like declaration', () => {
     assert.equal(extractDeclaration(JAVA, ''), null);
 });
 
+test('extractDeclaration reads a property, and an enum constant, as the resolver does', () => {
+    // A property is a selection with no body of its own: the statement *is* what is injected. Extraction used to
+    // skip every one of them, so the two entry points disagreed on exactly the declarations this rule names
+    // (2026-10-13).
+    const field = 'public class A {\n    private final String plain = "x";\n}\n';
+    assert.equal(extractDeclaration(field, 'plain'), '    private final String plain = "x";');
+    assert.equal(extractDeclaration(field, 'plain'), planSection(field, 'plain').text);
+
+    const enums = readFileSync(new URL('test/fixtures/Enum.java', import.meta.url), 'utf8');
+    assert.equal(extractDeclaration(enums, 'CALL'), '    CALL,');
+    assert.equal(extractDeclaration(enums, 'PAID'), '        PAID(1);');
+    assert.equal(extractDeclaration(enums, 'PAID', 'annotated'),
+        '        @Deprecated\n        PAID(1);');
+});
+
+test('every block records the scope that declared it', () => {
+    // The four facts every port records — the owning block, the same link named `scope`, that scope's name and
+    // its declaration line — set at the same four places: the root's children, a `descend`, an enum's constants,
+    // and a declared variable. No rule reads them today (the walk carries the scope as it descends), so this
+    // test is what keeps them from silently becoming null when one of those places is touched again (2026-10-14).
+    const source = 'class Runner {\n    void run(String title) {\n        int count;\n    }\n'
+        + '    enum Suit { HEARTS }\n}\n';
+    const scan = scanBlocks(source, 'Runner.java');
+
+    const klass = scan.root.children[0];
+    assert.equal(klass.name, 'Runner');
+    // A top-level block belongs to the root, which has no name or line of its own.
+    assert.equal(klass.parent, scan.root);
+    assert.equal(klass.scope, scan.root);
+    assert.equal(klass.scopeName, null);
+    assert.equal(klass.scopeLine, null);
+
+    const method = klass.children[0];
+    assert.equal(method.name, 'run');
+    assert.equal(method.parent, klass);
+    assert.equal(method.scope, klass);
+    assert.equal(method.scopeName, 'Runner');
+    assert.equal(method.scopeLine, 0);
+
+    // A parameter is registered by `declareVariable`, a local by the scope scan: both name the method.
+    const [parameter, local] = method.children;
+    assert.equal(parameter.name, 'title');
+    assert.equal(local.name, 'count');
+    for (const member of [parameter, local]) {
+        assert.equal(member.parent, method);
+        assert.equal(member.scope, method);
+        assert.equal(member.scopeName, 'run');
+        assert.equal(member.scopeLine, 1);
+    }
+
+    const suit = klass.children[1];
+    assert.equal(suit.name, 'Suit');
+    const constant = suit.children[0];
+    assert.equal(constant.name, 'HEARTS');
+    assert.equal(constant.parent, suit);
+    assert.equal(constant.scope, suit);
+    assert.equal(constant.scopeName, 'Suit');
+    assert.equal(constant.scopeLine, 4);
+});
+
 test('extractDeclaration prefers a class over its same-named constructor', () => {
     const java = ['public class Cart {', '    Cart() {', '        init();', '    }', '}'].join('\n');
     assert.equal(extractDeclaration(java, 'Cart'), java);
@@ -824,8 +884,7 @@ test('an enum whose constants take their own lines is a declaration too', () => 
     const all = extractCodeRegion(source, 'OrgFeature');
     assert.match(all, /^public enum OrgFeature \{$/m);
     assert.match(all, /^\s+CHAT_AUDIO;$/m);
-    // The constants are not members, and what follows them is: the body is
-    // otherwise an ordinary class body.
+    // What follows the constants is an ordinary class body.
     assert.match(all, /private final String label;/);
     assert.match(all, /^\s+public String label\(\) \{$/m);
 
@@ -833,8 +892,16 @@ test('an enum whose constants take their own lines is a declaration too', () => 
     // through it.
     assert.match(extractCodeRegion(source, 'OrgFeature/Tier'), /^\s+FREE\(0\),$/m);
     assert.equal(extractCodeRegion(source, 'OrgFeature/Tier/rank'), extractCodeRegion(source, 'OrgFeature/rank'));
-    assert.throws(() => extractCodeRegion(source, 'OrgFeature/CALL'),
-        /no section named "CALL" in "OrgFeature"/, 'a constant is not a member');
+
+    // A constant is a member: matcher 4 reads "a field **or constant**", so it is selected whole, by its own name
+    // or through the enum that holds it, and the widening scopes carry its doc comment and annotations (2026-10-13).
+    assert.equal(extractCodeRegion(source, 'OrgFeature/CALL'), extractCodeRegion(source, 'CALL'));
+    assert.match(extractCodeRegion(source, 'OrgFeature/CALL'), /^\s+CALL,$/m);
+    assert.match(extractCodeRegion(source, 'OrgFeature/Tier/PAID'), /^\s+PAID\(1\);$/m);
+    assert.match(extractCodeRegion(source, 'OrgFeature/Tier/PAID/+'), /^\s+@Deprecated$/m);
+    assert.match(extractCodeRegion(source, 'OrgFeature/Tier/FREE/++'), /^\s+\/\*\* The free tier/m);
+    // A constant's `-` is what follows its name: the arguments it is built with, or its own body.
+    assert.equal(extractCodeRegion(source, 'OrgFeature/Tier/FREE/-').trim(), '(0)');
 });
 
 test('an expression body survives a wrapped parameter list', () => {

@@ -39,6 +39,10 @@ pub struct Block {
     pub equals_at: Option<usize>,
     /// One past the `;` that ended a property's statement, which is where its initialiser stops.
     pub statement_to: Option<usize>,
+    /// For an enum constant: one past its name, where its arguments and its body begin.
+    pub name_end: Option<usize>,
+    /// True when this property is an enum constant, whose `-` scope is what follows its name.
+    pub enum_constant: bool,
     pub single_line: bool,
     pub shared_close: bool,
     pub indented: bool,
@@ -75,6 +79,8 @@ impl Block {
             line_end: None,
             equals_at: None,
             statement_to: None,
+            name_end: None,
+            enum_constant: false,
             single_line: false,
             shared_close: false,
             indented: false,

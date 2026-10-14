@@ -353,14 +353,14 @@ Within one scope the matchers below are tried in this order; the first that
 matches ends the lookup *for that scope*. In a single-segment reference that
 also ends the whole search.
 
-| #   | Matcher                    | What it finds                                                                                    | Selects                                         |
-| --- | -------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| 1   | **Region directive**       | `#region <name>` … `#endregion` whose enclosing block is this scope (the whole file for a top-level region) | the lines strictly between the directives |
-| 2   | **Class-like declaration** | `class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`, `union` named `<name>` in this scope | the declaration, or the modified part  |
-| 3   | **Method / function**      | a named method, constructor, function or arrow-valued property in this scope **that has a body** | the declaration, or the modified part           |
-| 4   | **Property**               | a field or constant named `<name>` (`private int getUsers = 0;`, `static final String X = …`)    | the whole statement                             |
-| 5   | **Condition literal**      | a statement block **in this scope** whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace |
-| 6   | **Comment anchor**         | a braced block **in this scope** whose first non-blank line is `//<name>` or `/*<name>*/`        | the block, anchor comment through closing brace |
+| #   | Matcher                    | What it finds                                                                                    | Selects                                                    |
+| --- | -------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| 1   | **Region directive**       | `#region <name>` … `#endregion` whose enclosing block is this scope (the whole file for a top-level region) | the lines strictly between the directives       |
+| 2   | **Class-like declaration** | `class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`, `union` named `<name>` in this scope | the declaration, or the modified part             |
+| 3   | **Method / function**      | a named method, constructor, function or arrow-valued property in this scope **that has a body** | the declaration, or the modified part                      |
+| 4   | **Property**               | a variable named `<name>` — a field, a constant, or one a block or a signature declares (`private int getUsers = 0;`, `int count;`, `int first = 1, second = 2;`, `String title` in `void render(String title)`, an enum's `CALL,`) | the whole statement, or the text that declares a parameter |
+| 5   | **Condition literal**      | a statement block **in this scope** whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace          |
+| 6   | **Comment anchor**         | a braced block **in this scope** whose first non-blank line is `//<name>` or `/*<name>*/`        | the block, anchor comment through closing brace            |
 
 A class-like name beats a same-named constructor. Body-less members (interface
 methods, `abstract` declarations) have nothing to inject and are skipped. A
@@ -781,8 +781,46 @@ followed through the rest of the file.
 The same rule is what reads a Java `enum`, where the constants come before the
 body's brace and each takes a line of its own — `enum Tier {\n  FREE(0),\n
 PAID(1);\n … }` — so the declaration is only complete at the `{`, several lines
-below the line it starts on. The constants are not members: what follows them is
-an ordinary class body, and only that is reachable by name.
+below the line it starts on. **An enum's constants are members** (2026-10-13,
+matcher 4): each is named by its identifier, selected as the whole constant —
+its arguments and the body it may declare included — and a constant is
+reachable by its own name or through the enum that holds it
+(`#OrgFeature/CALL`). The list ends at the first `;` outside every bracket, and
+only what follows that `;` is an ordinary class body, so `#OrgFeature/label`
+still finds the method. The widening scopes reach a constant's annotations and
+its doc comment exactly as they do a field's, and `-` is what follows the name:
+the arguments a constant is built with, or its own body, and nothing when it is
+bare.
+
+**A variable is a member wherever it is declared** (2026-10-13, matcher 4). A
+field was always one, and so is a local inside a method or a block, a parameter a
+signature names, a loop's own variable, a resource a `try (…)` opens and a
+`catch` parameter. Three things about it are worth stating:
+
+- **The initialiser is not required.** `int count;` declares `count` exactly as
+  `private int count;` declares a field, and `-` is empty for both.
+- **Every declarator counts.** `int first = 1, second = 2;` names `first` *and*
+  `second` — the type is written once, before the first name, and each later
+  declarator inherits it. The last one reaches the statement's own end.
+- **The type is what makes it a declaration**, and the type may nest:
+  `Map<Long, List<Session>> perOrg = …;` is one, because the generic list is
+  counted rather than matched to its first `>`. A statement with no type before
+  its name is not a declaration at all, so `count = 1;` stays an assignment.
+
+Two boundaries are deliberate. A `catch` whose `try` opens resources is not read
+yet — the resource list and the chain of `catch` segments share a line, and the
+chain scan and this rule disagree about which parentheses belong to whom. And an
+untyped lambda parameter (`item -> …`) is not read either: naming a variable
+would mean parsing the expression it sits in, which is the parser this rule
+refuses to be.
+
+A body that puts its constants on the declaration's own line —
+`enum Tier { FREE, PAID }` — registers them too, and the block is a container
+because what it contains is its constants. Every constant of such a body
+therefore lands on that one line: the selection is the line the constant is
+written on, which is where a click goes. Kotlin's spelling, `enum class Suit`,
+is one declaration like any other: the word after `enum` is the language's own
+`class`, and the name follows it.
 
 What the header must **not** do is invent a declaration. The name is looked for
 where it is written, and only a statement that would declare it counts: the text

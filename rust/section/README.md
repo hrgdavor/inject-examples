@@ -17,13 +17,13 @@ disagreement here is a bug here.
 | Per-language tokenizer and table                                                   | **ported** — all eighteen entries, and the extension registry                |
 | Declaration shapes (`declarations`)                                                | **ported** — pinned by every shape row of the lexical corpus, including the six Kotlin `fun` spellings, which the hand-written matcher answers without a regex engine |
 | Block scanner (`scan_blocks`)                                                      | **ported** — the `Block` model, the span readers, the region and anchor helpers, every generic matcher, and the driver that composes them into a `Scan` |
-| Resolution (`plan_section`, `resolve_section`, `extract_declaration`)              | **ported** — the walk, the per-selector scopes, the line ranges, the matcher `kind` and the diagnosis are all here, and every one of the 280 vectors resolves as the JavaScript does |
+| Resolution (`plan_section`, `resolve_section`, `extract_declaration`)              | **ported** — the walk, the per-selector scopes, the line ranges, the matcher `kind` and the diagnosis are all here, and every one of the 310 vectors resolves as the JavaScript does. An enum's constants are members, and `extract_declaration` reads a property even when it has no body of its own (2026-10-13) |
 | Envelopes (`Inventory/^,toString,$`)                                               | **ported** — `^` and `$` are whole-segment marks on a path (`Envelope`), read as one unit before the per-selector loop: the head is the parent's declaration line through the line its body opens on, the tail is its last declaration line, and what sits between the marks is read **inside** the parent. The marks **retry** a name several blocks answer to, so `Cart/^,add,$` names the `impl` that holds `add` |
 | Regions a bare name reaches (`catalog`), an indented condition, an indented anchor | **ported** — a `#`-prefixed region directive, a condition literal in a statement closed by indentation, and a comment anchor on an indented block's header line or as the first thing in its body, pinned by the four `test/fixtures/Hash.py` vectors (`hash-region-bare-name`, `hash-indented-condition`, `hash-indented-condition-second`, `hash-indented-anchor`) |
 
-The port is complete: `tests/vectors.rs` asserts all 280 vectors and disagrees on
-none, and every suite the crate ships is green. No vector that passed before the
-codes were added fails now, and no expectation was relaxed to make the codes fit.
+The port is complete: `tests/vectors.rs` asserts every vector of the shared corpus and disagrees on
+none, and every suite the crate ships is green. No vector that passed before a rule was added fails
+now, and no expectation was ever relaxed to make a port pass.
 
 Parity means matching the JavaScript's *answers*, not only its text: `plan_section` must return the
 **1-based inclusive line span** (`start_line`/`end_line`) the text came from and the **matcher** that
@@ -48,7 +48,7 @@ cargo test -- --nocapture  # also prints what is asserted and what is pending
 
 `tests/vectors.rs` reads
 [`test/vectors/section-vectors.json`](../../test/vectors/section-vectors.json) —
-the same 280 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
+the same 310 vectors `node tools/section-vectors.mjs --check` holds the JavaScript
 to — and asserts every vector the ported layers can answer, its message and its
 stable `code` alike. It fails if a vector
 is neither asserted nor counted, so the remaining work is visible rather than
