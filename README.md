@@ -820,10 +820,12 @@ answer.ok;                // false only in the gate profile, or when there is no
 **Every target carries its `cause`**, and that is the contract: `resolved` is the
 only one that means the reference named exactly this. `nearest` is the deepest
 prefix that still resolves (a renamed `render` lands on the enclosing `Line`, one
-keystroke from the new name), `ambiguous` picked between candidates the reader can
-be shown, `file-start` is the last rung, and `uncertain` is reserved for a host
-that searched on its own. A host that hides the difference is not implementing the
-spec.
+keystroke from the new name — and when the reference named a parent that *does*
+exist, `toString/sub` lands on `toString` rather than at the top of the file,
+[RFC 2 §4.3](./doc/rfc/code-jump.md#43-not-found)), `ambiguous` picked between
+candidates the reader can be shown, `file-start` is the last rung, and `uncertain`
+is reserved for a host that searched on its own. A host that hides the difference
+is not implementing the spec.
 
 `--gate` is the same reading on the command line: it writes nothing, compares no
 block against the file, and exits `1` after reporting **every** reference that does
