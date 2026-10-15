@@ -40,7 +40,12 @@ const lexical = JSON.parse(readFileSync(LEXICAL, 'utf8'));
 
 /** The fixture files the vectors resolve against, as UTF-8 text. */
 const inputs = [...new Set(vectors.map((c) => c.input).filter((p) => p !== null))].sort();
-const sources = new Map(inputs.map((path) => [path, readFileSync(join(ROOT, path), 'utf8')]));
+// Normalize CRLF to LF so the embedded literal is identical on every platform:
+// a fixture checked out with Windows autocrlf carries CRLF, the same file is LF
+// on Linux, and the committed file must match the generator on both.
+const sources = new Map(
+    inputs.map((path) => [path, readFileSync(join(ROOT, path), 'utf8').replace(/\r\n/g, '\n')]),
+);
 
 /** `test/fixtures/Example.java` -> `Example_java` */
 function fixtureName(path) {

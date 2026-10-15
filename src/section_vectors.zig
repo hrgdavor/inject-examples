@@ -72,7 +72,7 @@ pub const Ambiguous_java =
 
 /// `test/fixtures/Anchors.java`
 pub const Anchors_java =
-    "package example;\r\n\r\n/** A dispatch table keyed by method name. */\r\npublic class Anchors {\r\n    /** Run one named method. */\r\n    public void dispatch(String methodName) {\r\n        if (\"getUsers\".equals(methodName)) {\r\n            System.out.println(\"users\");\r\n        } else if (\"getOrders\".equals(methodName)) {\r\n            System.out.println(\"orders\");\r\n        }\r\n    }\r\n\r\n    public void handler() { //getUsers\r\n        System.out.println(\"anchor same line\");\r\n    }\r\n\r\n    public void other() {\r\n        //getOrders\r\n        System.out.println(\"anchor next line\");\r\n    }\r\n\r\n    public void commentFromString() {\r\n        String s = \"getUsers\";\r\n        System.out.println(s);\r\n    }\r\n}\r\n";
+    "package example;\n\n/** A dispatch table keyed by method name. */\npublic class Anchors {\n    /** Run one named method. */\n    public void dispatch(String methodName) {\n        if (\"getUsers\".equals(methodName)) {\n            System.out.println(\"users\");\n        } else if (\"getOrders\".equals(methodName)) {\n            System.out.println(\"orders\");\n        }\n    }\n\n    public void handler() { //getUsers\n        System.out.println(\"anchor same line\");\n    }\n\n    public void other() {\n        //getOrders\n        System.out.println(\"anchor next line\");\n    }\n\n    public void commentFromString() {\n        String s = \"getUsers\";\n        System.out.println(s);\n    }\n}\n";
 
 /// `test/fixtures/Cart.kt`
 pub const Cart_kt =
