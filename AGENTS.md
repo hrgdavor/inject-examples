@@ -44,12 +44,12 @@
   (`#scripts/test`, `#server/port`). A format's own spelling stays in the *output*
   (a TOML header is still `[a.b]`). `.` is never a reference separator.
 
-## The demo pages (`docs/index.html`, `docs/jump/index.html`)
+## The demo pages (`docs/inject/index.html`, `docs/jump/index.html`)
 
 - The pages are **generated** — never edit one by hand. **There are two demos**, and
   they are deliberately independent: neither menu lists the other and no page links
   across. One document, one page per language, twice over.
-  - the **injection** demo (`docs/index.html`, `docs/languages/*.html`) is built
+  - the **injection** demo (`docs/inject/index.html`, `docs/inject/languages/*.html`) is built
     from `docs/demo.md` and answers "what text does a reference put in my
     document?" — it is the `inject` page set;
   - the **navigation** demo (`docs/jump/index.html`, `docs/jump/languages/*.html`)
@@ -67,10 +67,10 @@
   `npm run demo:check`); `--pages <name>` alone builds one, and no `--pages` is the
   `inject` set, which is what every older invocation still means. A set is a record
   (`PAGE_SETS`), not the document's order, so one generator builds both.
-- One document, one page per language. `docs/index.html` is the **Overview** —
+- One document, one page per language. `docs/inject/index.html` is the **Overview** —
   the examples that are about the tool itself, whatever language the sample
   happens to be written in, closing with an index that links every language page
-  — and `docs/languages/<slug>.html` holds one language's or format's examples,
+  — and `docs/inject/languages/<slug>.html` holds one language's or format's examples,
   so a reader can go straight to the language they came for. **The overview's own
   sections are targets like any page's**, not prose: a reader clicks its topics
   and the middle and right columns follow. A reference is written once in the

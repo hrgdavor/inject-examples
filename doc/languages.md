@@ -18,29 +18,29 @@ scopes, modifiers, errors — is in
 
 `src/js/scanner/syntaxes.js` is the table; `src/js/scanner/lexers.js` maps the
 extensions. Each entry exists for the construct in the third column, and the
-fourth links the sample the [demo page](../docs/index.html) shows it with.
+fourth links the sample the [demo page](../docs/inject/index.html) shows it with.
 
-| language | extensions | the construct the entry exists for | sample |
-| --- | --- | --- | --- |
-| `javascript` | `js` `mjs` `cjs` `jsx` | backtick templates, which span lines and hide braces | [cart.js](../docs/samples/cart.js) |
-| `typescript` | `ts` `tsx` `mts` `cts` | as JavaScript | [cart.js](../docs/samples/cart.js) |
-| `java` | `java` | text blocks (`"""`) | [Inventory.java](../docs/samples/Inventory.java) |
-| `zig` | `zig` | **nested** block comments, `\\` multiline strings | [Nesting.zig](../docs/samples/Nesting.zig) |
-| `go` | `go` | backtick raw strings, which take no escapes | [Cart.go](../docs/samples/Cart.go) |
-| `rust` | `rs` | nested comments, `r#"…"#`, `'a` (lifetime) versus `'a'` (char), `impl` scopes and `name: Type,` fields | [Cart.rs](../docs/samples/Cart.rs) |
-| `python` | `py` `pyi` | `"""` / `'''`, raw `r"…"`, indented bodies | [Cart.py](../docs/samples/Cart.py) |
-| `csharp` | `cs` | verbatim `@"…""…"`, raw `"""` | [Cart.cs](../docs/samples/Cart.cs) |
-| `kotlin` | `kt` `kts` | nested comments, `"""` | [Cart.kt](../docs/samples/Cart.kt) |
-| `php` | `php` `phtml` | `<<<EOT` heredocs; `#[Attribute]` is not a `#` comment | [Cart.php](../docs/samples/Cart.php) |
-| `ruby` | `rb` `rake` `gemspec` | `def name` with no parens closed by `end`, `=begin`, `<<~TAG` heredocs while `<<` stays a shift | [Cart.rb](../docs/samples/Cart.rb) |
-| `sql` | `sql` | `''` doubling, `$$ … $$`; regions carry the sample | [report.sql](../docs/samples/report.sql) |
-| `shell` | `sh` `bash` `zsh` | `<<EOF` heredocs, single quotes that take no escapes | [run.sh](../docs/samples/run.sh) |
-| `vb` | `vb` `bas` `vbs` | `Class`/`Module`, `Sub`/`Function` closed by `End …`, `""` doubling | [Form.vb](../docs/samples/Form.vb) |
-| `haskell` | `hs` `lhs` | nested `{- -}`, string gaps, `name … = …` bindings and `data`/`class` declarations | [Main.hs](../docs/samples/Main.hs) |
-| `yaml` | `yaml` `yml` | `'…'` doubling and quoted `#`; the region rule reads key paths | [app.yaml](../docs/samples/app.yaml) |
-| `toml` | `toml` | `"""` / `'''`; the region rule reads tables and keys | [app.toml](../docs/samples/app.toml) |
-| `ini` | `ini` `cfg` `properties` | `;` and `#` comments; the region rule reads `section.key` | [app.ini](../docs/samples/app.ini) |
-| `css` | `css` | the **id selector** — the union mask reads a `#` as a line comment, so `#cart { … }` would vanish; the region rule reads a rule, not a member | [site.css](../docs/samples/site.css) |
+| language     | extensions               | the construct the entry exists for                                                              | sample                                           |
+| ------------ | ------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `javascript` | `js` `mjs` `cjs` `jsx`   | backtick templates, which span lines and hide braces                                            | [cart.js](../docs/samples/cart.js)               |
+| `typescript` | `ts` `tsx` `mts` `cts`   | as JavaScript                                                                                   | [cart.js](../docs/samples/cart.js)               |
+| `java`       | `java`                   | text blocks (`"""`)                                                                             | [Inventory.java](../docs/samples/Inventory.java) |
+| `zig`        | `zig`                    | **nested** block comments, `\\` multiline strings                                               | [Nesting.zig](../docs/samples/Nesting.zig)       |
+| `go`         | `go`                     | backtick raw strings, which take no escapes                                                     | [Cart.go](../docs/samples/Cart.go)               |
+| `rust`       | `rs`                     | nested comments, `r#"…"#`, `'a` (lifetime) versus `'a'` (char), `impl` scopes and `name: Type,` fields | [Cart.rs](../docs/samples/Cart.rs)        |
+| `python`     | `py` `pyi`               | `"""` / `'''`, raw `r"…"`, indented bodies                                                      | [Cart.py](../docs/samples/Cart.py)               |
+| `csharp`     | `cs`                     | verbatim `@"…""…"`, raw `"""`                                                                   | [Cart.cs](../docs/samples/Cart.cs)               |
+| `kotlin`     | `kt` `kts`               | nested comments, `"""`                                                                          | [Cart.kt](../docs/samples/Cart.kt)               |
+| `php`        | `php` `phtml`            | `<<<EOT` heredocs; `#[Attribute]` is not a `#` comment                                          | [Cart.php](../docs/samples/Cart.php)             |
+| `ruby`       | `rb` `rake` `gemspec`    | `def name` with no parens closed by `end`, `=begin`, `<<~TAG` heredocs while `<<` stays a shift | [Cart.rb](../docs/samples/Cart.rb)               |
+| `sql`        | `sql`                    | `''` doubling, `$$ … $$`; regions carry the sample                                              | [report.sql](../docs/samples/report.sql)         |
+| `shell`      | `sh` `bash` `zsh`        | `<<EOF` heredocs, single quotes that take no escapes                                            | [run.sh](../docs/samples/run.sh)                 |
+| `vb`         | `vb` `bas` `vbs`         | `Class`/`Module`, `Sub`/`Function` closed by `End …`, `""` doubling                             | [Form.vb](../docs/samples/Form.vb)               |
+| `haskell`    | `hs` `lhs`               | nested `{- -}`, string gaps, `name … = …` bindings and `data`/`class` declarations              | [Main.hs](../docs/samples/Main.hs)               |
+| `yaml`       | `yaml` `yml`             | `'…'` doubling and quoted `#`; the region rule reads key paths                                  | [app.yaml](../docs/samples/app.yaml)             |
+| `toml`       | `toml`                   | `"""` / `'''`; the region rule reads tables and keys                                            | [app.toml](../docs/samples/app.toml)             |
+| `ini`        | `ini` `cfg` `properties` | `;` and `#` comments; the region rule reads `section.key`                                       | [app.ini](../docs/samples/app.ini)               |
+| `css`        | `css`                    | the **id selector** — the union mask reads a `#` as a line comment, so `#cart { … }` would vanish; the region rule reads a rule, not a member | [site.css](../docs/samples/site.css) |
 
 ## Config formats
 
@@ -48,12 +48,12 @@ Four formats are not code and have no members to search, so each gets a **region
 rule** instead of a lexer: the reference is a path to a key, and the selection is
 *rendered* as valid source of that format, with the ancestors that hold the key.
 
-| format | extensions | reference | selection |
-| --- | --- | --- | --- |
-| JSON | `json` | `#name,scripts/test`, `#keywords/0` | re-printed as valid JSON, comma-separated paths merged |
-| YAML | `yaml` `yml` | `#server/port`, `#server` | the key with the mappings that hold it, re-indented to two spaces |
-| TOML | `toml` | `#server/port`, `#server` | the key above its `[table]` header, or the whole table |
-| INI | `ini` `cfg` `properties` | `#server/port`, `#section`, `#key` | the key under its `[section]`, or the whole section |
+| format | extensions               | reference                           | selection                                                         |
+| ------ | ------------------------ | ----------------------------------- | ----------------------------------------------------------------- |
+| JSON   | `json`                   | `#name,scripts/test`, `#keywords/0` | re-printed as valid JSON, comma-separated paths merged            |
+| YAML   | `yaml` `yml`             | `#server/port`, `#server`           | the key with the mappings that hold it, re-indented to two spaces |
+| TOML   | `toml`                   | `#server/port`, `#server`           | the key above its `[table]` header, or the whole table            |
+| INI    | `ini` `cfg` `properties` | `#server/port`, `#section`, `#key`  | the key under its `[section]`, or the whole section               |
 
 The separator is `/` for every rule — the same one a code reference uses — so a
 key that contains a dot is still addressable (`#a/b.c`).
@@ -110,7 +110,7 @@ engine ([section-matching.md](./section-matching.md)).
 
 ## See also
 
-- [The demo page](../docs/index.html) — one section per language and format,
+- [The demo page](../docs/inject/index.html) — one section per language and format,
   clickable targets, the file on the right.
 - [section-matching.md](./section-matching.md#tokenizers) — the normative
   description of the lexer seam and the mask invariant.

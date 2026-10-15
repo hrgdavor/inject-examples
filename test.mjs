@@ -3393,7 +3393,7 @@ test('the documentation stays in sync with the files it shows', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The demo page — docs/index.html is generated from docs/demo.md
+// The demo pages — docs/inject/index.html is generated from docs/demo.md
 // ---------------------------------------------------------------------------
 //
 // `tools/build-demo.mjs` turns the Markdown document into the two-pane page:
@@ -4033,7 +4033,7 @@ test('demo: the two page sets are parallel, and neither links to the other', () 
     // Independence is a property of the pages, not a promise: no page of one set
     // may link into the other's directory.
     for (const [name, set] of Object.entries(PAGE_SETS)) {
-        const other = name === 'inject' ? '/jump/' : '/docs/index.html';
+        const other = name === 'inject' ? '/jump/' : '/inject/';
         const built = buildDemo({ root, ...set });
         for (const { page, html } of built.pages) {
             assert.ok(!html.includes(other), `${page.path} links into the other demo`);

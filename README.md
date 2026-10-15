@@ -5,7 +5,7 @@ Keep the code samples in your Markdown honest and target code sections semantica
 This project [dogfoods](https://en.wikipedia.org/wiki/Dogfooding) its own
 documentation: [`doc/usage.md`](./doc/usage.md) is written with inject-examples
 itself, and every file it shows is exercised by the test suite. The
-[demo page](./docs/index.html) goes one step further — it is built from
+[demo page](./docs/inject/index.html) goes one step further — it is built from
 [`docs/demo.md`](./docs/demo.md), a Markdown document that this tool keeps in
 sync and a generator turns into clickable pages, one per language (see
 [The demo pages](#the-demo-pages)).
@@ -657,7 +657,7 @@ npx @hrg/inject-examples --check || {
 
 There are **two demos**, and they are independent — neither links to the other.
 
-The **injection** demo is [`docs/index.html`](./docs/index.html), built from
+The **injection** demo is [`docs/inject/index.html`](./docs/inject/index.html), built from
 [`docs/demo.md`](./docs/demo.md): the text a reference puts into a document. The
 **navigation** demo is [`docs/jump/index.html`](./docs/jump/index.html), built from
 [`docs/jump-demo.md`](./docs/jump-demo.md): the line a reference takes a reader to,
@@ -672,10 +672,10 @@ land?".
 The rest of this section describes the injection demo; the navigation demo works
 the same way, with `--pages jump` in place of the default page set.
 
-[`docs/index.html`](./docs/index.html) is the **Overview**: the examples that are
+[`docs/inject/index.html`](./docs/inject/index.html) is the **Overview**: the examples that are
 about the tool itself, whatever language the sample is written in. Each of the 18
 languages and config formats has a page of its own under
-[`docs/languages/`](./docs/languages) — Java, JavaScript/TypeScript, Go, Rust,
+[`docs/inject/languages/`](./docs/inject/languages) — Java, JavaScript/TypeScript, Go, Rust,
 Python, C#, Kotlin, PHP, Ruby, Shell, VB, Haskell, Zig, YAML, TOML, INI, JSON and
 CSS — with that language's examples beside the sample they read. A hamburger menu
 in the shared header of every page lists them all and marks the current one, so a

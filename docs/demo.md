@@ -193,24 +193,24 @@ The examples are split by language, so you can go straight to the one you came f
 menu at the top of every page carries this same list, and each page has its language's examples
 beside the sample it reads.
 
-- [Java](./languages/java.html) — paths, condition literals, anchors and line numbers
-- [JavaScript / TypeScript](./languages/javascript.html) — a template that hides its braces
-- [Go](./languages/go.html) — a raw string is not code
-- [Rust](./languages/rust.html) — the members live in the impl
-- [Python](./languages/python.html) — triple quotes, indentation, and decorators
-- [C#](./languages/csharp.html) — a verbatim string keeps its quotes
-- [Kotlin](./languages/kotlin.html) — nested comments, raw strings, and annotations
-- [PHP](./languages/php.html) — a heredoc is not code
-- [Ruby](./languages/ruby.html) — def, end, the shift operator, and `!` names
-- [Shell](./languages/shell.html) — a heredoc is not code either, and regions are how a script is addressed
-- [VB](./languages/vb.html) — a function and its End
-- [Haskell](./languages/haskell.html) — a binding and its signature
-- [Zig](./languages/zig.html) — a nested comment hides a decoy
-- [YAML](./languages/yaml.html) — a key path
-- [JSON](./languages/json.html) — keys and nested keys
-- [TOML](./languages/toml.html) — a table and its key
-- [INI](./languages/ini.html) — a section and its key
-- [CSS](./languages/css.html) — a rule, an at-rule, and the nesting between
+- [Java](./inject/languages/java.html) — paths, condition literals, anchors and line numbers
+- [JavaScript / TypeScript](./inject/languages/javascript.html) — a template that hides its braces
+- [Go](./inject/languages/go.html) — a raw string is not code
+- [Rust](./inject/languages/rust.html) — the members live in the impl
+- [Python](./inject/languages/python.html) — triple quotes, indentation, and decorators
+- [C#](./inject/languages/csharp.html) — a verbatim string keeps its quotes
+- [Kotlin](./inject/languages/kotlin.html) — nested comments, raw strings, and annotations
+- [PHP](./inject/languages/php.html) — a heredoc is not code
+- [Ruby](./inject/languages/ruby.html) — def, end, the shift operator, and `!` names
+- [Shell](./inject/languages/shell.html) — a heredoc is not code either, and regions are how a script is addressed
+- [VB](./inject/languages/vb.html) — a function and its End
+- [Haskell](./inject/languages/haskell.html) — a binding and its signature
+- [Zig](./inject/languages/zig.html) — a nested comment hides a decoy
+- [YAML](./inject/languages/yaml.html) — a key path
+- [JSON](./inject/languages/json.html) — keys and nested keys
+- [TOML](./inject/languages/toml.html) — a table and its key
+- [INI](./inject/languages/ini.html) — a section and its key
+- [CSS](./inject/languages/css.html) — a rule, an at-rule, and the nesting between
 
 Every page reads the same [samples/](./samples) directory and works the same way: click an example
 link, and the description below it opens while the middle and right columns show the lines the

@@ -15,10 +15,10 @@
  *
  * One document, one page per language. The document is written for a reader;
  * `PAGES` decides where each of its `##` sections is published, and a hamburger
- * menu on every page links them all. `docs/index.html` is the overview — the
+ * menu on every page links them all. `docs/inject/index.html` is the overview — the
  * examples that are about the tool itself, whatever language the sample happens
  * to be written in, closing with an index that links every language page — and
- * `docs/languages/<slug>.html` holds the examples of one language or format, so
+ * `docs/inject/languages/<slug>.html` holds the examples of one language or format, so
  * a reader can stay in the language they came for.
  *
  * Code is highlighted with the project's own tokenizers (`src/js/scanner/`) for
@@ -58,7 +58,7 @@ export const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 export const DEFAULT_DOC = 'docs/demo.md';
 
 /** The overview page this generator writes, relative to the root. */
-export const DEFAULT_OUT = 'docs/index.html';
+export const DEFAULT_OUT = 'docs/inject/index.html';
 
 /** Where the per-language pages are written, relative to the overview page. */
 export const LANGUAGES_DIR = 'languages';
