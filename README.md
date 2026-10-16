@@ -22,27 +22,14 @@ that same path. The fenced code block that follows it is replaced — byte for
 byte — with that file's content. Because the text is *copied* rather than typed,
 your README cannot drift from the files your tests use.
 
-````markdown
-[test/fixtures/before.md](./test/fixtures/before.md)
-
-```markdown
-...this block is generated from test/fixtures/before.md...
-```
-````
-
-Add a `#<name>` fragment to inject just one part of a larger
-file, so a sample can show a slice of a big source file without duplicating it:
-
-```markdown
-[test/fixtures/example.ts#table](./test/fixtures/example.ts#table)
-```
-
-What the name may be depends on the file's type: a `#region` directive, a
-method or inner class by name, an explicit line range when a file has no
-structure to name (`#L40-L44`), or — for `.json`, which has no comments — a list
-of keys. Several selectors may be named at once with a comma, so one marker can
-inject several pieces. See
-[Region rules by file type](#region-rules-by-file-type).
+Add a `#<name>` fragment to inject just one part of a larger file, so a sample
+can show a slice of a big source file without duplicating it. What the name may
+be depends on the file's type: a `#region` directive, a method or inner class by
+name, an explicit line range when a file has no structure to name (`#L40-L44`),
+or — for `.json`, which has no comments — a list of keys. Several selectors may
+be named at once with a comma, so one marker can inject several pieces. See
+[Region rules by file type](#region-rules-by-file-type) for the rules and
+[`doc/usage.md`](./doc/usage.md) for the walkthrough.
 
 No dependencies. Node 18+. Works as a CLI and as a library.
 
@@ -51,7 +38,9 @@ The JavaScript implementation — [`index.mjs`](./index.mjs) and
 byte, the JavaScript is right and the Zig port in `src/` follows. See
 [The Zig port](#the-zig-port).
 
-A detailed usage guide lives in [`doc/usage.md`](./doc/usage.md).
+The detailed guide is [`doc/usage.md`](./doc/usage.md): markers, regions, every
+rule by file type, fences, the CLI, gitignore handling, recipes and the
+library — each with examples the test suite keeps honest.
 
 ## Install
 
@@ -91,89 +80,13 @@ npx @hrg/inject-examples --check
 `--check` exits `1` when any block differs from its file, so CI fails the moment
 someone edits a fixture without regenerating the docs.
 
-## What counts as a marker
-
-A line is a marker when **all** of these hold:
-
-- The whole line is a single Markdown link, `[label](destination)` — nothing
-  before or after it (leading and trailing spaces are ignored).
-- The label names the same path as the destination, with or without a leading
-  `./`.
-- The destination is a path, not a URL (no `http:`, `mailto:`, etc.).
-- A fragment names the section to inject.
-
-So `[test/fixtures/after.md](./test/fixtures/after.md)` injects, while
-`[the docs](./doc/usage.md)` and `[install](./doc/usage.md#install)` are
-ordinary links and are left alone.
-
-Lines inside fenced blocks are never markers: whatever a fence contains is
-content, even when it looks exactly like a marker — which is why this
-README's own examples are safe.
-
-The block that gets replaced must be the next thing after the marker. Blank
-lines in between are fine; any other text is an error, reported with the marker
-that caused it. A block closes on the first fence line that is at least as long
-as the one that opened it, so if the file's content contains fence lines of its
-own, wrap the block in a longer fence (four backticks instead of three).
-
-## Regions
-
-Mark the part of a file to inject with the region convention the major editors
-share. The directive lines themselves are never injected — only what lies
-between them:
-
-```ts
-// #region table
-| name | qty |
-| ---- | --- |
-| bolt | 12  |
-// #endregion
-```
-
-then
-
-```markdown
-[test/fixtures/example.ts#table](./test/fixtures/example.ts#table)
-```
-
-That pair, written live in this very README, is kept honest by the tool — the
-block below is not typed by hand; `inject-examples` rewrites it from the file:
-
-[test/fixtures/example.ts#table](./test/fixtures/example.ts#table)
-
-```ts
-| name | qty |
-| ---- | --- |
-| bolt | 12  |
-```
-
-Any of the usual comment prefixes is accepted, in any language:
-
-| Spelling                                                           | Seen in                |
-| ------------------------------------------------------------------ | ---------------------- |
-| `#region name` / `#endregion`                                      | C#, Razor              |
-| `// #region name` / `// #endregion`                                | VS Code folding        |
-| `//region name` / `//endregion`                                    | JetBrains IDEs         |
-| `<!-- #region name -->`                                            | HTML, Markdown         |
-| `/* #region name */`                                               | C-style block comments |
-| `-- #region`, `; #region`, `% #region`, `' #region`, `REM #region` | SQL, INI, VB, TeX      |
-
-Rules:
-
-- Region names must be unique within a file; a duplicate is an error.
-- An unclosed region is an error.
-- Regions may not be interleaved: opening `#region b` inside `#region a`
-  before `a` is closed is an error.
-- A bare `region name` line with no comment prefix is treated as prose, not a
-  directive — keep the `#` (or add a comment style) so ordinary text is safe.
-
 ## Region rules by file type
 
-`#<reference>` means "the piece of this file called `<reference>`". What
-the reference may say — and what comes back — is decided by the file's
-**type**: each type has one rule, and the reference is handed to the rule that
-claims the file's extension. Six rules ship — JSON, YAML, TOML, INI, CSS and the
-`code` fallback; the library takes more.
+`#<reference>` means "the piece of this file called `<reference>`". What the
+reference may say — and what comes back — is decided by the file's **type**:
+each type has one rule, and the reference is handed to the rule that claims the
+file's extension. Six rules ship — JSON, YAML, TOML, INI, CSS and the `code`
+fallback; the library takes more.
 
 A reference is a comma-separated list of **selectors**, and every rule reads it
 that way: the pieces are resolved and injected in the order they were written.
@@ -182,6 +95,9 @@ rule's business — a name or a line range for code, a key path for a config
 format, a rule for CSS. `#add,remove` injects two methods; `#add,L40-L44`
 injects a method and the lines beside it.
 
+[`doc/usage.md`](./doc/usage.md#region-rules-by-file-type) works every rule
+through with live examples.
+
 ### Code — the default rule
 
 One rule covers every type no other rule claims: source code, `.md`, `.txt`,
@@ -189,20 +105,8 @@ anything. An explicit `#region <name>` directive always wins. When the file has
 none, the name is looked for as a **declaration** — a method, constructor,
 function or class-like declaration (`class`, `interface`, `enum`, `record`,
 `struct`, `trait`, `object`), nested or not, and an `enum`'s constants are
-declarations too (`#OrgFeature/CALL`). The declaration *is* the region, so
-code needs no region comments added to it:
-
-````markdown
-[test/fixtures/Example.java#toString/++](./test/fixtures/Example.java#toString/++)
-
-```java
-    /** Add one item to this cart. */
-    @Override
-    public String toString() {
-        return String.join(",", items);
-    }
-```
-````
+declarations too (`#OrgFeature/CALL`). The declaration *is* the region, so code
+needs no region comments added to it.
 
 A `-`, `+` or `++` **segment** after the path selects how much of the
 declaration comes with it:
@@ -254,17 +158,17 @@ nineteen languages in [`src/js/scanner/syntaxes.js`](./src/js/scanner/syntaxes.j
 Shell, VB, Haskell, YAML, TOML, INI and CSS — exact to each language's own
 syntax: template literals, text blocks, nested block comments, raw and verbatim
 strings, doubling escapes, `<<EOF` heredocs, a Rust `'a` lifetime that is not a
-char literal, and a CSS `#id` that is not a comment. [doc/languages.md](./doc/languages.md) lists every entry, the construct
-it exists for and its extensions. For every other type a best-effort union of the
+char literal, and a CSS `#id` that is not a comment.
+[doc/languages.md](./doc/languages.md) lists every entry, the construct it
+exists for and its extensions. For every other type a best-effort union of the
 comment and string spellings stands in, so an unknown type still resolves, just
-less precisely. The
-table is data: adding a language is one object there plus one extension line in
-`lexers.js`, and the places a language spells a member differently from the
-common shape — Ruby's paren-less `def add`, Haskell's `add x y = …` binding with
-its `name ::` signature, Rust's `impl Cart { … }` and its `name: Type,` fields —
-are declared there too, as shapes the resolver indexes rather than parses. Braced
-languages — Java, C#, C/C++, JS/TS, Go, Rust, PHP, Kotlin, Swift — are followed
-by their braces; Python and Ruby by indentation.
+less precisely. The table is data: adding a language is one object there plus one
+extension line in `lexers.js`, and the places a language spells a member
+differently from the common shape — Ruby's paren-less `def add`, Haskell's
+`add x y = …` binding with its `name ::` signature, Rust's `impl Cart { … }` and
+its `name: Type,` fields — are declared there too, as shapes the resolver indexes
+rather than parses. Braced languages — Java, C#, C/C++, JS/TS, Go, Rust, PHP,
+Kotlin, Swift — are followed by their braces; Python and Ruby by indentation.
 
 #### Section paths and code anchors
 
@@ -272,7 +176,7 @@ A name is hard to hit when a file has two methods called `render`. The code
 reference is therefore a **path**: slash-separated segments, each naming a block
 *inside* the one before it, so `Cart/Line/render` means the `render` method of
 the `Line` class of the `Cart` class. Only the last segment selects the text to
-inject; the ones before it are scopes to descend:
+inject; the ones before it are scopes to descend.
 
 When a scope name is declared more than once at one level the path **retries the
 candidates**, taking the first that can hold the rest of the path — a Rust type's
@@ -280,36 +184,15 @@ members live in its `impl` blocks, which are siblings of the `struct` with the
 same name, so `Cart/add` and `Cart/items` both resolve while a *last* segment
 still takes the first match in walk order.
 
-````markdown
-[test/fixtures/Example.java#Cart/Line/render](./test/fixtures/Example.java#Cart/Line/render)
-
-```java
-        String render() {
-            return name + " x" + quantity;
-        }
-```
-````
-
 Inside a scope a segment may also be matched by what a block **contains**, not
 just what it declares:
 
 - a **condition literal** — a statement whose header carries the name as a
   double-quoted string. `dispatch/getUsers` selects the `if ("getUsers".equals(…))`
-  block, braces and all:
-
-````markdown
-[test/fixtures/Anchors.java#dispatch/getUsers](./test/fixtures/Anchors.java#dispatch/getUsers)
-
-```java
-        if ("getUsers".equals(methodName)) {
-            System.out.println("users");
-        }
-```
-````
-
+  block, braces and all.
 - a **comment anchor** — a block whose opening is marked by a leading comment.
-  The block in the fixture opens `public void handler() { //getUsers`, so
-  `handler/getUsers` names it by that comment.
+  A block that opens `public void handler() { //getUsers` is named
+  `handler/getUsers`.
 
 The scope modifier is a **path segment**: `render/-` is the body, `render/+` the
 declaration with its annotations, `render/++` those with the doc comment. It may
@@ -322,9 +205,8 @@ inject-examples: [Cart.java#Cart/-/Line](./Cart.java#Cart/-/Line): "-" may only 
 
 The full grammar — every accepted form, every error and its exact message — is
 spelled out in [doc/section-matching.md](./doc/section-matching.md). Matching
-lives in a single dependency-free module,
-[lib/section.mjs](./lib/section.mjs), which other projects can import directly
-(see [lib/README.md](./lib/README.md)).
+lives in a single dependency-free module, [lib/section.mjs](./lib/section.mjs),
+which other projects can import directly (see [lib/README.md](./lib/README.md)).
 
 #### Line ranges, and several pieces in one reference
 
@@ -342,10 +224,6 @@ column runs to the end of its line:
 | `#L13:9`      | line 13 from its ninth character to the end of the line  |
 | `#L4:8-L4:22` | from the eighth character of line 4 to its twenty-second |
 
-```markdown
-[test/fixtures/Example.java#L12-L14](./test/fixtures/Example.java#L12-L14)
-```
-
 A range that names lines the file does not have is an error — `#L31` in a
 30-line file, `#L2:1` on a blank line — never a silent clamp, because a range
 that quietly became a different range is exactly the drift this tool exists to
@@ -356,140 +234,42 @@ a `#region`.
 
 Because a reference is a comma-separated list of selectors, several pieces come
 in one injection, in the order they were written, and a name and a range mix
-freely:
+freely. The pieces are joined with a newline and injected as one block, and a
+host that navigates is told about every piece — `planSection` returns a `ranges`
+list, one entry per selector, so a page can highlight the two places a reference
+names rather than everything between them.
 
-```markdown
-[test/fixtures/Example.java#toString/+,L16-L20](./test/fixtures/Example.java#toString/+,L16-L20)
-```
+### The data formats and CSS — their own rules
 
-The pieces are joined with a newline and injected as one block, and a host that
-navigates is told about every piece — `planSection` returns a `ranges` list, one
-entry per selector, so a page can highlight the two places a reference names
-rather than everything between them.
+Every other built-in rule reads the same comma-separated list of selectors:
 
-### JSON — its own rule
+- **JSON** (`.json`) — a selector is a `/`-separated key path from the top level
+  (`scripts/test`, `keywords/0`), and the selection is *rendered* as valid JSON,
+  because a selection of keys has to be re-printed to stay valid JSON.
+- **YAML, TOML and INI** (`.yaml`, `.toml`, `.ini`) — a selector is a key path
+  too, and the selection comes back with the ancestors that hold it, so a
+  `port: 8080` arrives under the `server:` that makes it a document.
+- **CSS** (`.css`) — a selector names a *rule* by the rightmost simple selector
+  of its list (`.card`, `li.item`) or an at-rule by its keyword (`@media`,
+  `@keyframes`); `/` descends the nesting CSS already has, and a predicate says
+  which rule is meant when two share a name (`#.card[data-variant=compact]`).
 
-JSON has no comments to hang a region directive on, so `.json` files get a rule
-of their own: the reference is one or more **keys**, comma-separated and
-written as dotted paths from the top level, and the selection is rendered as
-valid JSON — braces and all:
-
-````markdown
-[package.json#name,scripts.test](./package.json#name,scripts.test)
-
-```json
-{
-  "name": "@hrg/inject-examples",
-  "scripts": {
-    "test": "node --test test.mjs"
-  }
-}
-```
-````
-
-`scripts.test` picks a nested key and `keywords.0` an element of an array (only
-the elements named, in order). A missing key, an index out of range, a
-top-level value that is not an object, or text that is not JSON is an error.
-Unlike the code rule this one *renders* the selection rather than copying
-bytes, because a selection of keys has to be re-printed to stay valid JSON.
-
-### YAML, TOML and INI — their own rules
-
-The three config formats have the same problem as JSON and the same answer: a
-reference is a path to a key — the same `/`-separated path a code reference
-uses — and the selection is rendered with the ancestors that hold it, so the
-block is valid source on its own — a bare `port: 8080` is not a YAML document,
-`server:` above it makes one:
-
-| Reference      | `.yaml`                                             | `.toml`                      | `.ini`                                          |
-| -------------- | --------------------------------------------------- | ---------------------------- | ----------------------------------------------- |
-| `#server`      | the `server:` mapping                               | the whole `[server]` table   | the whole `[server]` section                    |
-| `#server/port` | `server:` and its `port:` entry                     | `[server]` and `port = 8080` | `[server]` and `port = 8080`                    |
-| `#a/b/c`       | every ancestor, re-indented to two spaces per level | `[a.b]` and its key          | an error — INI has sections and keys, no deeper |
-
-A `/` separates the keys of the *reference*, for every rule alike. A key that
-itself contains a dot is therefore still addressable — `#a/b.c` selects the key
-`b.c` under `a` — and in YAML/TOML/INI a quoted segment (`#a/"b.c"`) says the
-same thing explicitly, because those formats let a key be quoted in the source.
-A TOML *header* keeps the format's own dots (`[a.b]`), which is the format's
-spelling and not the reference's.
-
-A YAML selection keeps its blank and nested lines; a TOML value that spans lines
-(an array, an inline table) comes with its continuation lines; INI quotes
-nothing back — both the `key = value` and the `key: value` spellings are read.
-A missing key, a missing table or section, and a path the format cannot express
-are all errors, reported by `--lenient` like any other broken include.
-
-### CSS — a rule, not a declaration
-
-A `.css` reference names a **rule**: a style rule by the rightmost simple
-selector of its selector list (`.card`, `li.item`), or an at-rule by its
-keyword (`@media`, `@keyframes`). `/` descends the nesting CSS already has — a
-rule inside a media query is a child of it — so no combinator or descendant
-syntax is needed:
-
-| Reference           | Injected text                                                                |
-| ------------------- | ---------------------------------------------------------------------------- |
-| `#.card`            | the rule: selector through closing brace                                     |
-| `#.card-`           | its declarations alone, without the selector                                 |
-| `#@media`           | the whole media block                                                        |
-| `#@keyframes:pulse` | the at-rule whose parameter is `pulse` (`#@media:screen` reads the same way) |
-| `#@media/.card`     | the `.card` rule inside the media block                                      |
-
-Two rules may share a name — a base rule and a variant — so a bare name that
-matches more than one block is an error, exactly as two `#region`s of one name
-are. A **predicate** written after the name says which one:
-`#.card[data-variant=compact]` reads that attribute from the selector,
-`#.card[sel=:hover]` its selector text, and `[--brand]` the custom property a
-block declares. A `#region` directive still works in a stylesheet, and a class
-name cannot be a region name, so the two never collide.
-
-`#.card[data-variant=compact]` in a real stylesheet:
-
-````markdown
-[docs/samples/site.css#.card[data-variant=compact]](./docs/samples/site.css#.card[data-variant=compact])
-
-```css
-.card[data-variant="compact"] {
-  gap: 2px;
-  padding: 4px;
-}
-```
-````
-
-### Adding a rule for another type
-
-A rule is a plain object: a name, the extensions it claims, and a `resolve`.
-`options.regionRules` replaces the built-in set, so pass the built-ins plus
-your own:
-
-```js
-const env = {
-    name: 'env',
-    extensions: ['env'],
-    resolve: (text, region) => extractRegion(text, region),
-};
-
-updateDocument(doc, { regionRules: [env, ...REGION_RULES] });
-```
-
-The first rule claiming the file's extension wins, and `code` is the fallback,
-so one rule for one type leaves every other type exactly as it was.
-[`doc/usage.md`](./doc/usage.md#region-rules-by-file-type) works through both
-rules with live examples.
+`/` separates the keys of a *reference* in every format; a key that itself
+contains a dot is still addressable (`#a/b.c`), and a quoted segment says so
+explicitly (`#a/"b.c"`). Line ranges belong to the code rule alone — a data
+format renders its selection, so `#L40-L44` in a `.json` file is an error rather
+than a silent nothing. A rule is a plain object, and `options.regionRules`
+replaces the built-in set — see
+[Adding a rule for another type](./doc/usage.md#adding-a-rule-for-another-type).
 
 ## Skipping gitignored files
 
-By default, a marker whose target file is gitignored is **skipped**: its block
-is left exactly as written and reported as `skipped`. Skipping is not an error
-— a sample of `node_modules` content is usually kept static on purpose — and
-`--check` never counts a skipped block as stale.
-
-Rules are collected the way git does it: the `.gitignore` in the document's
-directory, then each `.gitignore` higher up the tree; the closest file wins and
-a `!` rule un-ignores. Opt out or override with `--no-gitignore` or
-`--gitignore <file>`. The library equivalent is the `gitignore` option of
-`updateDocument` (`false`, `{ file }`, or `true` for the default walk-up).
+A marker whose target file is gitignored is **skipped** — its block is left as
+written and reported as `skipped`. Skipping is not an error, and `--check` never
+counts a skipped block as stale. `.gitignore` rules are collected the way git
+collects them; opt out with `--no-gitignore` or point `--gitignore <file>` at one
+file, or use the `gitignore` option of `updateDocument`. The worked example is in
+[`doc/usage.md`](./doc/usage.md#skipping-gitignored-files).
 
 ## Tolerating broken includes (`--lenient`)
 
@@ -502,27 +282,12 @@ one.
 With `--lenient` a broken *include* is tolerated: the marker is reported with
 its line number, its block is left exactly as written, and the remaining
 markers are refreshed as usual. The run still ends `1` — a broken include is an
-error to be fixed, not a success — but the healthy parts of the document are no
-longer held hostage by it:
+error to be fixed, not a success. A duplicated marker, or stray text where a
+block should be, is a broken *document* rather than a broken include, and still
+aborts the run in every mode.
 
-```
-$ inject-examples --lenient
-updated  [test/fixtures/before.md](./test/fixtures/before.md)
-failed   [test/fixtures/missing.md](./test/fixtures/missing.md)
-updated  [test/fixtures/after.md](./test/fixtures/after.md)
-
-README.md: 2 updated, 1 failed.
-```
-
-What `--lenient` deliberately does **not** tolerate: a duplicated marker, or
-stray text where a block should be. Those are a broken *document*, not a
-broken include — they still abort the run, in every mode, with exit `1` and
-nothing written.
-
-In the library this is the `lenient` option of `updateDocument`; a
-failure-skipped marker shows up in `results` as `{ marker, content: null,
-changed: false, skipped: true, failure: <cause> }`, distinct from a gitignored
-skip, which has no `failure`.
+The worked example, and the library's `failure` field, are in
+[`doc/usage.md`](./doc/usage.md#tolerating-broken-includes).
 
 ## CLI
 
@@ -549,7 +314,7 @@ Marker paths resolve relative to the directory holding each document, unless
 | `--no-gitignore`           | Do not apply any `.gitignore` rules                                               |
 | `-q`, `--quiet`            | Print only the closing summary                                                    |
 | `--allow-empty`            | Succeed when the document has no markers                                          |
-| `-l`, `--lenient`          | Tolerate broken includes: report and leave as written any marker that cannot be resolved (see below) |
+| `-l`, `--lenient`          | Tolerate broken includes: report and leave as written any marker that cannot be resolved (see above) |
 | `-h`, `--help`             | Show help                                                                         |
 | `-V`, `--version`          | Show the version                                                                  |
 
@@ -563,95 +328,16 @@ Marker paths resolve relative to the directory holding each document, unless
 
 ### Output
 
-```
-$ inject-examples --check
-ok       [test/fixtures/before.md](./test/fixtures/before.md)
-stale    [test/fixtures/after.md](./test/fixtures/after.md)
-skipped  [node_modules/dep.js](./node_modules/dep.js)
-
-README.md is stale: 1 of 2 block(s) differ from their files.
-Run: inject-examples README.md
-```
-
 A difference is reported as `stale` under `--check` and `--dry-run` (nothing was
 written) and as `updated` on a normal run. A gitignored target is reported as
-`skipped` and never counts as stale. A marker that `--lenient` could not
-resolve is reported as `failed` — and, unlike `skipped`, it is an error: the
-run ends `1` and the marker's block is left as written.
+`skipped` and never counts as stale. A marker that `--lenient` could not resolve
+is reported as `failed` — and, unlike `skipped`, it is an error: the run ends
+`1` and the marker's block is left as written. The sample output is in
+[`doc/usage.md`](./doc/usage.md#running-the-cli).
 
-## Recipes
-
-### npm scripts
-
-```json
-{
-  "scripts": {
-    "docs:build": "inject-examples",
-    "docs:check": "inject-examples --check"
-  }
-}
-```
-
-### GitHub Actions
-
-```yaml
-- uses: actions/setup-node@v4
-  with:
-    node-version: 20
-- run: npm ci
-- run: npx @hrg/inject-examples --check
-```
-
-### Several documents
-
-```bash
-inject-examples README.md docs/GUIDE.md   # one run, two documents
-inject-examples docs/                     # every *.md under docs/, recursively
-inject-examples docs/GUIDE.md --root .
-```
-
-### Documentation in a subfolder
-
-Write the markers relative to the document itself — `../fixtures/a.md` —
-because that is how a reader resolves the same link, and the default root is
-the document's own directory, so no `--root` is needed:
-
-```bash
-inject-examples docs/GUIDE.md
-```
-
-If you write root-relative paths instead, point `--root` at the root.
-
-### Processing a document into a new file
-
-`--out` writes the processed document to a separate file — the input is
-never touched, and the destination's missing parent directories are created:
-
-```bash
-inject-examples --out dist/GUIDE.md docs/GUIDE.md
-```
-
-`--check --out` is the CI form: it verifies an existing copy and writes
-nothing, exiting `1` when the copy is stale or missing:
-
-```bash
-inject-examples --check --out dist/GUIDE.md docs/GUIDE.md
-```
-
-The copy keeps the input's relative links, so its links point at the input's
-neighbours — treat it as a build artifact, or rewrite the links afterwards.
-
-### Run it before every commit
-
-`.git/hooks/pre-commit`:
-
-```bash
-#!/bin/sh
-npx @hrg/inject-examples --check || {
-  echo "README examples are out of date; run: npx @hrg/inject-examples"
-  exit 1
-}
-```
+Recipes — npm scripts, a GitHub Actions step, several documents in one run, a
+subfolder, a pre-commit hook — are in
+[`doc/usage.md`](./doc/usage.md#recipes).
 
 ## The demo pages
 
@@ -948,12 +634,12 @@ into the global bin directory. The same `bin` entry is what `npx
 field, so npm links the package page to the GitHub repository.
 
 `files` in `package.json` limits the package to `cli.mjs`, `index.mjs`, `lib/`,
-`src/js/scanner/`, `doc/languages.md`, `doc/section-matching.md`, `README.md` and
-`LICENSE`; the tests and fixtures stay out.
+`src/js/scanner/`, `doc/languages.md`, `doc/section-matching.md`, `doc/rfc`,
+`README.md` and `LICENSE`; the tests and fixtures stay out.
 
-`exports` names what a consumer may import: the package root, the CLI, and two
-subpaths — `./lib/section.mjs` (the matcher) and `./src/js/scanner/lexers.js`
-(the per-type lexers it takes). `files` and `exports` are independent in
+`exports` names what a consumer may import: the package root, the CLI, the
+matcher and the jump profile (`./lib/section.mjs`, `./lib/jump.mjs`), the
+per-type lexers (`./src/js/scanner/lexers.js`) and `./package.json`. `files` and `exports` are independent in
 `package.json`, so
 [`tools/package-contents.mjs`](./tools/package-contents.mjs) (`npm test`) checks
 that every exported file exists, is covered by `files`, and that every relative

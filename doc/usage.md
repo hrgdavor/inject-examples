@@ -25,7 +25,9 @@ not prose; see [Examples and tests share the same files](#examples-and-tests-sha
 - [Fences](#fences)
 - [Running the CLI](#running-the-cli)
 - [Writing a processed copy](#writing-a-processed-copy)
+- [Skipping gitignored files](#skipping-gitignored-files)
 - [Tolerating broken includes](#tolerating-broken-includes)
+- [Recipes](#recipes)
 - [Using the library](#using-the-library)
 - [Examples and tests share the same files](#examples-and-tests-share-the-same-files)
 - [Keeping this document in sync](#keeping-this-document-in-sync)
@@ -273,6 +275,17 @@ prefix is stripped before the name is read. The rules:
 - `#region` in code without a comment prefix, e.g. C#, is not a directive;
   the same line inside a comment is.
 
+Any of the usual comment prefixes is accepted, in any language:
+
+| Spelling                                                           | Seen in                |
+| ------------------------------------------------------------------ | ---------------------- |
+| `#region name` / `#endregion`                                      | C#, Razor              |
+| `// #region name` / `// #endregion`                                | VS Code folding        |
+| `//region name` / `//endregion`                                    | JetBrains IDEs         |
+| `<!-- #region name -->`                                            | HTML, Markdown         |
+| `/* #region name */`                                               | C-style block comments |
+| `-- #region`, `; #region`, `% #region`, `' #region`, `REM #region` | SQL, INI, VB, TeX      |
+
 ## Region rules by file type
 
 `#<reference>` means "the piece of this file called `<reference>`". What
@@ -306,11 +319,11 @@ declaration *is* the region.
 A `-`, `+` or `++` **segment** after the path selects how much of that
 declaration comes with it:
 
-| Reference | Injected text |
-| --- | --- |
-| `#add` | the declaration: signature through closing brace |
-| `#add/-` | the body only, without the signature |
-| `#add/+` | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
+| Reference | Injected text                                                                          |
+| --------- | -------------------------------------------------------------------------------------- |
+| `#add`    | the declaration: signature through closing brace                                       |
+| `#add/-`  | the body only, without the signature                                                   |
+| `#add/+`  | the declaration **and the annotations above it** (`@Override`, `#[test]`, a decorator) |
 | `#add/++` | the declaration, its annotations, **and the doc comment above them** (a `/** … */` block or a run of `///` lines) |
 
 All four, against `test/fixtures/Example.java` — first the declaration itself:
@@ -470,11 +483,11 @@ line, `L<line>:<column>` starts at a column of it, and `L<line>-L<line>` is a
 range; lines and columns are counted from 1, both ends are inclusive, and an
 endpoint with no column runs to the end of its line:
 
-| Reference | Injected text |
-| --- | --- |
-| `#L12-L14` | lines 12, 13 and 14, verbatim |
-| `#L13` | line 13 alone |
-| `#L13:9` | line 13 from its ninth character to the end of the line |
+| Reference     | Injected text                                            |
+| ------------- | -------------------------------------------------------- |
+| `#L12-L14`    | lines 12, 13 and 14, verbatim                            |
+| `#L13`        | line 13 alone                                            |
+| `#L13:9`      | line 13 from its ninth character to the end of the line  |
 | `#L4:8-L4:22` | from the eighth character of line 4 to its twenty-second |
 
 The three lines of `toString`, named by number rather than by name:
@@ -561,6 +574,73 @@ An array keeps only the elements named, in order:
   formatting in the block belong to the renderer, not to the file. Keys appear
   in the order the reference lists them.
 
+### The YAML, TOML and INI rules
+
+The three config formats have the same problem as JSON and the same answer: a
+reference is a path to a key — the same `/`-separated path a code reference
+uses — and the selection is rendered with the ancestors that hold it, so the
+block is valid source on its own: a bare `port: 8080` is not a YAML document,
+`server:` above it makes one.
+
+| Reference      | `.yaml`                                             | `.toml`                      | `.ini`                                          |
+| -------------- | --------------------------------------------------- | ---------------------------- | ----------------------------------------------- |
+| `#server`      | the `server:` mapping                               | the whole `[server]` table   | the whole `[server]` section                    |
+| `#server/port` | `server:` and its `port:` entry                     | `[server]` and `port = 8080` | `[server]` and `port = 8080`                    |
+| `#a/b/c`       | every ancestor, re-indented to two spaces per level | `[a.b]` and its key          | an error — INI has sections and keys, no deeper |
+
+The three spellings of one demo config, under `docs/samples/` — the same
+`server` key asked of a YAML, a TOML and an INI file:
+
+[../docs/samples/app.yaml#server/port](../docs/samples/app.yaml#server/port)
+
+```yaml
+server:
+  port: 8080
+```
+
+[../docs/samples/app.toml#server/hosts](../docs/samples/app.toml#server/hosts)
+
+```toml
+[server]
+hosts = [
+  "a.example",
+  "b.example",
+]
+```
+
+[../docs/samples/app.ini#server/port](../docs/samples/app.ini#server/port)
+
+```ini
+[server]
+port = 8080
+```
+
+A deeper key arrives with every ancestor it needs, re-indented, so the block
+still reads as the document it came from:
+
+[../docs/samples/app.yaml#server/tls/enabled](../docs/samples/app.yaml#server/tls/enabled)
+
+```yaml
+server:
+  tls:
+    enabled: true
+```
+
+A `/` separates the keys of the *reference*, for every rule alike — it is not
+the format's own spelling. A key that itself contains a dot is therefore still
+addressable — `#a/b.c` selects the key `b.c` under `a` — and a quoted segment
+(`#a/"b.c"`) says the same thing explicitly, because these formats let a key be
+quoted in the source. A TOML *header* keeps the format's own dots (`[a.b]`),
+which is the format's spelling and not the reference's.
+
+A YAML selection keeps its blank and nested lines; a TOML value that spans lines
+(an array, an inline table) comes with its continuation lines; INI quotes
+nothing back — both the `key = value` and the `key: value` spellings are read. A
+missing key, a missing table or section, and a path the format cannot express
+are all errors, reported by `--lenient` like any other broken include. A
+duplicated key, table or section is an error too, rather than the first one to
+appear.
+
 ### The CSS rule
 
 CSS has no members to search, so `.css` gets a rule of its own — but its
@@ -569,15 +649,15 @@ rule by the rightmost simple selector of its selector list, or an at-rule by its
 keyword and parameter. `/` descends the nesting CSS already has, so a rule inside
 a media query is a child of it and no descendant syntax is needed.
 
-| Reference | Injected text |
-| --- | --- |
-| `#.card` | the rule: selector through closing brace |
-| `#.card-` | its declarations alone, without the selector |
-| `#@media` | the whole media block |
-| `#@media:screen` | the media block whose parameter contains `screen` |
-| `#@keyframes:pulse` | the `@keyframes` block named `pulse` |
-| `#@media/.card` | the `.card` rule the media block holds |
-| `#.card[data-variant=compact]` | the rule whose selector carries that attribute |
+| Reference                      | Injected text                                     |
+| ------------------------------ | ------------------------------------------------- |
+| `#.card`                       | the rule: selector through closing brace          |
+| `#.card-`                      | its declarations alone, without the selector      |
+| `#@media`                      | the whole media block                             |
+| `#@media:screen`               | the media block whose parameter contains `screen` |
+| `#@keyframes:pulse`            | the `@keyframes` block named `pulse`              |
+| `#@media/.card`                | the `.card` rule the media block holds            |
+| `#.card[data-variant=compact]` | the rule whose selector carries that attribute    |
 
 A rule with a compound selector is named by its **rightmost simple selector**, so
 `li.item` is `.item` and `ul > li.item` is `.item` too; `:root` is a name of its
@@ -706,6 +786,24 @@ $ npx @hrg/inject-examples doc/usage.md
 doc/usage.md updated.
 ```
 
+A check run over a document with one stale block and one gitignored target:
+
+```
+$ inject-examples --check
+ok       [test/fixtures/before.md](./test/fixtures/before.md)
+stale    [test/fixtures/after.md](./test/fixtures/after.md)
+skipped  [node_modules/dep.js](./node_modules/dep.js)
+
+README.md is stale: 1 of 2 block(s) differ from their files.
+Run: inject-examples README.md
+```
+
+A difference is reported as `stale` under `--check` and `--dry-run` (nothing was
+written) and as `updated` on a normal run. A gitignored target is reported as
+`skipped` and never counts as stale. A marker that `--lenient` could not resolve
+is reported as `failed` — and, unlike `skipped`, it is an error: the run ends
+`1` and the marker's block is left as written.
+
 ## Writing a processed copy
 
 For a build step, the processed document can go to a different file while the
@@ -730,14 +828,103 @@ npx @hrg/inject-examples --out dist/usage.md doc/usage.md
   input's neighbours, not the copy's own: treat the copy as a build artifact,
   or rewrite the links afterwards.
 
+## Skipping gitignored files
+
+By default, a marker whose target file is gitignored is **skipped**: its block
+is left exactly as written and reported as `skipped`. Skipping is not an error
+— a sample of `node_modules` content is usually kept static on purpose — and
+`--check` never counts a skipped block as stale.
+
+Rules are collected the way git does it: the `.gitignore` in the document's
+directory, then each `.gitignore` higher up the tree; the closest file wins and
+a `!` rule un-ignores. Opt out or override with `--no-gitignore` or
+`--gitignore <file>`. The library equivalent is the `gitignore` option of
+`updateDocument` (`false`, `{ file }`, or `true` for the default walk-up).
+
 ## Tolerating broken includes
 
 With `--lenient`, a marker whose file or region cannot be read — or whose
 block cannot be found — is reported with its line number, left as written,
 and the run continues; the run still ends `1`, because a broken include is
 an error to be fixed, not a success. Duplicate markers and stray text where a
-block should be stay strict in every mode. The README's
-"Tolerating broken includes" section has the worked example.
+block should be stay strict in every mode.
+
+A run over a document with one broken include beside two healthy ones:
+
+```
+$ inject-examples --lenient
+updated  [test/fixtures/before.md](./test/fixtures/before.md)
+failed   [test/fixtures/missing.md](./test/fixtures/missing.md)
+updated  [test/fixtures/after.md](./test/fixtures/after.md)
+
+README.md: 2 updated, 1 failed.
+```
+
+In the library this is the `lenient` option of `updateDocument`; a
+failure-skipped marker shows up in `results` as `{ marker, content: null,
+changed: false, skipped: true, failure: <cause> }`, distinct from a gitignored
+skip, which has no `failure`.
+
+## Recipes
+
+The command lines a real project ends up with, as a starting point.
+
+### npm scripts
+
+```json
+{
+  "scripts": {
+    "docs:build": "inject-examples",
+    "docs:check": "inject-examples --check"
+  }
+}
+```
+
+### GitHub Actions
+
+```yaml
+- uses: actions/setup-node@v4
+  with:
+    node-version: 20
+- run: npm ci
+- run: npx @hrg/inject-examples --check
+```
+
+### Several documents
+
+```bash
+inject-examples README.md docs/GUIDE.md   # one run, two documents
+inject-examples docs/                     # every *.md under docs/, recursively
+inject-examples docs/GUIDE.md --root .
+```
+
+### Documentation in a subfolder
+
+Write the markers relative to the document itself — `../fixtures/a.md` —
+because that is how a reader resolves the same link, and the default root is
+the document's own directory, so no `--root` is needed:
+
+```bash
+inject-examples docs/GUIDE.md
+```
+
+If you write root-relative paths instead, point `--root` at the root.
+
+### Run it before every commit
+
+`.git/hooks/pre-commit`:
+
+```bash
+#!/bin/sh
+npx @hrg/inject-examples --check || {
+  echo "README examples are out of date; run: npx @hrg/inject-examples"
+  exit 1
+}
+```
+
+Writing the processed document to a separate file, and the CI form of that
+check, are in [Writing a processed copy](#writing-a-processed-copy) and
+[Keeping this document in sync](#keeping-this-document-in-sync).
 
 ## Using the library
 
@@ -785,11 +972,13 @@ This is the policy that keeps the documentation honest, and it is worth
 stating because it is deliberate:
 
 - **No documentation-only examples.** Every file injected above exists in
-  this repository — `package.json`, `test/fixtures/before.md`,
-  `test/fixtures/after.md`, `test/fixtures/example.ts`,
-  `test/fixtures/Example.java`, `test/fixtures/fenced.md`, `index.mjs` and
-  `test.mjs`. Nothing was invented for the docs; each shown block is the
-  current content of a file the repository owns.
+  this repository — `package.json`, `index.mjs`, `test.mjs`,
+  `test/fixtures/before.md`, `test/fixtures/after.md`,
+  `test/fixtures/example.ts`, `test/fixtures/Example.java`,
+  `test/fixtures/Anchors.java`, `test/fixtures/fenced.md`,
+  `docs/samples/site.css`, `docs/samples/app.yaml`, `docs/samples/app.toml`
+  and `docs/samples/app.ini`. Nothing was invented for the docs; each shown
+  block is the current content of a file the repository owns.
 - **The fixtures are test data.** The files under `test/fixtures/` are read
   by `test.mjs` through the real `fileReader`, and the tests below pin their
   content. The same files are what the markers above inject — including the
