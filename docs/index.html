@@ -28,32 +28,31 @@ body {
   display: flex; flex-direction: column; min-height: 100vh;
 }
 
-/* Hero — two columns, each with title + subtitle */
-.hero {
+/* Showcase — source order is the mobile order (title, card, title, card);
+   on wide screens the four blocks flow into two columns of two rows. */
+.showcase {
   max-width: 60rem; margin: 0 auto;
-  padding: 5.5rem 2rem 2.5rem;
+  padding: 5.5rem 2rem 3.5rem;
+  display: grid;
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 3.5rem 1.8rem;
 }
-.hero .duo {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;
-}
-.hero .duo .col { text-align: center; }
-.hero .duo h1 {
+.pane { text-align: center; align-self: end; }
+.pane h1 {
   font-size: 3rem; font-weight: 900; letter-spacing: -.045em; line-height: 1.05; margin: 0 0 .8rem;
 }
-.hero .duo h1 .accent {
+.pane h1 .accent {
   background: linear-gradient(90deg, var(--yellow) 0%, var(--yellow-deep) 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.hero .duo .sub {
+.pane .sub {
   font-size: 1rem; color: var(--muted); margin: 0; line-height: 1.5; max-width: 24rem;
   margin-left: auto; margin-right: auto;
 }
 
 /* Cards — glass, equal weight */
-.cards {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.8rem;
-  max-width: 60rem; margin: 0 auto; padding: 2.5rem 2rem 3.5rem;
-}
 .card {
   background: var(--card);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -151,10 +150,17 @@ footer a.gh:hover { color: var(--fg); text-decoration: none; }
 footer a.gh svg { display: block; width: 17px; height: 17px; }
 
 @media (max-width: 700px) {
-  .hero { padding: 3.5rem 1.2rem 2rem; }
-  .hero .duo { grid-template-columns: 1fr; gap: 2rem; }
-  .hero .duo h1 { font-size: 2.3rem; }
-  .cards { grid-template-columns: 1fr; }
+  /* one column, in source order: title, its own card, next title, its own card */
+  .showcase {
+    padding: 3.5rem 1.2rem 2.5rem;
+    grid-template-rows: none;
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.1rem;
+  }
+  .pane { align-self: auto; }
+  .pane h1 { font-size: 2.3rem; }
+  .card + .pane { margin-top: 1.9rem; }  /* keep the two use cases apart */
   .strip ol { grid-template-columns: 1fr; }
   .term { padding: 0 1.2rem 3rem; }
 }
@@ -162,28 +168,16 @@ footer a.gh svg { display: block; width: 17px; height: 17px; }
 </head>
 <body>
 
-<section class="hero">
-  <div class="duo">
-    <div class="col">
-      <h1>Your docs <span class="accent">are the code.</span></h1>
-      <p class="sub">
-          The snippet in your README is from real source.<br/>
-          Pulled in live.<br/>
-          No copy-paste.<br/>
-          No drift from line numbers changes.</p>
-    </div>
-    <div class="col">
-      <h1>Your docs <span class="accent">are the IDE.</span></h1>
-      <p class="sub">
-          Break out from the simple file reference.<br/>
-          Link to important pieces of your code.<br/>
-          Explain code with clear, clickable navigation.<br/>
-          No drift from line numbers changes.</p>
-    </div>
+<section class="showcase">
+  <div class="pane">
+    <h1>Your docs <span class="accent">are the code.</span></h1>
+    <p class="sub">
+        The snippet in your README is from real source.<br/>
+        Pulled in live.<br/>
+        No copy-paste.<br/>
+        No drift from line numbers changes.</p>
   </div>
-</section>
 
-<section class="cards">
   <div class="card">
     <div class="card-header">
         <div>
@@ -194,6 +188,15 @@ footer a.gh svg { display: block; width: 17px; height: 17px; }
     </div>
     <p class="desc">Point at a region — <code>Cart.java#Cart/Line/render/-</code> — and the tool <strong>pulls those exact lines into your doc</strong>. Fenced block, always the real code. No copy-paste. No "TODO: update this snippet."</p>
     <a href="./inject/index.html">Open the inject demo</a>
+  </div>
+
+  <div class="pane">
+    <h1>Your docs <span class="accent">are the IDE.</span></h1>
+    <p class="sub">
+        Break out from the simple file reference.<br/>
+        Link to important pieces of your code.<br/>
+        Explain code with clear, clickable navigation.<br/>
+        No drift from line numbers changes.</p>
   </div>
 
   <div class="card">
