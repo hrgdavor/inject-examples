@@ -3701,24 +3701,27 @@ test "isIgnoredPath applies gitignore semantics" {
     context.init();
     defer context.deinit();
     const alloc = context.alloc;
+    const windows = @import("builtin").os.tag == .windows;
+    const root: []const u8 = if (windows) "C:\\root" else "/root";
+    const sub: []const u8 = if (windows) "C:\\root\\sub" else "/root/sub";
 
     const rules = try parseIgnoreFile(alloc, try context.units("node_modules\n/build/\n*.map\n!keep.map\n"));
-    const files = [_]RuleFile{.{ .dir = "C:\\root", .rules = rules }};
+    const files = [_]RuleFile{.{ .dir = root, .rules = rules }};
 
-    try std.testing.expect(try isIgnoredPath(alloc, "C:\\root", "node_modules/react/index.js", &files));
-    try std.testing.expect(try isIgnoredPath(alloc, "C:\\root", "packages/node_modules/x.js", &files));
-    try std.testing.expect(!try isIgnoredPath(alloc, "C:\\root", "src/index.js", &files));
-    try std.testing.expect(try isIgnoredPath(alloc, "C:\\root", "build/out.js", &files));
-    try std.testing.expect(!try isIgnoredPath(alloc, "C:\\root", "src/build/out.js", &files));
-    try std.testing.expect(try isIgnoredPath(alloc, "C:\\root", "out.map", &files));
-    try std.testing.expect(!try isIgnoredPath(alloc, "C:\\root", "keep.map", &files));
+    try std.testing.expect(try isIgnoredPath(alloc, root, "node_modules/react/index.js", &files));
+    try std.testing.expect(try isIgnoredPath(alloc, root, "packages/node_modules/x.js", &files));
+    try std.testing.expect(!try isIgnoredPath(alloc, root, "src/index.js", &files));
+    try std.testing.expect(try isIgnoredPath(alloc, root, "build/out.js", &files));
+    try std.testing.expect(!try isIgnoredPath(alloc, root, "src/build/out.js", &files));
+    try std.testing.expect(try isIgnoredPath(alloc, root, "out.map", &files));
+    try std.testing.expect(!try isIgnoredPath(alloc, root, "keep.map", &files));
 
     // The closest .gitignore wins.
-    const outer = RuleFile{ .dir = "C:\\root", .rules = try parseIgnoreFile(alloc, try context.units("!build\n")) };
-    const inner = RuleFile{ .dir = "C:\\root\\sub", .rules = try parseIgnoreFile(alloc, try context.units("build\n")) };
+    const outer = RuleFile{ .dir = root, .rules = try parseIgnoreFile(alloc, try context.units("!build\n")) };
+    const inner = RuleFile{ .dir = sub, .rules = try parseIgnoreFile(alloc, try context.units("build\n")) };
     const both = [_]RuleFile{ outer, inner };
-    try std.testing.expect(try isIgnoredPath(alloc, "C:\\root", "sub/build/x.js", &both));
-    try std.testing.expect(!try isIgnoredPath(alloc, "C:\\root", "build/x.js", &both));
+    try std.testing.expect(try isIgnoredPath(alloc, root, "sub/build/x.js", &both));
+    try std.testing.expect(!try isIgnoredPath(alloc, root, "build/x.js", &both));
 }
 
 test "updateDocument skips gitignored markers and leaves their block" {
