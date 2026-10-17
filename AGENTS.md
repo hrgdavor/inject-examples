@@ -261,31 +261,47 @@
   `--global-cache-dir .zig-cache/global --cache-dir .zig-cache/local`.
 - `.github/workflows/ci.yml` runs the JavaScript suite and oracle, the Zig build
   and tests, the differential harness, the Java port (`mvn test`), the Rust port
-  (`cargo test`) and the formatting gates on every push and pull request;
-  `.github/workflows/release.yml` builds the tagged binaries.
+  (`cargo test`), the Lua port under Lua 5.4, LuaJIT and Neovim's LuaJIT, the
+  Neovim plugin smoke test and the formatting gates on every push and pull
+  request; `.github/workflows/release.yml` builds the tagged binaries.
 
-## The Java and Rust ports
+## The Java, Rust and Lua ports
 
-- Two further ports of `lib/section.mjs` — the matcher module only, not the CLI —
+- Three further ports of `lib/section.mjs` — the matcher module only, not the CLI —
   live beside it, for hosts that cannot import an ES module:
-  [`java/section`](./java/section) (complete: `mvn test`) and
-  [`rust/section`](./rust/section) (complete: `cargo test`). Both read the
-  corpora **directly**, rather than keeping a generated copy, and both fail if a
-  corpus row is unaccounted for. The real Maven binary is
+  [`java/section`](./java/section) (complete: `mvn test`),
+  [`rust/section`](./rust/section) (complete: `cargo test`) and
+  [`lua/section`](./lua/section) (complete:
+  `lua lua/section/tests/run.lua`, also `nvim -l` for LuaJIT). All three read the
+  corpora **directly**, rather than keeping a generated copy, and all three fail
+  if a corpus row is unaccounted for. The real Maven binary is
   `D:\programs\mvn\bin\mvn.cmd`; `mvn` on PATH is the `mvnd` shim (see
-  PUBLISHING.md).
+  PUBLISHING.md). The Lua gate also asserts the profile corpus, because that port
+  offers the jump profile.
 - The JavaScript is the source of truth here too, so a disagreement is a bug in
-  the port. `java/section/src/main/java/hr/hrg/inject/section/Syntaxes.java` and
-  `rust/section/src/syntaxes.rs` are the tables; the Rust declaration matchers are
-  hand-written in `rust/section/src/tokenizer.rs` (no regex engine, by design),
-  which is exactly why the shape rows matter there.
+  the port. `java/section/src/main/java/hr/hrg/inject/section/Syntaxes.java`,
+  `rust/section/src/syntaxes.rs` and `lua/section/src/scanner/syntaxes.lua` are
+  the tables; the Rust declaration matchers are hand-written in
+  `rust/section/src/tokenizer.rs` (no regex engine, by design), while the Lua port
+  keeps the JavaScript patterns as written and interprets the subset they use in
+  `lua/section/src/re.lua` — which is why the shape rows matter there too.
+- **The Lua port is the Neovim one.** Its offsets are UTF-16 code units
+  (`lua/section/src/units.lua`), like Rust's `Vec<u16>` and like JavaScript, so a
+  mask preserves length and every newline offset even through an astral
+  character. The repository root is also a Neovim plugin
+  ([`lua/md-jump`](./lua/md-jump), `plugin/md-jump.lua`,
+  `doc/md-jump.txt`), the vendored `md-jump.nvim` with its Node fallback gone.
+  Lua 5.4 and Neovim's LuaJIT both run the gate; the Neovim plugin smoke test is
+  the one thing the plain Lua gate cannot cover (`vim.api`), so check it with
+  `nvim --headless -l`.
 - **Envelopes are ported everywhere.** `Inventory/^,toString,$` — the two marks, the
   head/tail piece, and the candidate retry that lets the member choose among a
   type's `impl` blocks ([Envelopes](./doc/section-matching.md#envelopes)) — is
-  answered by the Java, Rust and Zig ports as well as the JavaScript, so the 31
-  corpus rows carrying a `^` or `$` are rows every implementation passes. **Kotlin
-  `fun` shapes** and the **indented condition/anchor** rows (`test/fixtures/Hash.py`)
-  are ported too; all four implementations pass the whole section corpus.
+  answered by the Java, Rust, Lua and Zig ports as well as the JavaScript, so the
+  31 corpus rows carrying a `^` or `$` are rows every implementation passes.
+  **Kotlin `fun` shapes** and the **indented condition/anchor** rows
+  (`test/fixtures/Hash.py`) are ported too; all five implementations pass the whole
+  section corpus.
 - **One known port gap.** A Ruby name may end in `!`, `?` or `=` (`add!`, `empty?`,
   `add=`), and the JavaScript resolver reads such a segment as that name rather than
   as a name plus a modifier; the lexer reports the name without its suffix as `base`
@@ -293,7 +309,7 @@
   the corpus rows it asserts are unchanged, but it has no `base`. **No corpus row
   exercises it** — `#add` and `#add!` both resolve the same way on today's fixtures —
   so the corpus does not catch it; a port that adds suffix support needs the lexer's
-  `base` alongside `name`.
+  `base` alongside `name`. The Lua port keeps `base` and the suffix.
 - **The ports' test harnesses must classify by the *row's* code, not the exception
   type.** An envelope whose marks contradict each other is thrown by the *parser*
   while carrying a `resolution/…` code, so `grammar/…` implies the grammar type but

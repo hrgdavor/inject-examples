@@ -119,6 +119,41 @@ jobs:
         run: cargo test
         working-directory: rust/section
 
+  lua:
+    name: Lua port
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Lua
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: '5.4'
+
+      - name: Test (Lua 5.4)
+        # The same corpora the JavaScript suite reads: every section vector,
+        # every mask and shape, and the jump profile when the port offers it.
+        run: lua lua/section/tests/run.lua
+
+      - name: Test (LuaJIT)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y luajit
+          luajit lua/section/tests/run.lua
+
+      - name: Setup Neovim
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: stable
+
+      - name: Test (Neovim LuaJIT)
+        run: nvim --headless -u NONE -l lua/section/tests/run.lua
+
+      - name: Neovim plugin smoke test
+        run: nvim --headless -u NONE --cmd "set rtp+=." -l lua/md-jump/tests/smoke.lua
+
   format:
     name: Formatting
     runs-on: ubuntu-latest

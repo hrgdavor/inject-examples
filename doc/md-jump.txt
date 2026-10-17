@@ -1,0 +1,126 @@
+*md-jump.txt*  Jump to Markdown links with inject-examples support
+                                                             *md-jump*
+Author: hrgdavor
+License: MIT
+
+md-jump.nvim turns a Markdown link's `#fragment` into a cursor. The fragment is
+a code reference (`Cart/Line/render`, `L10-L20`, a `#region` name), a heading
+anchor, or a plain file link. It is the Neovim front end to the pure-Lua
+section resolver in this repository, so it needs no Node process and no
+`@hrg/inject-examples` install.
+
+==============================================================================
+CONTENTS                                                   *md-jump-contents*
+
+  1. Setup ................... |md-jump-setup|
+  2. Usage ................... |md-jump-usage|
+  3. Gate .................... |md-jump-gate|
+  4. Profiles ................ |md-jump-profiles|
+  5. How it works ............ |md-jump-how|
+
+==============================================================================
+SETUP                                                         *md-jump-setup*
+
+The repository root is the plugin: it has `lua/md-jump/`, `lua/section/`,
+`plugin/md-jump.lua` and this help file.
+
+lazy.nvim:
+>lua
+  {
+    "hrgdavor/inject-examples",
+    ft = "markdown",
+    config = function() require("md-jump").setup() end,
+  }
+<
+
+Manual:
+>vim
+  :set runtimepath+=/path/to/inject-examples
+  :lua require("md-jump").setup()
+<
+
+`setup` accepts:
+>lua
+  require("md-jump").setup({
+    default_profile = "jump/editor", -- or "jump/gate"
+    keymaps = true,
+    external_opener = nil,           -- default: vim.ui.open
+  })
+<
+                                                              *md-jump-options*
+  `default_profile`  `jump/editor` lands usefully and says how; `jump/gate`
+                     refuses anything that is not exact.
+  `keymaps`          Create the buffer-local maps (default `true`).
+  `external_opener`  A function called with an external URL.
+
+==============================================================================
+USAGE                                                         *md-jump-usage*
+
+In a Markdown buffer:
+  `gx`    jump to the link under the cursor        *md-jump-gx*
+  `<CR>`  the same                                  *md-jump-CR*
+  `gX`    gate the document                         *md-jump-gX*
+
+Commands:
+  `:MdJump`       jump to the link under the cursor   *:MdJump*
+  `:MdJumpGate`   resolve every link; quickfix on failure *:MdJumpGate*
+
+Supported links:
+>markdown
+  [label](./file.md)
+  [label](./file.md#heading)
+  [label](./src/Cart.java#Cart/Line/render)
+  [label](./main.go#L10-L20)
+  [label](./Cart.java#L13:9-L13:21)
+  [label](./Cart.java#Cart/Line/render/++)
+  [label](./Cart.java#Cart/^,toString,$)
+<
+
+A fragment `#heading` on a `.md` target is read as a heading first (GitHub-style
+slug), then as a code reference. A reference that does not resolve exactly lands
+by policy and says so: `nearest` (the deepest enclosing block that resolves),
+`ambiguous` (the name several blocks answer to), or `file-start` (the file is
+right, the reference is not found).
+
+==============================================================================
+GATE                                                           *md-jump-gate*
+
+>vim
+  :MdJumpGate
+  :lua require("md-jump").gate()
+<
+
+`gate` resolves every Markdown link in the current buffer in one pass. It fills
+the quickfix list with every failure, its line and its stable code:
+
+  `resolution/not-found`, `resolution/ambiguous`,
+  `resolution/line-range-past-end`, `grammar/line-range-not-a-range`, ...
+
+Everything inside a fenced block is skipped: a code example is not navigation.
+A heading anchor the document owns is not a failure.
+
+==============================================================================
+PROFILES                                                     *md-jump-profiles*
+
+  `jump/editor`  Never fails a keystroke. Every band lands somewhere useful and
+                 the landing reports how it got there.
+  `jump/gate`    Refuses anything that is not an exact resolve.
+
+The two are the readings of RFC 2 (`doc/rfc/code-jump.md`), the same policy
+`lib/jump.mjs` implements.
+
+==============================================================================
+HOW                                                          *md-jump-how*
+
+The plugin reads the link under the cursor, resolves its path against the
+current buffer, reads the target and calls `section.plan_section` / the jump
+profile. The resolver is the Lua port of `lib/section.mjs`: the same grammar,
+messages, stable codes, matcher precedence, envelopes and lexers. It is held to
+the same corpora by `lua lua/section/tests/run.lua` (or
+`nvim -l lua/section/tests/run.lua`).
+
+See also:
+  `lua/md-jump/README.md`    the plugin's README
+  `lua/section/README.md`    the Lua resolver's README
+
+vim:tw=78:ts=8:noet:ft=help:norl:

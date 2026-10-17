@@ -62,6 +62,9 @@
     "manifest": "node tools/conformance-manifest.mjs",
     "oracle": "node tools/mask-oracle.mjs",
     "compare:zig": "node tools/compare-zig.mjs",
+    "test:lua": "lua lua/section/tests/run.lua",
+    "test:lua:jit": "luajit lua/section/tests/run.lua",
+    "test:nvim": "nvim --headless -u NONE --cmd \"set rtp+=.\" -l lua/md-jump/tests/smoke.lua",
     "typecheck": "tsc --noEmit",
     "demo": "bun tools/build-demo.mjs --pages inject --pages jump",
     "demo:check": "bun tools/build-demo.mjs --pages inject --pages jump --check"

@@ -60,16 +60,16 @@ So the freeze is replaced by something stronger: **parity that is proven on ever
 
 Complete as of this plan, and verified:
 
-| JavaScript (source of truth) | Zig (port) |
-| --- | --- |
-| `lib/section.mjs` | [src/section.zig](./../src/section.zig) |
-| `src/js/scanner/syntaxes.js` | [src/scanner/syntaxes.zig](./../src/scanner/syntaxes.zig) |
-| `src/js/scanner/tokenizer.js` | [src/scanner/tokenizer.zig](./../src/scanner/tokenizer.zig) |
-| `src/js/scanner/lexers.js` | [src/scanner/lexers.zig](./../src/scanner/lexers.zig) |
-| the YAML / TOML / INI rules in `index.mjs` | [src/data_rules.zig](./../src/data_rules.zig) |
-| `index.mjs` | [src/root.zig](./../src/root.zig) |
-| `cli.mjs` | [src/main.zig](./../src/main.zig) |
-| shared UTF-16 runtime | [src/js.zig](./../src/js.zig) |
+| JavaScript (source of truth)               | Zig (port)                                                  |
+| ------------------------------------------ | ----------------------------------------------------------- |
+| `lib/section.mjs`                          | [src/section.zig](./../src/section.zig)                     |
+| `src/js/scanner/syntaxes.js`               | [src/scanner/syntaxes.zig](./../src/scanner/syntaxes.zig)   |
+| `src/js/scanner/tokenizer.js`              | [src/scanner/tokenizer.zig](./../src/scanner/tokenizer.zig) |
+| `src/js/scanner/lexers.js`                 | [src/scanner/lexers.zig](./../src/scanner/lexers.zig)       |
+| the YAML / TOML / INI rules in `index.mjs` | [src/data_rules.zig](./../src/data_rules.zig)               |
+| `index.mjs`                                | [src/root.zig](./../src/root.zig)                           |
+| `cli.mjs`                                  | [src/main.zig](./../src/main.zig)                           |
+| shared UTF-16 runtime                      | [src/js.zig](./../src/js.zig)                               |
 
 Ported: slash-separated section paths with retried same-named scopes, trailing and leading
 `-` / `+` / `++` modifiers with the contradiction warning, condition literals, comment
@@ -83,17 +83,18 @@ Every one of these must be green; the CI workflow
 [.github/workflows/ci.yml](./../.github/workflows/ci.yml) runs all three on every push and
 pull request.
 
-| Gate | Command | What it proves |
-| --- | --- | --- |
-| JavaScript suite | `node --test test.mjs` | 161 tests: the shipped behaviour, the docs, the demo page, the language table, the two corpora |
-| Vectors drift | `node tools/section-vectors.mjs --check` | the golden corpus still describes the JavaScript implementation |
-| Lexical vectors drift | `node tools/lexical-vectors.mjs --check` | the mask and shape corpus still describes the JavaScript implementation |
-| Ported suite | `zig build test` | 61 Zig tests, including both conformance corpora |
-| Zig corpus drift | `node tools/zig-vectors.mjs --check` | `src/section_vectors.zig` still describes both corpora |
-| Differential | `node tools/compare-zig.mjs` | JS vs Zig, byte for byte: stdout, stderr, exit code and every rewritten file, over the edge-case corpus, a reference corpus that resolves every construct each lexer exists for (including the hard spellings), and a seeded fuzzer |
-| Java port | `mvn test` (in `java/section`) | the same corpora, read directly: every resolution vector, every mask and every declaration shape |
-| Rust port | `cargo test` (in `rust/section`) | the layers it has ported: the grammar vectors, every mask and every declaration shape |
-| Formatting | `zig fmt --check build.zig src`, `cargo fmt --check` | the hand-written sources and the generated `src/section_vectors.zig` are all `zig fmt`-clean |
+| Gate                  | Command                                                       | What it proves                                                                                   |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| JavaScript suite      | `node --test test.mjs`                                        | 161 tests: the shipped behaviour, the docs, the demo page, the language table, the two corpora   |
+| Vectors drift         | `node tools/section-vectors.mjs --check`                      | the golden corpus still describes the JavaScript implementation                                  |
+| Lexical vectors drift | `node tools/lexical-vectors.mjs --check`                      | the mask and shape corpus still describes the JavaScript implementation                          |
+| Ported suite          | `zig build test`                                              | 61 Zig tests, including both conformance corpora                                                 |
+| Zig corpus drift      | `node tools/zig-vectors.mjs --check`                          | `src/section_vectors.zig` still describes both corpora                                           |
+| Differential          | `node tools/compare-zig.mjs`                                  | JS vs Zig, byte for byte: stdout, stderr, exit code and every rewritten file, over the edge-case corpus, a reference corpus that resolves every construct each lexer exists for (including the hard spellings), and a seeded fuzzer |
+| Java port             | `mvn test` (in `java/section`)                                | the same corpora, read directly: every resolution vector, every mask and every declaration shape |
+| Rust port             | `cargo test` (in `rust/section`)                              | the same corpora, read directly: every resolution vector, every mask and every declaration shape |
+| Lua port              | `lua lua/section/tests/run.lua` (also `luajit` and `nvim -l`) | every resolution vector, every mask and shape, and the jump profile, read directly               |
+| Formatting            | `zig fmt --check build.zig src`, `cargo fmt --check`          | the hand-written sources and the generated `src/section_vectors.zig` are all `zig fmt`-clean     |
 
 ### The conformance corpus
 
@@ -125,20 +126,22 @@ The freeze is over, but the order of operations is not optional.
    `npm run oracle` to cross-check against highlight.js;
 3. a mask row in [tools/lexical-vectors.mjs](./../tools/lexical-vectors.mjs), and
    `node tools/lexical-vectors.mjs` — this is the corpus that holds *every* entry, so an entry the
-   resolution vectors never reach is still asserted in all four implementations;
+   resolution vectors never reach is still asserted in all five implementations;
 4. the same object in [src/scanner/syntaxes.zig](./../src/scanner/syntaxes.zig) and the same
    extension line in [src/scanner/lexers.zig](./../src/scanner/lexers.zig), the same object in
-   `Syntaxes.java` and `syntaxes.rs`, and `node tools/zig-vectors.mjs` to bake the corpus for Zig;
-5. `node tools/compare-zig.mjs` to prove the two engines still agree, then `mvn test` and
-   `cargo test` to prove the other two do.
+   `Syntaxes.java`, `syntaxes.rs` and `lua/section/src/scanner/syntaxes.lua`, and
+   `node tools/zig-vectors.mjs` to bake the corpus for Zig;
+5. `node tools/compare-zig.mjs` to prove the two engines still agree, then `mvn test`,
+   `cargo test` and `lua lua/section/tests/run.lua` to prove the other three do.
 
 **A change to a language's declaration shapes** (the spellings the generic `name(` heuristics miss):
 
 1. the descriptor in `src/js/scanner/syntaxes.js`, with shape rows
    (`declarations(maskedLine)` on the *raw* line, the discriminating spelling) in
    [tools/lexical-vectors.mjs](./../tools/lexical-vectors.mjs);
-2. the same descriptor or matcher in `src/scanner/syntaxes.zig`, `Syntaxes.java` and
-   `rust/section/src/tokenizer.rs` — the shape rows are what proves the transcription;
+2. the same descriptor or matcher in `src/scanner/syntaxes.zig`, `Syntaxes.java`,
+   `rust/section/src/tokenizer.rs` and `lua/section/src/scanner/syntaxes.lua` — the shape
+   rows are what proves the transcription;
 3. resolution cases for the spelling in
    [tools/section-vectors.mjs](./../tools/section-vectors.mjs), so the *resolver* is held to it and
    not only the matcher, and the same fixture in `tools/compare-zig.mjs`'s reference corpus.
@@ -147,12 +150,13 @@ The freeze is over, but the order of operations is not optional.
 change `lib/section.mjs` and `src/section.zig` together, add or update the vector cases in
 [tools/section-vectors.mjs](./../tools/section-vectors.mjs), regenerate the JavaScript and the Zig
 corpora (`node tools/section-vectors.mjs`, `node tools/zig-vectors.mjs`), then run every gate —
-`node test.mjs`, `zig build test`, `node tools/compare-zig.mjs`, `mvn test`, `cargo test`.
+`node test.mjs`, `zig build test`, `node tools/compare-zig.mjs`, `mvn test`, `cargo test`,
+`lua lua/section/tests/run.lua`.
 **A semantics change that is not in the JavaScript first does not land.** When the change moves
 what a resolution *answers* — `text`, `ranges`, `startLine`/`endLine` or `kind` — the vector
 generator carries the new field into `src/section_vectors.zig` too, so the Zig conformance test
-asserts it beside the bytes and not only in the JavaScript suite; the Java and Rust ports read the
-same JSON directly and pick the field up without a regeneration.
+asserts it beside the bytes and not only in the JavaScript suite; the Java, Rust and Lua ports read
+the same JSON directly and pick the field up without a regeneration.
 
 **A change to the CLI** (a flag, a message, an exit code): `cli.mjs` and `src/main.zig` in the
 same change, with `node tools/compare-zig.mjs` as the check.
@@ -164,16 +168,18 @@ the second of those to the code.
 
 ## 6. What is deliberately not done
 
-- **No Java or Rust CLI is specified or started.** Two further ports of `lib/section.mjs` — not of
-  the CLI — do exist: the Java library in [`java/section`](./../java/section) (complete) and the
-  Rust crate in [`rust/section`](./../rust/section) (lexical layers done, resolution still to come).
+- **No Java, Rust or Lua CLI is specified or started.** Three further ports of `lib/section.mjs` —
+  not of the CLI — do exist: the Java library in [`java/section`](./../java/section) (complete),
+  the Rust crate in [`rust/section`](./../rust/section) (complete) and the Lua library in
+  [`lua/section`](./../lua/section) (complete; see [`plans/lua-port.md`](./lua-port.md)).
   They are held at parity the way this plan holds the Zig port, by the same generated corpora read
-  directly — `test/vectors/section-vectors.json` for resolution and
-  `test/vectors/lexical-vectors.json` for the masks and the declaration shapes — with `mvn test` and
-  `cargo test` as their gates. That is the answer to the question this section used to ask: a third
-  and fourth implementation need no differential harness of their own, because the corpus is the
-  comparison and every port asserts it in CI. `compare-zig.mjs` still compares exactly two tools,
-  and only the Zig port ships a binary.
+  directly — `test/vectors/section-vectors.json` for resolution,
+  `test/vectors/lexical-vectors.json` for the masks and the declaration shapes, and
+  `test/vectors/profile-vectors.json` for the Lua port's profile — with `mvn test`, `cargo test` and
+  `lua lua/section/tests/run.lua` as their gates. That is the answer to the question this section
+  used to ask: a third, fourth and fifth implementation need no differential harness of their own,
+  because the corpus is the comparison and every port asserts it in CI. `compare-zig.mjs` still
+  compares exactly two tools, and only the Zig port ships a binary.
 - **No older fragment prefix is coming back.** It was dropped in
   `10646fb`; `#<reference>` is the syntax, and neither implementation accepts the old
   spelling.
