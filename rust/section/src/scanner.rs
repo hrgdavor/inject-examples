@@ -455,7 +455,9 @@ struct Variable {
 
 fn is_variable_ident_start(unit: u16) -> bool {
     unit < 128
-        && ((unit as u8 as char).is_ascii_alphabetic() || unit == b'_' as u16 || unit == b'$' as u16)
+        && ((unit as u8 as char).is_ascii_alphabetic()
+            || unit == b'_' as u16
+            || unit == b'$' as u16)
 }
 
 fn is_variable_ident_part(unit: u16) -> bool {
@@ -582,7 +584,8 @@ fn finish_variable(
     let mut scan = after_name;
     while scan < end {
         let unit = mask[scan];
-        if unit == b'(' as u16 || unit == b'[' as u16 || unit == b'{' as u16 || unit == b'<' as u16 {
+        if unit == b'(' as u16 || unit == b'[' as u16 || unit == b'{' as u16 || unit == b'<' as u16
+        {
             depth += 1;
         } else if unit == b')' as u16
             || unit == b']' as u16
@@ -595,7 +598,11 @@ fn finish_variable(
         } else if unit == b'=' as u16
             && depth == 0
             && mask.get(scan + 1).copied() != Some(b'=' as u16)
-            && scan.checked_sub(1).and_then(|before| mask.get(before)).copied() != Some(b'=' as u16)
+            && scan
+                .checked_sub(1)
+                .and_then(|before| mask.get(before))
+                .copied()
+                != Some(b'=' as u16)
         {
             equals_at = Some(scan);
             break;
@@ -675,7 +682,8 @@ fn top_level_index_of(mask: &[u16], from: usize, to: usize, wanted: u16) -> Opti
     let mut depth = 0i32;
     for at in from..to {
         let unit = mask[at];
-        if unit == b'(' as u16 || unit == b'[' as u16 || unit == b'{' as u16 || unit == b'<' as u16 {
+        if unit == b'(' as u16 || unit == b'[' as u16 || unit == b'{' as u16 || unit == b'<' as u16
+        {
             depth += 1;
         } else if unit == b')' as u16
             || unit == b']' as u16
@@ -710,11 +718,13 @@ fn variable_declarators(
     // piece that ends on the closing bracket of its initialiser (`listOf(\n 1,\n)`) reaches it without one.
     for at in from..=limit {
         let unit = if at == limit { b',' as u16 } else { mask[at] };
-        if unit == b'(' as u16 || unit == b'[' as u16 || unit == b'{' as u16 || unit == b'<' as u16 {
+        if unit == b'(' as u16 || unit == b'[' as u16 || unit == b'{' as u16 || unit == b'<' as u16
+        {
             depth += 1;
             continue;
         }
-        if unit == b')' as u16 || unit == b']' as u16 || unit == b'}' as u16 || unit == b'>' as u16 {
+        if unit == b')' as u16 || unit == b']' as u16 || unit == b'}' as u16 || unit == b'>' as u16
+        {
             if depth > 0 {
                 depth -= 1;
             }
@@ -970,7 +980,8 @@ fn build_scope(
                 // An enum's body opens with its constant list, and every constant is a member of its own —
                 // matcher 4 reads "a field **or constant**" (2026-10-13). The constants are read first, and
                 // only what follows their `;` is scanned as an ordinary class body.
-                let enum_body = enum_constants(&block, &keyword.keyword, span.as_ref(), lex, blocks);
+                let enum_body =
+                    enum_constants(&block, &keyword.keyword, span.as_ref(), lex, blocks);
                 apply_anchor(&block, lex, span.as_ref());
                 register(&mut list, block.clone(), blocks);
                 match enum_body {
@@ -1067,12 +1078,9 @@ fn build_scope(
                         .iter()
                         .position(|unit| *unit == b'\n' as u16)
                         .map_or(lex.mask.len(), |at| header_start + at);
-                    for variable in header_variables(
-                        &lex.mask,
-                        header_start,
-                        header_end,
-                        keyword.as_str(),
-                    ) {
+                    for variable in
+                        header_variables(&lex.mask, header_start, header_end, keyword.as_str())
+                    {
                         declare_variable(&block, &variable, lex, blocks);
                     }
                     register(&mut list, block.clone(), blocks);
@@ -1136,11 +1144,13 @@ fn build_scope(
         // (`int a = 1, b = 2;`), an enum's constant and a local whose type nests
         // (`Map<Long, List<Session>> perOrg = …;`) are all members (2026-10-13).
         let masked_units = units(&masked_line);
-        if let Some(declared_variable) = parse_variable(&masked_units, 0, masked_units.len(), false) {
+        if let Some(declared_variable) = parse_variable(&masked_units, 0, masked_units.len(), false)
+        {
             // A declaration's type and modifiers are words, so a statement keyword in that position means this
             // is not one: VB writes `If name = "count" Then` with the same `=` an assignment uses, and reading
             // it as a property named `name` hides the condition literal that names the block.
-            let variable_prefix = String::from_utf16_lossy(&masked_units[..declared_variable.name_at]);
+            let variable_prefix =
+                String::from_utf16_lossy(&masked_units[..declared_variable.name_at]);
             let variable_prefix = variable_prefix.trim();
             let first_word = variable_prefix.split_whitespace().next().unwrap_or("");
             if !is_not_a_name(&declared_variable.name)
@@ -1536,7 +1546,11 @@ fn enum_constants(
     depth = 0;
     let mut from = open + 1;
     for at in open + 1..=list_end {
-        let unit = if at == list_end { b',' as u16 } else { mask[at] };
+        let unit = if at == list_end {
+            b',' as u16
+        } else {
+            mask[at]
+        };
         match unit {
             unit if unit == b'(' as u16 || unit == b'[' as u16 || unit == b'{' as u16 => depth += 1,
             unit if unit == b')' as u16 || unit == b']' as u16 || unit == b'}' as u16 => depth -= 1,
