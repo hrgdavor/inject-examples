@@ -2123,15 +2123,15 @@ fn typeTokenEnd(text: Str, start: usize) ?usize {
 
 /// A word a declaration may put before its type, or instead of it (`var`/`const`/`let`).
 const DECLARATION_MODIFIERS = [_][]const u8{
-    "public",   "protected", "private",  "static",   "final",    "abstract", "transient",
-    "volatile", "native",    "strictfp", "default",  "const",    "let",      "var",
-    "readonly", "internal",  "open",     "sealed",   "lateinit", "override", "suspend",
+    "public",   "protected", "private",  "static",  "final",    "abstract", "transient",
+    "volatile", "native",    "strictfp", "default", "const",    "let",      "var",
+    "readonly", "internal",  "open",     "sealed",  "lateinit", "override", "suspend",
     "inline",   "external",  "partial",  "ref",
 };
 
 /// The words that stand where a type would but declare nothing.
 const NOT_A_TYPE_WORDS = [_][]const u8{
-    "return", "throw", "new", "else",  "do",
+    "return", "throw", "new",   "else",   "do",
     "case",   "await", "yield", "delete", "typeof",
 };
 
@@ -2255,9 +2255,7 @@ fn finishVariable(mask: Str, name: Str, name_at: usize, after_name: usize, to: u
             depth += 1;
         } else if (unit == ')' or unit == ']' or unit == '}' or unit == '>') {
             if (depth > 0) depth -= 1;
-        } else if (unit == '=' and depth == 0 and (scan + 1 >= mask.len or mask[scan + 1] != '=')
-            and (scan == 0 or mask[scan - 1] != '='))
-        {
+        } else if (unit == '=' and depth == 0 and (scan + 1 >= mask.len or mask[scan + 1] != '=') and (scan == 0 or mask[scan - 1] != '=')) {
             equals_at = scan;
             break;
         } else if (unit == ':' and depth == 0) {
@@ -2297,8 +2295,7 @@ fn parseVariable(mask: Str, from: usize, to: usize, type_optional: bool) ?Variab
         var next_at = after;
         while (next_at < to and isVariableSpace(mask[next_at])) next_at += 1;
         const next: u16 = if (next_at >= to) 0 else mask[next_at];
-        const ends_here = next == 0 or next == '=' or next == ':' or next == ',' or next == ';'
-            or next == ')';
+        const ends_here = next == 0 or next == '=' or next == ':' or next == ',' or next == ';' or next == ')';
         if (ends_here and (typed > 0 or untyped)) {
             return finishVariable(mask, spelled.name, at, after, to);
         }
@@ -2630,12 +2627,9 @@ const Build = struct {
                 // this is not one: VB writes `If name = "count" Then` with the same `=` an assignment uses, and
                 // reading it as a property named `name` hides the condition literal that names the block.
                 const prefix = self.facts.mask[start..declared_variable.name_at];
-                if (!isNotAName(declared_variable.name)
-                    and !startsWithStatementBefore(
-                        self.facts.mask[start .. declared_variable.name_at + declared_variable.name.len],
-                    )
-                    and !isNotATypeWord(firstWord(prefix)))
-                {
+                if (!isNotAName(declared_variable.name) and !startsWithStatementBefore(
+                    self.facts.mask[start .. declared_variable.name_at + declared_variable.name.len],
+                ) and !isNotATypeWord(firstWord(prefix))) {
                     // The whole statement is followed so its `;` is found — a lambda, an array or an
                     // anonymous-class initialiser inside it is the statement's own brace and not its end. Every
                     // level the statement-end rule reads comes from the **source**: the mask blanks a literal's
@@ -5391,8 +5385,7 @@ test "extractDeclaration reads a property and an enum constant" {
     const planned = try planSection(alloc, field, try js.utf8Decode(alloc, "plain"), null, &failure);
     try expectPlanText(alloc, "    private final String plain = \"x\";", planned);
 
-    const enums = try js.utf8Decode(alloc,
-        "public enum E {\n    CALL,\n    /** the paid tier */\n    @Deprecated\n    PAID(1);\n}\n");
+    const enums = try js.utf8Decode(alloc, "public enum E {\n    CALL,\n    /** the paid tier */\n    @Deprecated\n    PAID(1);\n}\n");
     const call = (try extractDeclaration(alloc, enums, try js.utf8Decode(alloc, "CALL"), .declaration, &failure)) orelse
         return error.TestUnexpectedResult;
     try testing.expectEqualSlices(u16, try js.utf8Decode(alloc, "    CALL,"), call);
