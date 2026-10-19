@@ -63,7 +63,7 @@ The entire published package, verbatim:
 ```json
 {
   "name": "@hrg/inject-examples",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Keep Markdown examples in sync with the real files they show — inject file content, or one region of it, into the fenced block that follows a link.",
   "keywords": [
     "markdown",
@@ -572,7 +572,7 @@ Top-level keys and a nested one, from `package.json`:
 ```json
 {
   "name": "@hrg/inject-examples",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "scripts": {
     "test": "node --test test.mjs && node --test lib/jump.test.mjs && tsc --noEmit && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/profile-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/error-codes-zig.mjs --check && node tools/conformance-manifest.mjs --check && node tools/package-contents.mjs --check"
   }
