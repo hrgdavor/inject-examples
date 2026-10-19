@@ -364,27 +364,27 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="1085" data-md-to="1085">Haskell: bindings and signatures</h2>
-<p data-md-from="1087" data-md-to="1087">A binding is <code>add x y = x + y</code>, and the <code>add ::</code> line above it is its annotation: <code>+add</code> brings the signature along. <code>#catalog</code> is a binding named by its region directive, and <code>Cart</code> is the record declared with <code>data</code>.</p>
+<h2 data-md-from="1102" data-md-to="1102">Haskell: bindings and signatures</h2>
+<p data-md-from="1104" data-md-to="1104">A binding is <code>add x y = x + y</code>, and the <code>add ::</code> line above it is its annotation: <code>+add</code> brings the signature along. <code>#catalog</code> is a binding named by its region directive, and <code>Cart</code> is the record declared with <code>data</code>.</p>
 <p class="md-marker" data-marker="haskell-t-39-1"><a href="../docs/samples/Main.hs#catalog">samples/Main.hs#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="haskell-t-39-1" data-md-from="1091" data-md-to="1095"><code class="language-haskell">catalog :: [<span class="tok-t">String</span>]
+<pre class="md-pre" data-inject="haskell-t-39-1" data-md-from="1108" data-md-to="1112"><code class="language-haskell">catalog :: [<span class="tok-t">String</span>]
 catalog = [<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>]
 </code></pre>
 <p class="md-marker" data-marker="haskell-t-39-2"><a href="../docs/samples/Main.hs#add">samples/Main.hs#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="haskell-t-39-2" data-md-from="1099" data-md-to="1101"><code class="language-haskell">add x y = x + y</code></pre>
+<pre class="md-pre" data-inject="haskell-t-39-2" data-md-from="1116" data-md-to="1118"><code class="language-haskell">add x y = x + y</code></pre>
 <p class="md-marker" data-marker="haskell-t-39-3"><a href="../docs/samples/Main.hs#add/+">samples/Main.hs#add/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="haskell-t-39-3" data-md-from="1105" data-md-to="1108"><code class="language-haskell">add :: <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span>
+<pre class="md-pre" data-inject="haskell-t-39-3" data-md-from="1122" data-md-to="1125"><code class="language-haskell">add :: <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span> -&gt; <span class="tok-t">Int</span>
 add x y = x + y</code></pre>
 <p class="md-marker" data-marker="haskell-t-39-4"><a href="../docs/samples/Main.hs#Cart">samples/Main.hs#Cart</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="haskell-t-39-4" data-md-from="1112" data-md-to="1114"><code class="language-haskell"><span class="tok-k">data</span> <span class="tok-t">Cart</span> = <span class="tok-t">Cart</span> { items :: [<span class="tok-t">Int</span>] }</code></pre>
+<pre class="md-pre" data-inject="haskell-t-39-4" data-md-from="1129" data-md-to="1131"><code class="language-haskell"><span class="tok-k">data</span> <span class="tok-t">Cart</span> = <span class="tok-t">Cart</span> { items :: [<span class="tok-t">Int</span>] }</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="1116" data-md-to="1116">Haskell: a condition in a binding</h2>
-<p data-md-from="1118" data-md-to="1118">A binding’s body may be an <code>if</code>, and the literal it tests names the binding: <code>dispatch</code> is that binding and <code>+dispatch</code> brings the signature above it along. A comment before a binding is prose rather than an anchor, and its <code>case</code> is an expression rather than a block whose arms could be named.</p>
+<h2 data-md-from="1133" data-md-to="1133">Haskell: a condition in a binding</h2>
+<p data-md-from="1135" data-md-to="1135">A binding’s body may be an <code>if</code>, and the literal it tests names the binding: <code>dispatch</code> is that binding and <code>+dispatch</code> brings the signature above it along. A comment before a binding is prose rather than an anchor, and its <code>case</code> is an expression rather than a block whose arms could be named.</p>
 <p class="md-marker" data-marker="haskell-t-40-1"><a href="../docs/samples/Main.hs#dispatch">samples/Main.hs#dispatch</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="haskell-t-40-1" data-md-from="1122" data-md-to="1124"><code class="language-haskell">dispatch methodName items = <span class="tok-k">if</span> methodName == <span class="tok-s">&quot;count&quot;</span> <span class="tok-k">then</span> items <span class="tok-k">else</span> []</code></pre>
+<pre class="md-pre" data-inject="haskell-t-40-1" data-md-from="1139" data-md-to="1141"><code class="language-haskell">dispatch methodName items = <span class="tok-k">if</span> methodName == <span class="tok-s">&quot;count&quot;</span> <span class="tok-k">then</span> items <span class="tok-k">else</span> []</code></pre>
 <p class="md-marker" data-marker="haskell-t-40-2"><a href="../docs/samples/Main.hs#dispatch/+">samples/Main.hs#dispatch/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="haskell-t-40-2" data-md-from="1128" data-md-to="1131"><code class="language-haskell">dispatch :: <span class="tok-t">String</span> -&gt; [<span class="tok-t">Int</span>] -&gt; [<span class="tok-t">Int</span>]
+<pre class="md-pre" data-inject="haskell-t-40-2" data-md-from="1145" data-md-to="1148"><code class="language-haskell">dispatch :: <span class="tok-t">String</span> -&gt; [<span class="tok-t">Int</span>] -&gt; [<span class="tok-t">Int</span>]
 dispatch methodName items = <span class="tok-k">if</span> methodName == <span class="tok-s">&quot;count&quot;</span> <span class="tok-k">then</span> items <span class="tok-k">else</span> []</code></pre>
 </section>
 </article>

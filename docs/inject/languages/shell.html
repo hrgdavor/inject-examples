@@ -359,35 +359,35 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="956" data-md-to="956">Shell: regions and functions</h2>
-<p data-md-from="958" data-md-to="958">A shell script has no members to name, so regions are how its settings and its helpers stay addressable: <code>#config</code> is the settings and <code>#count</code> is the helper. A <code>case</code> arm is an arm rather than a block, so <code>count</code> is named by the region around it and not by the literal it matches.</p>
+<h2 data-md-from="973" data-md-to="973">Shell: regions and functions</h2>
+<p data-md-from="975" data-md-to="975">A shell script has no members to name, so regions are how its settings and its helpers stay addressable: <code>#config</code> is the settings and <code>#count</code> is the helper. A <code>case</code> arm is an arm rather than a block, so <code>count</code> is named by the region around it and not by the literal it matches.</p>
 <p class="md-marker" data-marker="shell-t-34-1"><a href="../docs/samples/run.sh#config">samples/run.sh#config</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="shell-t-34-1" data-md-from="962" data-md-to="967"><code class="language-bash"><span class="tok-c"># A shell script has no members to name, so a region is how its settings stay</span>
+<pre class="md-pre" data-inject="shell-t-34-1" data-md-from="979" data-md-to="984"><code class="language-bash"><span class="tok-c"># A shell script has no members to name, so a region is how its settings stay</span>
 <span class="tok-c"># addressable — and the directive lines are never injected.</span>
 <span class="tok-t">CATALOG</span>=<span class="tok-s">&quot;bolt nut washer&quot;</span>
 <span class="tok-t">HOST</span>=<span class="tok-s">&quot;localhost&quot;</span></code></pre>
 <p class="md-marker" data-marker="shell-t-34-2"><a href="../docs/samples/run.sh#count">samples/run.sh#count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="shell-t-34-2" data-md-from="971" data-md-to="975"><code class="language-bash">count() {
+<pre class="md-pre" data-inject="shell-t-34-2" data-md-from="988" data-md-to="992"><code class="language-bash">count() {
 	<span class="tok-k">echo</span> <span class="tok-s">&quot;$CATALOG&quot;</span> | wc -w
 }</code></pre>
 <p class="md-marker" data-marker="shell-t-34-3"><a href="../docs/samples/run.sh#deploy">samples/run.sh#deploy</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="shell-t-34-3" data-md-from="979" data-md-to="986"><code class="language-bash">deploy() {
+<pre class="md-pre" data-inject="shell-t-34-3" data-md-from="996" data-md-to="1003"><code class="language-bash">deploy() {
 	cat &lt;&lt;<span class="tok-t">EOF</span>
   } decoy
 <span class="tok-t">EOF</span>
 	<span class="tok-k">echo</span> <span class="tok-s">&quot;deployed&quot;</span>
 }</code></pre>
 <p class="md-marker" data-marker="shell-t-34-4"><a href="../docs/samples/run.sh#deploy/-">samples/run.sh#deploy/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="shell-t-34-4" data-md-from="990" data-md-to="995"><code class="language-bash">	cat &lt;&lt;<span class="tok-t">EOF</span>
+<pre class="md-pre" data-inject="shell-t-34-4" data-md-from="1007" data-md-to="1012"><code class="language-bash">	cat &lt;&lt;<span class="tok-t">EOF</span>
   } decoy
 <span class="tok-t">EOF</span>
 	<span class="tok-k">echo</span> <span class="tok-s">&quot;deployed&quot;</span></code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="997" data-md-to="997">Shell: a heredoc and an anchor</h2>
-<p data-md-from="999" data-md-to="999">The heredoc body is data: the brace in it is not shell syntax, and the selection stops at the function’s closing brace. A trailing comment names the function it opens.</p>
+<h2 data-md-from="1014" data-md-to="1014">Shell: a heredoc and an anchor</h2>
+<p data-md-from="1016" data-md-to="1016">The heredoc body is data: the brace in it is not shell syntax, and the selection stops at the function’s closing brace. A trailing comment names the function it opens.</p>
 <p class="md-marker" data-marker="shell-t-35-1"><a href="../docs/samples/run.sh#legacy/count">samples/run.sh#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="shell-t-35-1" data-md-from="1003" data-md-to="1007"><code class="language-bash">legacy() { <span class="tok-c"># count</span>
+<pre class="md-pre" data-inject="shell-t-35-1" data-md-from="1020" data-md-to="1024"><code class="language-bash">legacy() { <span class="tok-c"># count</span>
 	<span class="tok-k">echo</span> <span class="tok-s">&quot;$CATALOG&quot;</span> | wc -w
 }</code></pre>
 </section>

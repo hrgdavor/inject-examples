@@ -77,7 +77,7 @@ export const LANGUAGES_DIR = 'languages';
 export const PAGES = [
     { slug: 'overview', label: 'Overview', title: 'Overview', sample: null, group: 'This page', order: 0,
         sections: ['A named region', 'A declaration, and how much of it comes along', 'A nested declaration',
-            'A condition literal', 'A comment anchor', 'The whole file'],
+            'A condition literal', 'A named block', 'The whole file'],
         blurb: 'the examples that are about the tool itself, whatever language the sample is written in' },
     // Languages. Each page earns its sections from what the language actually
     // needs to show: a braced language can anchor a block with a trailing
@@ -164,6 +164,7 @@ export const JUMP_OUT = 'docs/jump/index.html';
 export const JUMP_PAGES = [
     { slug: 'overview', label: 'Overview', title: 'Overview', sample: null, group: 'This page', order: 0,
         sections: ['A jump lands on one line', 'A region lands inside it',
+            'A named block lands on its opening line',
             'An envelope lands on the declaration that holds the member',
             'When the exact block is gone', 'When two blocks answer to one name'],
         blurb: 'what a reference points at, and where a reader arrives' },

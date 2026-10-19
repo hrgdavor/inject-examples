@@ -101,7 +101,9 @@ through with live examples.
 ### Code — the default rule
 
 One rule covers every type no other rule claims: source code, `.md`, `.txt`,
-anything. An explicit `#region <name>` directive always wins. When the file has
+anything. An explicit `#region <name>` directive always wins, and a block may
+instead be named by a comment at its opening brace — `{//name` — which the
+[regions guide](./doc/usage.md#regions) describes. When the file has
 none, the name is looked for as a **declaration** — a method, constructor,
 function or class-like declaration (`class`, `interface`, `enum`, `record`,
 `struct`, `trait`, `object`), nested or not, and an `enum`'s constants are

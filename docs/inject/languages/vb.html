@@ -374,20 +374,20 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="1009" data-md-to="1009">VB: regions and declarations</h2>
-<p data-md-from="1011" data-md-to="1011">VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>. The <code>+</code> modifier takes the declaration with the annotation above it, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure. A shared array is named by its region directive.</p>
+<h2 data-md-from="1026" data-md-to="1026">VB: regions and declarations</h2>
+<p data-md-from="1028" data-md-to="1028">VB declares with capitalised keywords and closes every block with a keyword line, so <code>Add</code> is followed through <code>End Function</code>. The <code>+</code> modifier takes the declaration with the annotation above it, and <code>&quot;&quot;</code> doubling keeps the brace in the string literal out of the structure. A shared array is named by its region directive.</p>
 <p class="md-marker" data-marker="vb-t-36-1"><a href="../docs/samples/Form.vb#catalog">samples/Form.vb#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-36-1" data-md-from="1015" data-md-to="1017"><code class="language-vb">    <span class="tok-k">Private</span> <span class="tok-k">Shared</span> <span class="tok-t">ReadOnly</span> <span class="tok-t">CatalogList</span> <span class="tok-k">As</span> <span class="tok-k">String</span>() = {<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>}</code></pre>
+<pre class="md-pre" data-inject="vb-t-36-1" data-md-from="1032" data-md-to="1034"><code class="language-vb">    <span class="tok-k">Private</span> <span class="tok-k">Shared</span> <span class="tok-t">ReadOnly</span> <span class="tok-t">CatalogList</span> <span class="tok-k">As</span> <span class="tok-k">String</span>() = {<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>}</code></pre>
 <p class="md-marker" data-marker="vb-t-36-2"><a href="../docs/samples/Form.vb#Add">samples/Form.vb#Add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-36-2" data-md-from="1021" data-md-to="1026"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
+<pre class="md-pre" data-inject="vb-t-36-2" data-md-from="1038" data-md-to="1043"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
         <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
         <span class="tok-k">Return</span> note
     <span class="tok-k">End</span> <span class="tok-k">Function</span></code></pre>
 <p class="md-marker" data-marker="vb-t-36-3"><a href="../docs/samples/Form.vb#Add/-">samples/Form.vb#Add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-36-3" data-md-from="1030" data-md-to="1033"><code class="language-vb">        <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
+<pre class="md-pre" data-inject="vb-t-36-3" data-md-from="1047" data-md-to="1050"><code class="language-vb">        <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
         <span class="tok-k">Return</span> note</code></pre>
 <p class="md-marker" data-marker="vb-t-36-4"><a href="../docs/samples/Form.vb#Dispatch/+">samples/Form.vb#Dispatch/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-36-4" data-md-from="1037" data-md-to="1044"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Dispatch</span>(methodName <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">Boolean</span>
+<pre class="md-pre" data-inject="vb-t-36-4" data-md-from="1054" data-md-to="1061"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Dispatch</span>(methodName <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">Boolean</span>
         <span class="tok-k">If</span> methodName = <span class="tok-s">&quot;count&quot;</span> <span class="tok-k">Then</span>
             <span class="tok-k">Return</span> <span class="tok-t">CatalogList</span>.<span class="tok-t">Length</span> &gt; <span class="tok-n">0</span>
         <span class="tok-k">End</span> <span class="tok-k">If</span>
@@ -395,25 +395,25 @@ body {
     <span class="tok-k">End</span> <span class="tok-k">Function</span></code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="1046" data-md-to="1046">VB: an anchor</h2>
-<p data-md-from="1048" data-md-to="1048">VB writes an equality test with the same <code>=</code> an assignment uses, so an <code>If methodName = &quot;count&quot; Then</code> header is not addressable as a condition literal here; a trailing comment on the declaration line names the function below it.</p>
+<h2 data-md-from="1063" data-md-to="1063">VB: an anchor</h2>
+<p data-md-from="1065" data-md-to="1065">VB writes an equality test with the same <code>=</code> an assignment uses, so an <code>If methodName = &quot;count&quot; Then</code> header is not addressable as a condition literal here; a trailing comment on the declaration line names the function below it.</p>
 <p class="md-marker" data-marker="vb-t-37-1"><a href="../docs/samples/Form.vb#Legacy/count">samples/Form.vb#Legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-37-1" data-md-from="1052" data-md-to="1056"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Legacy</span>() <span class="tok-k">As</span> <span class="tok-k">Boolean</span> <span class="tok-c">'count</span>
+<pre class="md-pre" data-inject="vb-t-37-1" data-md-from="1069" data-md-to="1073"><code class="language-vb">    <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Legacy</span>() <span class="tok-k">As</span> <span class="tok-k">Boolean</span> <span class="tok-c">'count</span>
         <span class="tok-k">Return</span> <span class="tok-t">CatalogList</span>.<span class="tok-t">Length</span> &gt; <span class="tok-n">0</span>
     <span class="tok-k">End</span> <span class="tok-k">Function</span></code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="1059" data-md-to="1059">VB: an envelope around a function</h2>
-<p data-md-from="1061" data-md-to="1061">VB closes every block with a keyword line, so the class's <code>End Class</code> is what the tail is: <code>#Form/^,Add,$</code> is <code>Public Class Form</code>, the function through <code>End Function</code>, and <code>End Class</code>.</p>
+<h2 data-md-from="1076" data-md-to="1076">VB: an envelope around a function</h2>
+<p data-md-from="1078" data-md-to="1078">VB closes every block with a keyword line, so the class's <code>End Class</code> is what the tail is: <code>#Form/^,Add,$</code> is <code>Public Class Form</code>, the function through <code>End Function</code>, and <code>End Class</code>.</p>
 <p class="md-marker" data-marker="vb-t-38-1"><a href="../docs/samples/Form.vb#Form/^,Add,$">samples/Form.vb#Form/^,Add,$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-38-1" data-md-from="1065" data-md-to="1072"><code class="language-vb"><span class="tok-k">Public</span> <span class="tok-k">Class</span> <span class="tok-t">Form</span>
+<pre class="md-pre" data-inject="vb-t-38-1" data-md-from="1082" data-md-to="1089"><code class="language-vb"><span class="tok-k">Public</span> <span class="tok-k">Class</span> <span class="tok-t">Form</span>
     <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
         <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
         <span class="tok-k">Return</span> note
     <span class="tok-k">End</span> <span class="tok-k">Function</span>
 <span class="tok-k">End</span> <span class="tok-k">Class</span></code></pre>
 <p class="md-marker" data-marker="vb-t-38-2"><a href="../docs/samples/Form.vb#Form/^,Form/Add,Form/$">samples/Form.vb#Form/^,Form/Add,Form/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="vb-t-38-2" data-md-from="1076" data-md-to="1083"><code class="language-vb"><span class="tok-k">Public</span> <span class="tok-k">Class</span> <span class="tok-t">Form</span>
+<pre class="md-pre" data-inject="vb-t-38-2" data-md-from="1093" data-md-to="1100"><code class="language-vb"><span class="tok-k">Public</span> <span class="tok-k">Class</span> <span class="tok-t">Form</span>
     <span class="tok-k">Public</span> <span class="tok-k">Function</span> <span class="tok-t">Add</span>(item <span class="tok-k">As</span> <span class="tok-k">String</span>) <span class="tok-k">As</span> <span class="tok-k">String</span>
         <span class="tok-k">Dim</span> note <span class="tok-k">As</span> <span class="tok-k">String</span> = <span class="tok-s">&quot;a &quot;&quot;}&quot;&quot; decoy&quot;</span>
         <span class="tok-k">Return</span> note

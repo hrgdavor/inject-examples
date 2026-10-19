@@ -359,27 +359,27 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="407" data-md-to="407">Go: regions and declarations</h2>
-<p data-md-from="409" data-md-to="409">A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
+<h2 data-md-from="424" data-md-to="424">Go: regions and declarations</h2>
+<p data-md-from="426" data-md-to="426">A package-level variable is named by the region directive around it — a region is how a value that is not a declaration stays addressable. <code>#Add</code> names a function by name, and the raw string below it is data: the decoy inside it is invisible to the matcher.</p>
 <p class="md-marker" data-marker="go-t-14-1"><a href="../docs/samples/Cart.go#catalog">samples/Cart.go#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-14-1" data-md-from="413" data-md-to="415"><code class="language-go"><span class="tok-k">var</span> <span class="tok-t">Catalog</span> = []string{<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>}</code></pre>
+<pre class="md-pre" data-inject="go-t-14-1" data-md-from="430" data-md-to="432"><code class="language-go"><span class="tok-k">var</span> <span class="tok-t">Catalog</span> = []string{<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>}</code></pre>
 <p class="md-marker" data-marker="go-t-14-2"><a href="../docs/samples/Cart.go#Add">samples/Cart.go#Add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-14-2" data-md-from="419" data-md-to="423"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Add</span>(items []string, item string) []string {
+<pre class="md-pre" data-inject="go-t-14-2" data-md-from="436" data-md-to="440"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Add</span>(items []string, item string) []string {
 	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)
 }</code></pre>
 <p class="md-marker" data-marker="go-t-14-3"><a href="../docs/samples/Cart.go#Add/-">samples/Cart.go#Add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-14-3" data-md-from="427" data-md-to="429"><code class="language-go">	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)</code></pre>
+<pre class="md-pre" data-inject="go-t-14-3" data-md-from="444" data-md-to="446"><code class="language-go">	<span class="tok-k">return</span> <span class="tok-k">append</span>(items, item)</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="431" data-md-to="431">Go: a switch literal and a trailing comment</h2>
-<p data-md-from="433" data-md-to="433">A function body is a scope, so a <code>case</code> arm is named from inside it — by the literal the switch tests, because an arm is not a block of its own. A trailing comment names the function it opens.</p>
+<h2 data-md-from="448" data-md-to="448">Go: a switch literal and a trailing comment</h2>
+<p data-md-from="450" data-md-to="450">A function body is a scope, so a <code>case</code> arm is named from inside it — by the literal the switch tests, because an arm is not a block of its own. A trailing comment names the function it opens.</p>
 <p class="md-marker" data-marker="go-t-15-1"><a href="../docs/samples/Cart.go#Dispatch/count">samples/Cart.go#Dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-15-1" data-md-from="437" data-md-to="442"><code class="language-go">	<span class="tok-k">switch</span> <span class="tok-s">&quot;count&quot;</span> {
+<pre class="md-pre" data-inject="go-t-15-1" data-md-from="454" data-md-to="459"><code class="language-go">	<span class="tok-k">switch</span> <span class="tok-s">&quot;count&quot;</span> {
 	<span class="tok-k">case</span> methodName:
 		<span class="tok-k">return</span> <span class="tok-k">len</span>(<span class="tok-t">Catalog</span>)
 	}</code></pre>
 <p class="md-marker" data-marker="go-t-15-2"><a href="../docs/samples/Cart.go#Legacy/count">samples/Cart.go#Legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="go-t-15-2" data-md-from="446" data-md-to="450"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Legacy</span>() { <span class="tok-c">//count</span>
+<pre class="md-pre" data-inject="go-t-15-2" data-md-from="463" data-md-to="467"><code class="language-go"><span class="tok-k">func</span> <span class="tok-t">Legacy</span>() { <span class="tok-c">//count</span>
 	println(<span class="tok-k">len</span>(<span class="tok-t">Catalog</span>))
 }</code></pre>
 </section>

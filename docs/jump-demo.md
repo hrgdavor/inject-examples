@@ -32,6 +32,20 @@ A `#region` directive marks a stretch of a file without naming a construct, whic
 
 the first line the directives wrap
 
+## A named block lands on its opening line
+
+A block can be named without a region directive: its braces already mark where it starts and ends, so a comment at the opening brace (`{//count`) or on the first line inside it names the block.
+
+The default selection starts at the opening line, so that is where the cursor lands — with the `while`/`if`/declaration prefix that line carries.
+
+[samples/Inventory.java#legacy/count](./samples/Inventory.java#legacy/count)
+
+a method named at its opening brace
+
+[samples/Inventory.java#detail](./samples/Inventory.java#detail)
+
+a bare block named at its own brace
+
 ## An envelope lands on the declaration that holds the member
 
 A member copied out of its type reads as a fragment. The marks `^` and `$` name the type itself, so the head of an envelope is the type's **declaration line** — which is where a reader lands when they jump to the envelope: at the declaration that gives the member its place.

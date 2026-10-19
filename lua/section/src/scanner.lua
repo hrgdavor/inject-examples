@@ -1261,7 +1261,8 @@ end
 local function apply_anchor(blk, lex, span_value, name_end)
   if not span_value then return end
   if span_value.open ~= nil then
-    local header_comment = (name_end == nil) and nil or header_anchor(lex, blk.declLine, name_end)
+    local header_comment = nil
+    if name_end ~= nil then header_comment = header_anchor(lex, blk.declLine, name_end) end
     local anchor = header_comment
       or leading_anchor(lex.comments, lex.source, lex.lines, lex.starts, span_value.open)
     if anchor then blk.anchor = anchor end
@@ -1304,6 +1305,26 @@ function M.build_scope(owner, from_line, to_line, lex, blocks)
       i = i + 1
     else
       local start = starts[i + 1]
+
+      -- A bare braced block that carries a name is a section: its braces are the
+      -- block's own start and end markers, so `{//name` (or a `//name` line just
+      -- inside it) names it. A bare block with no anchor falls through to the
+      -- existing line scan.
+      if text(U.trim(m_line)) == '{' then
+        local brace_at = start + U.indexOf(m_line, '{', 0)
+        local body = brace_body(mask, starts, brace_at)
+        if body then
+          local blk = M.make_block('statement', nil, i)
+          apply_span(blk, body)
+          apply_anchor(blk, lex, body, nil)
+          if blk.anchor then
+            register(list, blk, blocks)
+            descend(blk, i, body, lex, blocks)
+            i = body.closeLine + 1
+            goto continue
+          end
+        end
+      end
 
       local declared = lex.declarations and lex.declarations(m_line) or {}
       local declared_here = {}

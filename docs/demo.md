@@ -110,20 +110,35 @@ selects the `if ("count".equals(methodName))` block, braces and all.
         }
 ```
 
-## A comment anchor
+## A named block
 
-And a block may be named by the trailing comment it opens with: `legacy()` opens `public void legacy() { //count`, so `legacy/count` names the whole method.
+And a block may be named by the trailing comment it opens with — a **named block**, which the reference calls a comment anchor: `legacy()` opens `public void legacy() {//count`, so `legacy/count` names the whole method.
 
-A block whose opening line carries a trailing comment is named by that comment.
-`legacy()` opens `public void legacy() { //count`, so `legacy/count` names the
-whole method.
+A block whose opening line carries a trailing comment is named by that comment —
+the braces already mark where it starts and ends, so no `region` prefix and no
+`#endregion` are needed. `legacy()` opens `public void legacy() {//count`, so
+`legacy/count` names the whole method.
 
 [samples/Inventory.java#legacy/count](./samples/Inventory.java#legacy/count)
 
 ```java
-    public void legacy() { //count
-        System.out.println("items: " + items.size());
+    public void legacy() {//count
+        {//detail
+            System.out.println("items: " + items.size());
+        }
     }
+```
+
+`legacy/count/-` asks for the body, leaving that opening line out.
+
+The block inside it is bare, and its own braces name it `detail`:
+
+[samples/Inventory.java#detail](./samples/Inventory.java#detail)
+
+```java
+        {//detail
+            System.out.println("items: " + items.size());
+        }
 ```
 
 ## The whole file
@@ -181,8 +196,10 @@ public class Inventory {
         }
     }
 
-    public void legacy() { //count
-        System.out.println("items: " + items.size());
+    public void legacy() {//count
+        {//detail
+            System.out.println("items: " + items.size());
+        }
     }
 }
 ```
@@ -264,7 +281,7 @@ public class Inventory {
     public String toString() {
         return items.size() + " item(s)";
     }
-    }
+            System.out.println("items: " + items.size());
 ```
 
 

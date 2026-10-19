@@ -385,6 +385,37 @@ const CODE_JAVA_TEXT_BLOCK = [
     '',
 ].join('\n');
 
+// The brace anchor: a block named by `{//name` on its opening line, by the
+// spaced `{// name`, or by a `//name` line just inside it. The opening line —
+// with its `while`/`if` prefix — is part of the default selection; `/-` drops it.
+const SHORTHAND_JAVA = [
+    'public class Shorthand {',
+    '    public void run(int n) {',
+    '        while (n > 0) {//countdown',
+    '            n -= 1;',
+    '        }',
+    '        if (n == 0) {// done',
+    '            reset();',
+    '        }',
+    '        while (n < 9) {',
+    '            //solo',
+    '            n += 1;',
+    '        }',
+    '    }',
+    '',
+    '    public void handler() {//handled',
+    '        work();',
+    '    }',
+    '',
+    '    public void box() {',
+    '        {//bare',
+    '            tick();',
+    '        }',
+    '    }',
+    '}',
+    '',
+].join('\n');
+
 // --- the hard spellings, which the plain fixtures above cannot catch --------
 //
 // Every construct below is one a port only gets right if it mirrors the
@@ -672,6 +703,8 @@ const BASE_FILES = {
     'fixtures/Wrapped.py': WRAPPED_PY,
     'fixtures/Wrapped.go': WRAPPED_GO,
     'fixtures/WrappedCalls.java': WRAPPED_CALLS_JAVA,
+    // Region directives: comment spelling and the brace shorthand.
+    'fixtures/Shorthand.java': SHORTHAND_JAVA,
 };
 
 /** Every `#<reference>` the reference corpus can be asked for. */
@@ -819,6 +852,18 @@ const REFERENCE_CASES = [
     ['fixtures/Wrapped.go', 'Plain'],
     ['fixtures/WrappedCalls.java', 'wrappedCall'],
     ['fixtures/WrappedCalls.java', 'run/wrappedCall'],
+    // The brace anchor: the adjacent, spaced and next-line spellings, with the
+    // opening line in the default selection and `/-` body.
+    ['fixtures/Shorthand.java', 'countdown'],
+    ['fixtures/Shorthand.java', 'countdown/-'],
+    ['fixtures/Shorthand.java', 'done'],
+    ['fixtures/Shorthand.java', 'done/-'],
+    ['fixtures/Shorthand.java', 'solo'],
+    ['fixtures/Shorthand.java', 'solo/-'],
+    ['fixtures/Shorthand.java', 'handled'],
+    ['fixtures/Shorthand.java', 'handled/-'],
+    ['fixtures/Shorthand.java', 'bare'],
+    ['fixtures/Shorthand.java', 'bare/-'],
 ];
 
 

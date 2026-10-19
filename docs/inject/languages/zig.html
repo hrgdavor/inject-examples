@@ -359,27 +359,27 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="1133" data-md-to="1133">Zig: regions and declarations</h2>
-<p data-md-from="1135" data-md-to="1135">A <code>const</code> array is named by its region directive, and <code>#target</code> names a function whose body prints a brace — which the matcher reads as text inside a string, not as structure.</p>
+<h2 data-md-from="1150" data-md-to="1150">Zig: regions and declarations</h2>
+<p data-md-from="1152" data-md-to="1152">A <code>const</code> array is named by its region directive, and <code>#target</code> names a function whose body prints a brace — which the matcher reads as text inside a string, not as structure.</p>
 <p class="md-marker" data-marker="zig-t-41-1"><a href="../docs/samples/Nesting.zig#catalog">samples/Nesting.zig#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="zig-t-41-1" data-md-from="1139" data-md-to="1141"><code class="language-zig"><span class="tok-k">const</span> catalog = [_][]<span class="tok-k">const</span> u8{ <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };</code></pre>
+<pre class="md-pre" data-inject="zig-t-41-1" data-md-from="1156" data-md-to="1158"><code class="language-zig"><span class="tok-k">const</span> catalog = [_][]<span class="tok-k">const</span> u8{ <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };</code></pre>
 <p class="md-marker" data-marker="zig-t-41-2"><a href="../docs/samples/Nesting.zig#target">samples/Nesting.zig#target</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="zig-t-41-2" data-md-from="1145" data-md-to="1149"><code class="language-zig"><span class="tok-k">pub</span> <span class="tok-k">fn</span> target() void {
+<pre class="md-pre" data-inject="zig-t-41-2" data-md-from="1162" data-md-to="1166"><code class="language-zig"><span class="tok-k">pub</span> <span class="tok-k">fn</span> target() void {
     std.debug.print(<span class="tok-s">&quot;}\n&quot;</span>, .{});
 }</code></pre>
 <p class="md-marker" data-marker="zig-t-41-3"><a href="../docs/samples/Nesting.zig#target/-">samples/Nesting.zig#target/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="zig-t-41-3" data-md-from="1153" data-md-to="1155"><code class="language-zig">    std.debug.print(<span class="tok-s">&quot;}\n&quot;</span>, .{});</code></pre>
+<pre class="md-pre" data-inject="zig-t-41-3" data-md-from="1170" data-md-to="1172"><code class="language-zig">    std.debug.print(<span class="tok-s">&quot;}\n&quot;</span>, .{});</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="1157" data-md-to="1157">Zig: a nested comment, a switch and an anchor</h2>
-<p data-md-from="1159" data-md-to="1159">A nested block comment hides the decoy below it, so the commented-out <code>fn decoy</code> is blanked whole. A <code>switch</code> arm is not a block of its own, so the literal a <code>case</code> compares against is not addressable here — <code>count/-</code> takes the body of that function instead — and a trailing comment names the function it opens.</p>
+<h2 data-md-from="1174" data-md-to="1174">Zig: a nested comment, a switch and an anchor</h2>
+<p data-md-from="1176" data-md-to="1176">A nested block comment hides the decoy below it, so the commented-out <code>fn decoy</code> is blanked whole. A <code>switch</code> arm is not a block of its own, so the literal a <code>case</code> compares against is not addressable here — <code>count/-</code> takes the body of that function instead — and a trailing comment names the function it opens.</p>
 <p class="md-marker" data-marker="zig-t-42-1"><a href="../docs/samples/Nesting.zig#count/-">samples/Nesting.zig#count/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="zig-t-42-1" data-md-from="1163" data-md-to="1168"><code class="language-zig">    <span class="tok-k">switch</span> (methodName.len) {
+<pre class="md-pre" data-inject="zig-t-42-1" data-md-from="1180" data-md-to="1185"><code class="language-zig">    <span class="tok-k">switch</span> (methodName.len) {
         <span class="tok-s">&quot;count&quot;</span>.len =&gt; <span class="tok-k">return</span> catalog.len,
         <span class="tok-k">else</span> =&gt; <span class="tok-k">return</span> <span class="tok-n">0</span>,
     }</code></pre>
 <p class="md-marker" data-marker="zig-t-42-2"><a href="../docs/samples/Nesting.zig#legacy/old">samples/Nesting.zig#legacy/old</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="zig-t-42-2" data-md-from="1172" data-md-to="1176"><code class="language-zig"><span class="tok-k">pub</span> <span class="tok-k">fn</span> legacy() usize { <span class="tok-c">//old</span>
+<pre class="md-pre" data-inject="zig-t-42-2" data-md-from="1189" data-md-to="1193"><code class="language-zig"><span class="tok-k">pub</span> <span class="tok-k">fn</span> legacy() usize { <span class="tok-c">//old</span>
     <span class="tok-k">return</span> catalog.len;
 }</code></pre>
 </section>

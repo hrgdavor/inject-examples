@@ -723,19 +723,19 @@ bug in the *port* by definition.
 
 ### 6.1 The three corpora
 
-| Corpus                                         | Rows | Asserts                                                                                            | Read by             |
-| ---------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------- | ------------------- |
-| `test/vectors/section-vectors.json`            | 272  | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust |
-| — of which grammar-only (`input: null`)        | 67   | canonical spelling and the thrown message; no file, no lexer                                       | do.                 |
-| — of which resolution                          | 205  | text and ranges against a fixture                                                                  | do.                 |
-| — of which expect an **error**                 | 85   | the failure path: a missing name, an ambiguous name, a malformed selector, a range past the end, a second `#`, a misplaced modifier | do. |
-| `test/vectors/lexical-vectors.json` → `masks`  | 46   | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust |
-| `test/vectors/lexical-vectors.json` → `shapes` | 53   | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line`     | JS, Zig, Java, Rust |
-| `test/vectors/manifest.json`                   | —    | the machine-readable map of the above (see §6.3)                                                   | tooling, humans     |
+| Corpus                                         | Rows | Asserts                                                                                            | Read by                  |
+| ---------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------- | ------------------------ |
+| `test/vectors/section-vectors.json`            | 320  | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust, Lua |
+| — of which grammar-only (`input: null`)        | 68   | canonical spelling and the thrown message; no file, no lexer                                       | do.                      |
+| — of which resolution                          | 252  | text and ranges against a fixture                                                                  | do.                      |
+| — of which expect an **error**                 | 94   | the failure path: a missing name, an ambiguous name, a malformed selector, a range past the end, a second `#`, a misplaced modifier | do. |
+| `test/vectors/lexical-vectors.json` → `masks`  | 46   | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust, Lua |
+| `test/vectors/lexical-vectors.json` → `shapes` | 53   | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line`     | JS, Zig, Java, Rust, Lua |
+| `test/vectors/manifest.json`                   | —    | the machine-readable map of the above (see §6.3)                                                   | tooling, humans          |
 
 The `kind` a resolution row reports, as a census of the suite:
-`declaration` 77, `property` 39, `multiple` 13, `anchor` 12, `lines` 6,
-`region` 6, `condition` 4, and `null` 48 (the error rows and the rows whose
+`declaration` 79, `property` 66, `multiple` 13, `anchor` 22, `lines` 6,
+`region` 6, `condition` 4, and `null` 124 (the error rows and the rows whose
 answer is a whole-file or body-less selection).
 
 A fourth suite is not in the corpus but is equally required: the **differential
@@ -1073,6 +1073,19 @@ through the fragment.
   **major**. A band-table change is a **minor** change to a use-case spec, and a
   **major** one only to the product that made it.
 - **Change log.**
+  - `0.9-rc` (this revision) — **a block may be named without a region
+    directive.** The block's braces already mark where it starts and ends, so a
+    comment at the opening brace (`{//name`, `{// name`) or on the first line
+    inside it names the block with no `#region` prefix and no `#endregion`. It is
+    answered by the existing **comment anchor** (matcher 6), not by the region
+    directive: the default selection starts at the opening line — so a
+    `while`/`if`/declaration prefix comes with it — and `/-` selects the body.
+    Whether a caller calls it a region or a named block, the answer is the same.
+    This is a spelling and documentation clarification of an existing behaviour,
+    not a resolution change; the corpus gains ten rows on
+    `test/fixtures/Shorthand.java` covering the adjacent, spaced and next-line
+    spellings, a bare block, and their `/-` bodies. The §6.1 counts are refreshed
+    to the corpus as it stands.
   - `0.9-rc` (this revision) — **the RFC is split into a core and two use-case
     specs** ([§9.6](#96-the-rfc-is-split-into-a-core-and-two-use-case-specs)).
     This document keeps the contract, the resolution core, the non-goals and the

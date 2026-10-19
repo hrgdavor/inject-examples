@@ -131,6 +131,39 @@ test('extractRegion fails loudly on missing, ambiguous and unclosed regions', ()
     assert.throws(() => extractRegion('#region t\nx', 't'), /never closed/);
 });
 
+test('the brace anchor: {//name, {// name and a solo line below all name the block', () => {
+    const text = [
+        'void run(int n) {',
+        '    while (n > 0) {//loop',
+        '        n -= 1;',
+        '    }',
+        '    if (n == 0) {// done',
+        '        reset();',
+        '    }',
+        '    while (n < 9) {',
+        '        //solo',
+        '        n += 1;',
+        '    }',
+        '}',
+    ].join('\n');
+    // The braces are the block's own markers: the default selection starts at
+    // the opening line, carrying the `while`/`if` prefix it holds.
+    assert.equal(extractCodeRegion(text, 'loop', 'x.java'),
+        '    while (n > 0) {//loop\n        n -= 1;\n    }');
+    assert.equal(extractCodeRegion(text, 'loop/-', 'x.java'), '        n -= 1;');
+    assert.equal(extractCodeRegion(text, 'done', 'x.java'),
+        '    if (n == 0) {// done\n        reset();\n    }');
+    assert.equal(extractCodeRegion(text, 'done/-', 'x.java'), '        reset();');
+    assert.equal(extractCodeRegion(text, 'solo', 'x.java'),
+        '    while (n < 9) {\n        //solo\n        n += 1;\n    }');
+    assert.equal(extractCodeRegion(text, 'solo/-', 'x.java'), '        n += 1;');
+
+    // A bare block has no `while`/`if` header, but its braces still name it.
+    const bare = ['function f() {', '    {//cart', '        x();', '    }', '}'].join('\n');
+    assert.equal(extractCodeRegion(bare, 'cart', 'x.js'), '    {//cart\n        x();\n    }');
+    assert.equal(extractCodeRegion(bare, 'cart/-', 'x.js'), '        x();');
+});
+
 // ---------------------------------------------------------------------------
 // Region rules by file type — the code rule
 // ---------------------------------------------------------------------------
@@ -1310,6 +1343,15 @@ test('scanBlocks: #region line is not an anchor; non-first comment is not an anc
     const s = scanBlocks('class A {\n  void region() {\n    // #region foo\n    x();\n  }\n  void late() {\n    code();\n    //notFirst\n    y();\n  }\n}');
     assert.equal(s.blocks.find((b) => b.name === 'region').anchor, null);
     assert.equal(s.blocks.find((b) => b.name === 'late').anchor, null);
+});
+
+test('scanBlocks: {//name, {// name and a solo line below are the same block anchor', () => {
+    const s = scanBlocks('void f() {\n  while (x) {//loop\n    y();\n  }\n  if (x) {// check\n    z();\n  }\n  while (y) {\n    //solo\n    w();\n  }\n}');
+    const statements = s.blocks.filter((b) => b.kind === 'statement');
+    assert.deepEqual(statements.map((b) => b.anchor.name), ['loop', 'check', 'solo'],
+        'the adjacent, spaced and next-line spellings all name the block');
+    assert.equal(s.blocks.find((b) => b.name === 'f').anchor, null,
+        'the anchor belongs to the statement block, not the method');
 });
 
 test('scanBlocks: the anchor name is the whole trimmed comment body', () => {

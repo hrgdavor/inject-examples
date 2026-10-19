@@ -989,6 +989,24 @@ public final class BlockScanner {
                 continue;
             }
 
+            // A bare braced block that carries a name is a section: its braces are the block's own start
+            // and end markers, so `{//name` (or a `//name` line just inside it) names it. A bare block
+            // with no anchor is left to the existing line scan.
+            if ("{".equals(maskedLine.trim())) {
+                Span body = braceBody(lex.mask, lex.starts, start + maskedLine.indexOf('{'));
+                if (body != null) {
+                    Block block = new Block("statement", null, i);
+                    applySpan(block, body);
+                    applyAnchor(block, lex, body);
+                    if (block.anchor != null) {
+                        register(list, block, blocks);
+                        descend(block, i, body, lex, blocks);
+                        i = body.closeLine + 1;
+                        continue;
+                    }
+                }
+            }
+
             i++;
         }
         return list;

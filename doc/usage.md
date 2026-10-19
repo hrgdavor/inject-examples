@@ -273,6 +273,10 @@ prefix is stripped before the name is read. The rules:
 
 - `#region <name>` opens a named region; `#endregion` closes it (a bare
   `#region` closes the unnamed one).
+- A block may instead be named **without any region directive**: the braces
+  already mark its start and end, so `{//<name>` (or a `//<name>` line just
+  inside the block) is enough — no `#region` prefix and no `#endregion` are
+  needed.
 - A file must contain at least one directive, and a region name may appear
   only once — a missing, duplicate or unclosed region is an error.
 - `#region` in code without a comment prefix, e.g. C#, is not a directive;
@@ -280,14 +284,24 @@ prefix is stripped before the name is read. The rules:
 
 Any of the usual comment prefixes is accepted, in any language:
 
-| Spelling                                                           | Seen in                |
-| ------------------------------------------------------------------ | ---------------------- |
-| `#region name` / `#endregion`                                      | C#, Razor              |
-| `// #region name` / `// #endregion`                                | VS Code folding        |
-| `//region name` / `//endregion`                                    | JetBrains IDEs         |
-| `<!-- #region name -->`                                            | HTML, Markdown         |
-| `/* #region name */`                                               | C-style block comments |
-| `-- #region`, `; #region`, `% #region`, `' #region`, `REM #region` | SQL, INI, VB, TeX      |
+| Spelling                                                            | Seen in                         |
+| ------------------------------------------------------------------- | ------------------------------- |
+| `#region name` / `#endregion`                                       | C#, Razor                       |
+| `// #region name` / `// #endregion`                                 | VS Code folding                 |
+| `//region name` / `//endregion`                                     | JetBrains IDEs                  |
+| `<!-- #region name -->`                                             | HTML, Markdown                  |
+| `/* #region name */`                                                | C-style block comments          |
+| `-- #region`, `; #region`, `% #region`, `' #region`, `REM #region`  | SQL, INI, VB, TeX               |
+
+A block can also be named as a **region shorthand**: write the name at the
+opening brace (`{//name`, `{// name`) or on the first line inside the block
+(`//name`). The braces are the block's own start and end markers, so there is no
+`region` prefix and no ending comment; the block may be bare (`{ … }`) or carry a
+`while`, `if` or declaration prefix. The default selection is the block, starting
+at its opening line — so that prefix comes with it — and `/-` selects the body
+without that line (and without a next-line anchor line too). Whether you call it
+a region or a named block, the result is the same.
+
 
 ## Region rules by file type
 

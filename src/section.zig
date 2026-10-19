@@ -2671,6 +2671,26 @@ const Build = struct {
                 }
             }
 
+            // A bare braced block that carries a name is a section: its braces
+            // are the block's own start and end markers, so `{//name` (or a
+            // `//name` line just inside it) names it. A bare block with no
+            // anchor is left to the existing line scan.
+            if (js.eql(js.trim(mask_line), &js.lit("{"))) {
+                const brace_at = start + (js.indexOf(mask_line, &js.lit("{")) orelse 0);
+                if (braceBody(self.facts.mask, self.facts.starts, brace_at)) |body| {
+                    const block = try alloc.create(Block);
+                    block.* = makeBlock(.statement, null, i);
+                    applySpan(block, body);
+                    applyAnchor(self, block, body.open);
+                    if (block.anchor != null) {
+                        try register(self, &list, block);
+                        try descend(self, block, i, body);
+                        i = body.close_line.? + 1;
+                        continue;
+                    }
+                }
+            }
+
             i += 1;
         }
         return list.toOwnedSlice(alloc);

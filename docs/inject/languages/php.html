@@ -374,12 +374,12 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="785" data-md-to="785">PHP: regions and declarations</h2>
-<p data-md-from="787" data-md-to="787">A class constant is named by its region directive. The heredoc body inside <code>add</code> is data — the <code>}</code> in it is not PHP syntax — so the method is still found whole, and <code>#add/-</code> is that body without the signature.</p>
+<h2 data-md-from="802" data-md-to="802">PHP: regions and declarations</h2>
+<p data-md-from="804" data-md-to="804">A class constant is named by its region directive. The heredoc body inside <code>add</code> is data — the <code>}</code> in it is not PHP syntax — so the method is still found whole, and <code>#add/-</code> is that body without the signature.</p>
 <p class="md-marker" data-marker="php-t-28-1"><a href="../docs/samples/Cart.php#catalog">samples/Cart.php#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="php-t-28-1" data-md-from="791" data-md-to="793"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">const</span> <span class="tok-t">CATALOG</span> = [<span class="tok-s">'bolt'</span>, <span class="tok-s">'nut'</span>, <span class="tok-s">'washer'</span>];</code></pre>
+<pre class="md-pre" data-inject="php-t-28-1" data-md-from="808" data-md-to="810"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">const</span> <span class="tok-t">CATALOG</span> = [<span class="tok-s">'bolt'</span>, <span class="tok-s">'nut'</span>, <span class="tok-s">'washer'</span>];</code></pre>
 <p class="md-marker" data-marker="php-t-28-2"><a href="../docs/samples/Cart.php#add">samples/Cart.php#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="php-t-28-2" data-md-from="797" data-md-to="807"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">function</span> add(string $item): string
+<pre class="md-pre" data-inject="php-t-28-2" data-md-from="814" data-md-to="824"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">function</span> add(string $item): string
     {
         <span class="tok-c">// The heredoc body is data: the brace in it is not PHP syntax.</span>
         $sql = &lt;&lt;&lt;<span class="tok-t">SQL</span>
@@ -389,7 +389,7 @@ body {
         <span class="tok-k">return</span> $sql;
     }</code></pre>
 <p class="md-marker" data-marker="php-t-28-3"><a href="../docs/samples/Cart.php#add/-">samples/Cart.php#add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="php-t-28-3" data-md-from="811" data-md-to="818"><code class="language-php">        <span class="tok-c">// The heredoc body is data: the brace in it is not PHP syntax.</span>
+<pre class="md-pre" data-inject="php-t-28-3" data-md-from="828" data-md-to="835"><code class="language-php">        <span class="tok-c">// The heredoc body is data: the brace in it is not PHP syntax.</span>
         $sql = &lt;&lt;&lt;<span class="tok-t">SQL</span>
         insert into cart (item) values ('}') -- a decoy
         <span class="tok-t">SQL</span>;
@@ -397,23 +397,23 @@ body {
         <span class="tok-k">return</span> $sql;</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="820" data-md-to="820">PHP: a condition and an anchor</h2>
-<p data-md-from="822" data-md-to="822">A condition literal names the <code>if</code> whose header carries the string, and a trailing comment on the signature names the method below it.</p>
+<h2 data-md-from="837" data-md-to="837">PHP: a condition and an anchor</h2>
+<p data-md-from="839" data-md-to="839">A condition literal names the <code>if</code> whose header carries the string, and a trailing comment on the signature names the method below it.</p>
 <p class="md-marker" data-marker="php-t-29-1"><a href="../docs/samples/Cart.php#dispatch/count">samples/Cart.php#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="php-t-29-1" data-md-from="826" data-md-to="830"><code class="language-php">        <span class="tok-k">if</span> ($methodName == <span class="tok-s">&quot;count&quot;</span>) {
+<pre class="md-pre" data-inject="php-t-29-1" data-md-from="843" data-md-to="847"><code class="language-php">        <span class="tok-k">if</span> ($methodName == <span class="tok-s">&quot;count&quot;</span>) {
             <span class="tok-k">return</span> count(self::<span class="tok-t">CATALOG</span>);
         }</code></pre>
 <p class="md-marker" data-marker="php-t-29-2"><a href="../docs/samples/Cart.php#legacy/count">samples/Cart.php#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="php-t-29-2" data-md-from="834" data-md-to="839"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">function</span> legacy() <span class="tok-c">//count</span>
+<pre class="md-pre" data-inject="php-t-29-2" data-md-from="851" data-md-to="856"><code class="language-php">    <span class="tok-k">public</span> <span class="tok-k">function</span> legacy() <span class="tok-c">//count</span>
     {
         <span class="tok-k">return</span> count(self::<span class="tok-t">CATALOG</span>);
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="842" data-md-to="842">PHP: an envelope around a method</h2>
-<p data-md-from="844" data-md-to="844">A PHP method without its class is a fragment, and the heredoc inside <code>add</code> is data rather than syntax. <code>#Cart/^,add,$</code> is the class header, the method, and the closing brace.</p>
+<h2 data-md-from="859" data-md-to="859">PHP: an envelope around a method</h2>
+<p data-md-from="861" data-md-to="861">A PHP method without its class is a fragment, and the heredoc inside <code>add</code> is data rather than syntax. <code>#Cart/^,add,$</code> is the class header, the method, and the closing brace.</p>
 <p class="md-marker" data-marker="php-t-30-1"><a href="../docs/samples/Cart.php#Cart/^,add,$">samples/Cart.php#Cart/^,add,$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="php-t-30-1" data-md-from="848" data-md-to="861"><code class="language-php"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
+<pre class="md-pre" data-inject="php-t-30-1" data-md-from="865" data-md-to="878"><code class="language-php"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
 {
     <span class="tok-k">public</span> <span class="tok-k">function</span> add(string $item): string
     {
@@ -426,7 +426,7 @@ body {
     }
 }</code></pre>
 <p class="md-marker" data-marker="php-t-30-2"><a href="../docs/samples/Cart.php#Cart/^,Cart/add,Cart/$">samples/Cart.php#Cart/^,Cart/add,Cart/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="php-t-30-2" data-md-from="865" data-md-to="878"><code class="language-php"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
+<pre class="md-pre" data-inject="php-t-30-2" data-md-from="882" data-md-to="895"><code class="language-php"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
 {
     <span class="tok-k">public</span> <span class="tok-k">function</span> add(string $item): string
     {

@@ -107,6 +107,11 @@ const AMBIGUOUS_JAVA = 'test/fixtures/Ambiguous.java';
 // used where an envelope needs a declaration to open, and a name that is only a
 // region matched *without* being one — a property, which cannot hold anything.
 const REGIONS = 'test/fixtures/Regions.java';
+// The brace anchor: a block named at its opening brace (`{//name`,
+// `{// name`) or on the first line inside it. The block's own braces mark its
+// start and end, so the default selection begins at the opening line and `/-`
+// selects the body.
+const SHORTHAND = 'test/fixtures/Shorthand.java';
 
 const cases = [
     // Grammar — parse only: canonical form and (lack of) errors.
@@ -438,6 +443,22 @@ const cases = [
     { name: 'ts-table-region', input: TS, reference: 'table' },
     { name: 'ts-table-ignores-modifier', input: TS, reference: 'table/+' },
     { name: 'ts-config-region', input: TS, reference: 'config' },
+
+    // Resolution — the brace anchor (Shorthand.java). A block is named by a
+    // comment at its opening brace — `{//name`, `{// name`, or a `//name` line
+    // just inside it. The block's braces are its own markers, so no
+    // `#region`/`#endregion` are involved; the default selection starts at the
+    // opening line (the `while`/`if` prefix included), and `/-` drops it.
+    { name: 'brace-anchor-loop', input: SHORTHAND, reference: 'countdown' },
+    { name: 'brace-anchor-loop-body', input: SHORTHAND, reference: 'countdown/-' },
+    { name: 'brace-anchor-if', input: SHORTHAND, reference: 'done' },
+    { name: 'brace-anchor-if-body', input: SHORTHAND, reference: 'done/-' },
+    { name: 'brace-anchor-solo-line', input: SHORTHAND, reference: 'solo' },
+    { name: 'brace-anchor-solo-line-body', input: SHORTHAND, reference: 'solo/-' },
+    { name: 'brace-anchor-method', input: SHORTHAND, reference: 'handled' },
+    { name: 'brace-anchor-method-body', input: SHORTHAND, reference: 'handled/-' },
+    { name: 'brace-anchor-bare-block', input: SHORTHAND, reference: 'bare' },
+    { name: 'brace-anchor-bare-block-body', input: SHORTHAND, reference: 'bare/-' },
 
     // Resolution — Nesting.zig (the per-type lexer hides a declaration a nested
     // block comment wraps; the built-in default mask, non-nesting, would leak it).

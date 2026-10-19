@@ -45,7 +45,9 @@ public class Inventory {
         }
     }
 
-    public void legacy() { //count
-        System.out.println("items: " + items.size());
+    public void legacy() {//count
+        {//detail
+            System.out.println("items: " + items.size());
+        }
     }
 }

@@ -22,8 +22,8 @@ use crate::matchers::{
     starts_with_statement_before, statement_keyword, take_identifier,
 };
 use crate::span::{
-    body_span, header_end, indent_width_units, is_blank_unit, keyword_body, statement_end,
-    trim_units, Span,
+    body_span, brace_body, header_end, indent_width_units, is_blank_unit, keyword_body,
+    statement_end, trim_units, Span,
 };
 use crate::{ErrorCode, SectionError};
 
@@ -816,6 +816,24 @@ fn build_scope(
             continue;
         }
         let start = lex.starts.get(i).copied().unwrap_or(0);
+
+        // A bare braced block that carries a name is a section: its braces are the block's own
+        // start and end markers, so `{//name` (or a `//name` line just inside it) names it. A
+        // bare block with no anchor falls through to the existing line scan.
+        if masked_line.trim() == "{" {
+            let brace_at = start + masked_line.find('{').unwrap_or(0);
+            if let Some(body) = brace_body(&lex.mask, &lex.starts, brace_at) {
+                let block = Block::new("statement", None, i);
+                apply_span(&block, &body);
+                apply_anchor(&block, lex, Some(&body));
+                if block.borrow().anchor.is_some() {
+                    register(&mut list, block.clone(), blocks);
+                    descend(&block, i, Some(&body), lex, lexer, blocks);
+                    i = body.close_line.unwrap_or(i) + 1;
+                    continue;
+                }
+            }
+        }
 
         // The language's own declaration shapes first: they are more specific than the generic ones.
         let declared_here: Vec<crate::lexer::Declared> = lexer

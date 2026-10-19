@@ -212,6 +212,41 @@ language writes — `// #region add`, `# #region add`, `' #region add`,
 A line that is not a comment takes the bare `#region` spelling only, so prose that
 says `region add` is prose.
 
+A block can also be named **without** a region directive. Its braces already mark
+where it starts and ends, so it needs no `#region` prefix and no `#endregion` —
+only the name, written as a comment at the opening brace or on the first line
+inside it:
+
+```js
+while (n > 0) {//countdown
+    step();
+}
+
+if (n == 0) { // done
+    reset();
+}
+
+for (;;) {
+    //solo
+    tick();
+}
+
+{//bare
+    paint();
+}
+```
+
+`{//add`, `{// add` and a `//add` (or `// add`) line just inside the block are
+the same naming; whitespace after the brace or after the `//` does not matter.
+The block may be bare (`{ … }`) or carry a `while`, `if` or declaration prefix.
+This is a **shorthand for a region**, and it is answered by the comment anchor
+(matcher 6): whether you call the result a region or a named block, the answer is
+the same — the block. The default selection starts at the block's opening line,
+so a prefix on that line is included; `/-` selects the body without it (and,
+when the comment is on its own line, without that line too). The comment must be
+the first thing in the block, the name is one identifier, and a `// #region` line
+is not a name.
+
 Rules 1, 2 and 4 are the subject of [Paths and scopes](#paths-and-scopes); rule
 5 (and the matcher table rule 6 names) of
 [Searching one element in a scope](#searching-one-element-in-a-scope); rule 3 of
@@ -360,12 +395,12 @@ also ends the whole search.
 | 3   | **Method / function**      | a named method, constructor, function or arrow-valued property in this scope **that has a body** | the declaration, or the modified part                      |
 | 4   | **Property**               | a variable named `<name>` — a field, a constant, or one a block or a signature declares (`private int getUsers = 0;`, `int count;`, `int first = 1, second = 2;`, `String title` in `void render(String title)`, an enum's `CALL,`) | the whole statement, or the text that declares a parameter |
 | 5   | **Condition literal**      | a statement block **in this scope** whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace          |
-| 6   | **Comment anchor**         | a braced block **in this scope** whose first non-blank line is `//<name>` or `/*<name>*/`        | the block, anchor comment through closing brace            |
+| 6   | **Comment anchor**         | a braced block **in this scope** whose first non-blank line is `//<name>` or `/*<name>*/`, or whose opening brace is followed by that comment on the same line | the block, anchor line through closing brace |
 
 A class-like name beats a same-named constructor. Body-less members (interface
 methods, `abstract` declarations) have nothing to inject and are skipped. A
-`#region`/`#endregion` line is never an anchor, and a comment that is not the
-first thing in the block is not an anchor either. A header may span lines — see
+`#region`/`#endregion` line is never an anchor; a comment that is not the first
+thing in the block is not an anchor either. A header may span lines — see
 [A declaration's header may span lines](#not-a-parser) — and the closing bracket
 of a wrapped parameter list is where the matchers look for it, not on the line
 the name is written on.
@@ -637,7 +672,9 @@ selector, it is that selector as written (`L40-`), not the whole reference:
 
 A missing, duplicate or unclosed `#region`/`#endregion` directive is reported by
 the region directive itself (see `extractRegion`) and is not part of this
-catalogue.
+catalogue. The brace naming has no closing directive: a block whose comment is
+missing, or whose name is not one identifier, simply has no anchor, so a
+reference to it is `no "#region <name>" found, and no section named "<name>"`.
 
 There are **no warnings** in this grammar. Every message above is an error, and a
 reference either resolves or fails; a scope modifier written twice on one path is

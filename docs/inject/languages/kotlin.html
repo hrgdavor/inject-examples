@@ -379,45 +379,45 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="707" data-md-to="707">Kotlin: regions and declarations</h2>
-<p data-md-from="709" data-md-to="709">A nested block comment swallows the decoy beside it and a raw string is text with no escapes at all, so neither can be mistaken for structure. <code>#add/+</code> brings the <code>@Deprecated</code> annotation along, and <code>#catalog</code> names the list by its region directive.</p>
+<h2 data-md-from="724" data-md-to="724">Kotlin: regions and declarations</h2>
+<p data-md-from="726" data-md-to="726">A nested block comment swallows the decoy beside it and a raw string is text with no escapes at all, so neither can be mistaken for structure. <code>#add/+</code> brings the <code>@Deprecated</code> annotation along, and <code>#catalog</code> names the list by its region directive.</p>
 <p class="md-marker" data-marker="kotlin-t-25-1"><a href="../docs/samples/Cart.kt#catalog">samples/Cart.kt#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="kotlin-t-25-1" data-md-from="713" data-md-to="715"><code class="language-kotlin">    <span class="tok-k">val</span> catalog = listOf(<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>)</code></pre>
+<pre class="md-pre" data-inject="kotlin-t-25-1" data-md-from="730" data-md-to="732"><code class="language-kotlin">    <span class="tok-k">val</span> catalog = listOf(<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>)</code></pre>
 <p class="md-marker" data-marker="kotlin-t-25-2"><a href="../docs/samples/Cart.kt#add">samples/Cart.kt#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="kotlin-t-25-2" data-md-from="719" data-md-to="723"><code class="language-kotlin">    <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {
+<pre class="md-pre" data-inject="kotlin-t-25-2" data-md-from="736" data-md-to="740"><code class="language-kotlin">    <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {
         items.add(item)
     }</code></pre>
 <p class="md-marker" data-marker="kotlin-t-25-3"><a href="../docs/samples/Cart.kt#add/-">samples/Cart.kt#add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="kotlin-t-25-3" data-md-from="727" data-md-to="729"><code class="language-kotlin">        items.add(item)</code></pre>
+<pre class="md-pre" data-inject="kotlin-t-25-3" data-md-from="744" data-md-to="746"><code class="language-kotlin">        items.add(item)</code></pre>
 <p class="md-marker" data-marker="kotlin-t-25-4"><a href="../docs/samples/Cart.kt#add/+">samples/Cart.kt#add/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="kotlin-t-25-4" data-md-from="733" data-md-to="738"><code class="language-kotlin">    <span class="tok-a">@Deprecated</span>(<span class="tok-s">&quot;use add&quot;</span>)
+<pre class="md-pre" data-inject="kotlin-t-25-4" data-md-from="750" data-md-to="755"><code class="language-kotlin">    <span class="tok-a">@Deprecated</span>(<span class="tok-s">&quot;use add&quot;</span>)
     <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {
         items.add(item)
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="740" data-md-to="740">Kotlin: a condition and an anchor</h2>
-<p data-md-from="742" data-md-to="742">A condition literal names the <code>if</code> that tests it, and a trailing comment names the function it opens.</p>
+<h2 data-md-from="757" data-md-to="757">Kotlin: a condition and an anchor</h2>
+<p data-md-from="759" data-md-to="759">A condition literal names the <code>if</code> that tests it, and a trailing comment names the function it opens.</p>
 <p class="md-marker" data-marker="kotlin-t-26-1"><a href="../docs/samples/Cart.kt#dispatch/count">samples/Cart.kt#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="kotlin-t-26-1" data-md-from="746" data-md-to="750"><code class="language-kotlin">        <span class="tok-k">if</span> (methodName == <span class="tok-s">&quot;count&quot;</span>) {
+<pre class="md-pre" data-inject="kotlin-t-26-1" data-md-from="763" data-md-to="767"><code class="language-kotlin">        <span class="tok-k">if</span> (methodName == <span class="tok-s">&quot;count&quot;</span>) {
             println(catalog.size)
         }</code></pre>
 <p class="md-marker" data-marker="kotlin-t-26-2"><a href="../docs/samples/Cart.kt#legacy/count">samples/Cart.kt#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="kotlin-t-26-2" data-md-from="754" data-md-to="758"><code class="language-kotlin">    <span class="tok-k">fun</span> legacy() { <span class="tok-c">//count</span>
+<pre class="md-pre" data-inject="kotlin-t-26-2" data-md-from="771" data-md-to="775"><code class="language-kotlin">    <span class="tok-k">fun</span> legacy() { <span class="tok-c">//count</span>
         println(catalog.size)
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="761" data-md-to="761">Kotlin: an envelope around a method</h2>
-<p data-md-from="763" data-md-to="763">The same for a Kotlin class: <code>#Cart/^,add,$</code> is <code>class Cart {</code>, the whole <code>add</code> method with its annotation, and the closing brace.</p>
+<h2 data-md-from="778" data-md-to="778">Kotlin: an envelope around a method</h2>
+<p data-md-from="780" data-md-to="780">The same for a Kotlin class: <code>#Cart/^,add,$</code> is <code>class Cart {</code>, the whole <code>add</code> method with its annotation, and the closing brace.</p>
 <p class="md-marker" data-marker="kotlin-t-27-1"><a href="../docs/samples/Cart.kt#Cart/^,add,$">samples/Cart.kt#Cart/^,add,$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="kotlin-t-27-1" data-md-from="767" data-md-to="773"><code class="language-kotlin"><span class="tok-k">class</span> <span class="tok-t">Cart</span> {
+<pre class="md-pre" data-inject="kotlin-t-27-1" data-md-from="784" data-md-to="790"><code class="language-kotlin"><span class="tok-k">class</span> <span class="tok-t">Cart</span> {
     <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {
         items.add(item)
     }
 }</code></pre>
 <p class="md-marker" data-marker="kotlin-t-27-2"><a href="../docs/samples/Cart.kt#Cart/^,Cart/add,Cart/$">samples/Cart.kt#Cart/^,Cart/add,Cart/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="kotlin-t-27-2" data-md-from="777" data-md-to="783"><code class="language-kotlin"><span class="tok-k">class</span> <span class="tok-t">Cart</span> {
+<pre class="md-pre" data-inject="kotlin-t-27-2" data-md-from="794" data-md-to="800"><code class="language-kotlin"><span class="tok-k">class</span> <span class="tok-t">Cart</span> {
     <span class="tok-k">fun</span> add(item: <span class="tok-t">String</span>) {
         items.add(item)
     }

@@ -54,6 +54,20 @@ const SECTIONS = [
         ],
     },
     {
+        title: 'A named block lands on its opening line',
+        slug: 'overview',
+        prose: [
+            'A block can be named without a region directive: its braces already mark where it starts and ends, '
+            + 'so a comment at the opening brace (`{//count`) or on the first line inside it names the block.',
+            'The default selection starts at the opening line, so that is where the cursor lands — with the '
+            + '`while`/`if`/declaration prefix that line carries.',
+        ],
+        examples: [
+            { sample: 'Inventory.java', reference: 'legacy/count', note: 'a method named at its opening brace' },
+            { sample: 'Inventory.java', reference: 'detail', note: 'a bare block named at its own brace' },
+        ],
+    },
+    {
         title: 'An envelope lands on the declaration that holds the member',
         slug: 'overview',
         prose: [

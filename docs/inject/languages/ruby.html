@@ -379,43 +379,43 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="880" data-md-to="880">Ruby: regions, defs and end</h2>
-<p data-md-from="882" data-md-to="882"><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append and not a heredoc; only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one. A name may end in <code>!</code> or <code>?</code>, and that is part of the name, not a modifier.</p>
+<h2 data-md-from="897" data-md-to="897">Ruby: regions, defs and end</h2>
+<p data-md-from="899" data-md-to="899"><code>def add</code> needs no parentheses, and its body is closed by <code>end</code>, which the selection brings along. The <code>&lt;&lt;</code> in <code>@items &lt;&lt; item</code> is an append and not a heredoc; only <code>&lt;&lt;~TAG</code>, <code>&lt;&lt;-TAG</code> or a quoted tag opens one. A name may end in <code>!</code> or <code>?</code>, and that is part of the name, not a modifier.</p>
 <p class="md-marker" data-marker="ruby-t-31-1"><a href="../docs/samples/Cart.rb#catalog">samples/Cart.rb#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-31-1" data-md-from="886" data-md-to="888"><code class="language-ruby">  <span class="tok-t">CATALOG</span> = %w[bolt nut washer].freeze</code></pre>
+<pre class="md-pre" data-inject="ruby-t-31-1" data-md-from="903" data-md-to="905"><code class="language-ruby">  <span class="tok-t">CATALOG</span> = %w[bolt nut washer].freeze</code></pre>
 <p class="md-marker" data-marker="ruby-t-31-2"><a href="../docs/samples/Cart.rb#add!">samples/Cart.rb#add!</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-31-2" data-md-from="892" data-md-to="896"><code class="language-ruby">  <span class="tok-k">def</span> add!(item)
+<pre class="md-pre" data-inject="ruby-t-31-2" data-md-from="909" data-md-to="913"><code class="language-ruby">  <span class="tok-k">def</span> add!(item)
     <span class="tok-a">@items</span> &lt;&lt; item
   <span class="tok-k">end</span></code></pre>
 <p class="md-marker" data-marker="ruby-t-31-3"><a href="../docs/samples/Cart.rb#add">samples/Cart.rb#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-31-3" data-md-from="900" data-md-to="904"><code class="language-ruby">  <span class="tok-k">def</span> add(item)
+<pre class="md-pre" data-inject="ruby-t-31-3" data-md-from="917" data-md-to="921"><code class="language-ruby">  <span class="tok-k">def</span> add(item)
     <span class="tok-a">@items</span> &lt;&lt; item
   <span class="tok-k">end</span></code></pre>
 <p class="md-marker" data-marker="ruby-t-31-4"><a href="../docs/samples/Cart.rb#add/-">samples/Cart.rb#add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-31-4" data-md-from="908" data-md-to="910"><code class="language-ruby">    <span class="tok-a">@items</span> &lt;&lt; item</code></pre>
+<pre class="md-pre" data-inject="ruby-t-31-4" data-md-from="925" data-md-to="927"><code class="language-ruby">    <span class="tok-a">@items</span> &lt;&lt; item</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="912" data-md-to="912">Ruby: a condition and an anchor</h2>
-<p data-md-from="914" data-md-to="914">A condition literal names the <code>if</code> or <code>elsif</code> whose header carries the string, and a trailing comment names the method it opens. A <code>case</code> is not a block here, so <code>when</code> arms are named by the region or the method around them.</p>
+<h2 data-md-from="929" data-md-to="929">Ruby: a condition and an anchor</h2>
+<p data-md-from="931" data-md-to="931">A condition literal names the <code>if</code> or <code>elsif</code> whose header carries the string, and a trailing comment names the method it opens. A <code>case</code> is not a block here, so <code>when</code> arms are named by the region or the method around them.</p>
 <p class="md-marker" data-marker="ruby-t-32-1"><a href="../docs/samples/Cart.rb#dispatch/count">samples/Cart.rb#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-32-1" data-md-from="918" data-md-to="921"><code class="language-ruby">    <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span>
+<pre class="md-pre" data-inject="ruby-t-32-1" data-md-from="935" data-md-to="938"><code class="language-ruby">    <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span>
       <span class="tok-a">@items</span>.size</code></pre>
 <p class="md-marker" data-marker="ruby-t-32-2"><a href="../docs/samples/Cart.rb#legacy/count">samples/Cart.rb#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-32-2" data-md-from="925" data-md-to="929"><code class="language-ruby">  <span class="tok-k">def</span> legacy <span class="tok-c"># count</span>
+<pre class="md-pre" data-inject="ruby-t-32-2" data-md-from="942" data-md-to="946"><code class="language-ruby">  <span class="tok-k">def</span> legacy <span class="tok-c"># count</span>
     <span class="tok-a">@items</span>.size
   <span class="tok-k">end</span></code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="932" data-md-to="932">Ruby: an envelope around a method</h2>
-<p data-md-from="934" data-md-to="934">A Ruby method is <code>def … end</code>, which is valid on its own but says nothing about what it belongs to. <code>#Cart/^,add,$</code> is <code>class Cart</code>, the method, and the class's <code>end</code>.</p>
+<h2 data-md-from="949" data-md-to="949">Ruby: an envelope around a method</h2>
+<p data-md-from="951" data-md-to="951">A Ruby method is <code>def … end</code>, which is valid on its own but says nothing about what it belongs to. <code>#Cart/^,add,$</code> is <code>class Cart</code>, the method, and the class's <code>end</code>.</p>
 <p class="md-marker" data-marker="ruby-t-33-1"><a href="../docs/samples/Cart.rb#Cart/^,add,$">samples/Cart.rb#Cart/^,add,$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-33-1" data-md-from="938" data-md-to="944"><code class="language-ruby"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
+<pre class="md-pre" data-inject="ruby-t-33-1" data-md-from="955" data-md-to="961"><code class="language-ruby"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
   <span class="tok-k">def</span> add(item)
     <span class="tok-a">@items</span> &lt;&lt; item
   <span class="tok-k">end</span>
   <span class="tok-k">end</span></code></pre>
 <p class="md-marker" data-marker="ruby-t-33-2"><a href="../docs/samples/Cart.rb#Cart/^,Cart/add,Cart/$">samples/Cart.rb#Cart/^,Cart/add,Cart/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="ruby-t-33-2" data-md-from="948" data-md-to="954"><code class="language-ruby"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
+<pre class="md-pre" data-inject="ruby-t-33-2" data-md-from="965" data-md-to="971"><code class="language-ruby"><span class="tok-k">class</span> <span class="tok-t">Cart</span>
   <span class="tok-k">def</span> add(item)
     <span class="tok-a">@items</span> &lt;&lt; item
   <span class="tok-k">end</span>

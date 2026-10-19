@@ -150,6 +150,10 @@ pub const Repo_kt =
 pub const Shapes_java =
     "class Shapes {\n    private int getUsers = 0;\n    private String label = \"not a // comment\";\n\n    /** The anchor is the first thing inside the braces. */\n    void anchored() { //anchor\n        work();\n    }\n\n    void notAnchored() {\n        work(); //anchor\n    }\n\n    void calls() {\n        add(1, 2);\n        other.add(1, 2);\n        return add(1, 2);\n    }\n\n    void add(int a, int b) {\n        total = a + b;\n    }\n\n    void nextLineBrace()\n    {\n        work();\n    }\n\n    Runnable arrow = () -> {\n        work();\n    };\n\n    void chains(int n) {\n        if (n > 0) {\n            work();\n        } else if (n < 0) {\n            other();\n        } else {\n            none();\n        }\n    }\n\n    // #region wiring\n    void regioned() {\n        work();\n    }\n    // #endregion\n}\n";
 
+/// `test/fixtures/Shorthand.java`
+pub const Shorthand_java =
+    "// The brace anchor: a block is named by a comment at its opening brace, or on\n// the first line inside it. The braces already mark the block's start and end,\n// so no `#region` prefix and no `#endregion` are needed \xe2\x80\x94 only the name. The\n// default selection includes the opening line; `/-` selects the body.\npublic class Shorthand {\n    public void run(int n) {\n        while (n > 0) {//countdown\n            n -= 1;\n        }\n        if (n == 0) {// done\n            reset();\n        }\n        while (n < 9) {\n            //solo\n            n += 1;\n        }\n    }\n\n    public void handler() {//handled\n        work();\n    }\n\n    public void box() {\n        {//bare\n            tick();\n        }\n    }\n}\n";
+
 /// `test/fixtures/Store.hs`
 pub const Store_hs =
     "module Store where\n\nadd :: Int -> Int -> Int\nadd x y = x + y\n\ndata Cart = Cart { items :: [Int] }\n";
@@ -210,6 +214,7 @@ pub fn sourceOf(input: ?[]const u8) ?[]const u8 {
     if (std.mem.eql(u8, path, "test/fixtures/Regions.java")) return Regions_java;
     if (std.mem.eql(u8, path, "test/fixtures/Repo.kt")) return Repo_kt;
     if (std.mem.eql(u8, path, "test/fixtures/Shapes.java")) return Shapes_java;
+    if (std.mem.eql(u8, path, "test/fixtures/Shorthand.java")) return Shorthand_java;
     if (std.mem.eql(u8, path, "test/fixtures/Store.hs")) return Store_hs;
     if (std.mem.eql(u8, path, "test/fixtures/Variables.java")) return Variables_java;
     if (std.mem.eql(u8, path, "test/fixtures/Widget.cs")) return Widget_cs;
@@ -3148,6 +3153,126 @@ pub const cases = [_]Case{
         .end_line = 8,
         .ranges = &.{.{ .from = 8, .to = 8 }},
         .kind = .region,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-loop",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "countdown",
+        .text = "        while (n > 0) {//countdown\n            n -= 1;\n        }",
+        .start_line = 7,
+        .end_line = 9,
+        .ranges = &.{.{ .from = 7, .to = 9 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-loop-body",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "countdown/-",
+        .text = "            n -= 1;",
+        .start_line = 7,
+        .end_line = 9,
+        .ranges = &.{.{ .from = 7, .to = 9 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-if",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "done",
+        .text = "        if (n == 0) {// done\n            reset();\n        }",
+        .start_line = 10,
+        .end_line = 12,
+        .ranges = &.{.{ .from = 10, .to = 12 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-if-body",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "done/-",
+        .text = "            reset();",
+        .start_line = 10,
+        .end_line = 12,
+        .ranges = &.{.{ .from = 10, .to = 12 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-solo-line",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "solo",
+        .text = "        while (n < 9) {\n            //solo\n            n += 1;\n        }",
+        .start_line = 14,
+        .end_line = 16,
+        .ranges = &.{.{ .from = 14, .to = 16 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-solo-line-body",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "solo/-",
+        .text = "            n += 1;",
+        .start_line = 14,
+        .end_line = 16,
+        .ranges = &.{.{ .from = 14, .to = 16 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-method",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "handled",
+        .text = "    public void handler() {//handled\n        work();\n    }",
+        .start_line = 19,
+        .end_line = 21,
+        .ranges = &.{.{ .from = 19, .to = 21 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-method-body",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "handled/-",
+        .text = "        work();",
+        .start_line = 19,
+        .end_line = 21,
+        .ranges = &.{.{ .from = 19, .to = 21 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-bare-block",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "bare",
+        .text = "        {//bare\n            tick();\n        }",
+        .start_line = 24,
+        .end_line = 26,
+        .ranges = &.{.{ .from = 24, .to = 26 }},
+        .kind = .anchor,
+        .error_message = null,
+        .code = null,
+    },
+    .{
+        .name = "brace-anchor-bare-block-body",
+        .input = "test/fixtures/Shorthand.java",
+        .reference = "bare/-",
+        .text = "            tick();",
+        .start_line = 24,
+        .end_line = 26,
+        .ranges = &.{.{ .from = 24, .to = 26 }},
+        .kind = .anchor,
         .error_message = null,
         .code = null,
     },
