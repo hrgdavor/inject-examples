@@ -12,7 +12,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    // The CLI executable.
+    // The CLI executable. Its `--version` is read from package.json at build
+    // time, so the JavaScript package and the Zig twin cannot drift when the
+    // release version changes; there is no second copy to update.
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", packageVersion(b));
     const exe = b.addExecutable(.{
         .name = "inject-examples",
         .root_module = b.createModule(.{
@@ -21,6 +25,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "inject_examples", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
             },
         }),
     });
@@ -49,4 +54,14 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+}
+
+/// The `version` field of the package manifest, which is the one source of
+/// truth both tools print. A missing or malformed package.json is a build
+/// error, not a silently stale version.
+fn packageVersion(b: *std.Build) []const u8 {
+    const package_json = @embedFile("package.json");
+    const parsed = std.json.parseFromSlice(std.json.Value, b.allocator, package_json, .{}) catch @panic("cannot parse package.json");
+    const version = parsed.value.object.get("version") orelse @panic("package.json has no version");
+    return version.string;
 }

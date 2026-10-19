@@ -32,8 +32,9 @@ const OK: u8 = 0;
 const FAILED: u8 = 1;
 const USAGE: u8 = 2;
 
-/// Mirrors `version()` in `cli.mjs`, which reads `package.json` at runtime.
-const VERSION = "1.2.1";
+/// The version is imported from `build.zig`, which reads `package.json`; the
+/// package manifest is the one source of truth.
+const VERSION = @import("build_options").version;
 
 /// The `HELP` template in `cli.mjs`, with every `\${...}` already filled in and
 /// every escaped backtick unescaped: byte for byte what `--help` prints.
