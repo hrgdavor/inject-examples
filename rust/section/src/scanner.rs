@@ -820,7 +820,7 @@ fn build_scope(
         // A bare braced block that carries a name is a section: its braces are the block's own
         // start and end markers, so `{//name` (or a `//name` line just inside it) names it. A
         // bare block with no anchor falls through to the existing line scan.
-        if masked_line.trim() == "{" {
+        if masked_line.trim().starts_with('{') {
             let brace_at = start + masked_line.find('{').unwrap_or(0);
             if let Some(body) = brace_body(&lex.mask, &lex.starts, brace_at) {
                 let block = Block::new("statement", None, i);
@@ -1057,7 +1057,11 @@ fn build_scope(
         }
 
         if let Some((keyword, keyword_offset)) = statement_keyword(&masked_line) {
-            if let Some(brace_pos) = index_of(&lex.mask, &[b'{' as u16], start) {
+            let keyword_units = masked_line
+                .get(..keyword_offset.min(masked_line.len()))
+                .map(|prefix| prefix.encode_utf16().count())
+                .unwrap_or(0);
+            if let Some(brace_pos) = statement_brace(&lex.mask, start + keyword_units) {
                 let segments = chain_segments(
                     &lex.mask,
                     &lex.starts,
@@ -1328,6 +1332,34 @@ fn allowed_prefix(before: &str) -> Option<String> {
 }
 
 /// The segments of an if/else-if (or try/catch) chain opened on this line.
+/// The `{` that opens a statement's body, or `None` when the body is a single
+/// statement. The search starts at the statement's keyword and stops at the
+/// first top-level `;` or `{`, so a later bare block is never taken as this
+/// statement's body.
+fn statement_brace(mask: &[u16], from: usize) -> Option<usize> {
+    let mut depth: usize = 0;
+    let mut i = from;
+    while i < mask.len() {
+        let unit = mask[i];
+        if unit == b'(' as u16 || unit == b'[' as u16 {
+            depth += 1;
+        } else if unit == b')' as u16 || unit == b']' as u16 {
+            if depth > 0 {
+                depth -= 1;
+            }
+        } else if depth == 0 {
+            if unit == b'{' as u16 {
+                return Some(i);
+            }
+            if unit == b';' as u16 {
+                return None;
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
 fn chain_segments(
     mask: &[u16],
     starts: &[usize],

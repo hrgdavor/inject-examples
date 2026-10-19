@@ -256,16 +256,26 @@ public final class SectionResolver {
 
         Rendered rendered;
         // `slice` is the area of the source the rendering was made from, which may be wider than what
-        // the selector contributes: a region's rendering excludes the two directive lines, but its
-        // `head` is read from the whole region. `range` is what the selector reports.
+        // the selector contributes: a region's rendering includes its directive lines (or excludes
+        // them under `/-`), but its `head` is read from the whole region. `range` is what the selector
+        // reports.
         Range slice;
         Range range;
         String kind;
         if (found.region() != null) {
-            int from = found.region().startLine() + 1;
-            slice = new Range(from, found.region().endLine() - 1);
-            rendered = span(slice(lex.lines, from, found.region().endLine()), from,
-                    found.region().endLine());
+            // A region is the whole marked span: the opening directive through
+            // the closing one, like a declaration with its signature. `/-` is
+            // the body between the directives.
+            if (selector.scope() == Scope.BODY) {
+                int from = found.region().startLine() + 1;
+                rendered = span(slice(lex.lines, from, found.region().endLine()), from,
+                        found.region().endLine());
+            } else {
+                int from = found.region().startLine();
+                int to = found.region().endLine() + 1;
+                rendered = span(slice(lex.lines, from, to), from, to);
+            }
+            slice = new Range(rendered.from(), rendered.to());
             range = new Range(rendered.from(), rendered.to());
             kind = "region";
         } else {

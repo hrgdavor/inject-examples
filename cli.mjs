@@ -89,8 +89,9 @@ Options:
                        .gitignore file (default: search upward from the
                        document's directory, like git)
       --no-gitignore   Do not apply any .gitignore rules
-  -q, --quiet          Print only the closing summary
-      --allow-empty    Succeed when the document contains no markers
+  -q, --quiet          Print only the per-document summary line
+      --allow-empty    Accepted for compatibility: a document with no markers
+                       is already a success (markers that were all skipped are not)
   -l, --lenient        Tolerate broken includes: a marker whose file, region
                        or block cannot be resolved is reported with its line
                        number and its block is left as written; the exit code
@@ -102,10 +103,23 @@ Options:
   -h, --help           Show this help
   -V, --version        Show the version
 
+Summary:
+  Every document ends with one line, even with --quiet:
+
+      docs/GUIDE.md: 8 markers, 0 stale
+
+  In --check and --dry-run the second count is stale blocks; when the document
+  is written it is updated blocks. --out names both files. A document with no
+  markers is a success (\`0 markers, 0 stale\`); a document that has markers but
+  checked none (every marker skipped) exits ${FAILED}: a run that resolved
+  nothing is not a passing run.
+
 Exit codes:
-  ${OK}  every block is up to date (or was rewritten)
+  ${OK}  every block is up to date (or was rewritten); a document with no
+             markers has nothing to do
   ${FAILED}  a block is stale in --check mode, a document is malformed,
-             or (with --lenient) an include could not be resolved
+             a document's markers all resolved nothing, or (with --lenient) an
+             include could not be resolved
   ${USAGE}  the command line was wrong
 
   With several documents the run processes all of them, including the ones
@@ -304,6 +318,28 @@ export function main(argv) {
 }
 
 /**
+ * The one-line report every processed document ends with, so a run that did
+ * nothing is visible at a glance: `docs/GUIDE.md: 8 markers, 0 stale`. `verb` is
+ * `stale` in --check/--dry-run and `updated` when the document is written.
+ *
+ * Exported for the tests: the line is the CLI's contract with a caller who only
+ * reads stdout.
+ */
+export function documentSummary(label, { total, stale = 0, failed = 0, skipped = 0, verb = 'stale' }) {
+    const parts = [`${total} marker${total === 1 ? '' : 's'}`, `${stale} ${verb}`];
+    if (failed > 0) parts.push(`${failed} failed`);
+    if (skipped > 0) parts.push(`${skipped} skipped`);
+    return `${label}: ${parts.join(', ')}`;
+}
+
+/** The same line for the jump gate, which counts failed references rather than stale blocks. */
+export function gateSummary(label, { total, failed = 0, skipped = 0 }) {
+    const parts = [`${total} marker${total === 1 ? '' : 's'}`, `${failed} failed`];
+    if (skipped > 0) parts.push(`${skipped} skipped`);
+    return `${label}: ${parts.join(', ')}`;
+}
+
+/**
  * The **jump gate** for one document: report every reference that does not
  * resolve exactly, and compare nothing.
  *
@@ -343,14 +379,17 @@ function processGate(file, options, gitignore) {
         return FAILED;
     }
 
-    if (result.checked === 0) {
-        if (!options.allowEmpty) {
-            console.error(`inject-examples: no injection markers found in ${display(file)}.`);
-            console.error('A marker is a line that is nothing but a link to a file it names; see --help.');
-            return FAILED;
-        }
-        console.log(`${display(file)}: no markers, nothing to jump to.`);
+    if (result.total === 0) {
+        console.log(gateSummary(display(file), { total: 0 }));
         return OK;
+    }
+
+    // A document whose markers were all excluded resolved nothing. Say so and
+    // fail: a skipped run is not a passing run.
+    if (result.total === result.skipped) {
+        console.log(gateSummary(display(file), { total: result.total, skipped: result.skipped }));
+        console.error(`inject-examples: ${display(file)}: no reference was checked (${result.skipped} skipped); nothing was resolved.`);
+        return FAILED;
     }
 
     if (!options.quiet) {
@@ -364,11 +403,16 @@ function processGate(file, options, gitignore) {
         }
     }
 
+    console.log(gateSummary(display(file), {
+        total: result.total,
+        failed: result.failures.length,
+        skipped: result.skipped,
+    }));
+
     if (!result.passed) {
         console.error(`\n${display(file)}: ${result.failures.length} of ${result.checked} reference(s) do not resolve.`);
         return FAILED;
     }
-    console.log(`\n${display(file)}: all ${result.checked} reference(s) resolve.`);
     return OK;
 }
 
@@ -427,16 +471,14 @@ function processDocument(file, options, gitignore) {
 
     const total = result.markers.length;
     if (total === 0) {
-        if (!options.allowEmpty) {
-            console.error(`inject-examples: no injection markers found in ${display(file)}.`);
-            console.error('A marker is a line that is nothing but a link to a file it names; see --help.');
-            return FAILED;
+        if (options.out === null) {
+            console.log(documentSummary(display(file), { total: 0 }));
+            return OK;
         }
-        console.log(`${display(file)}: no markers, nothing to do.`);
-        return OK;
+        // `--out` still has an output to write or verify, even with no markers.
     }
 
-    if (!options.quiet) {
+    if (!options.quiet && total > 0) {
         // In --check and --dry-run nothing is written, so a difference is a
         // finding ("stale"), not an action taken ("updated"). A failure-skip
         // is a failure ("failed"), distinct from a gitignored "skipped".
@@ -459,51 +501,65 @@ function processDocument(file, options, gitignore) {
     const skippedCount = result.results.filter((entry) => entry.skipped && !entry.failure).length;
     const checked = total - skippedCount - failed.length;
     const skipNote = skippedCount > 0 ? `, ${skippedCount} marker(s) skipped` : '';
-    const failedNote = failed.length > 0 ? `, ${failed.length} failed` : '';
+
+    // A document with markers that were all excluded resolved nothing. The run
+    // must not read as a success: there was no work to be right about.
+    if (total > 0 && checked === 0 && failed.length === 0) {
+        console.log(documentSummary(display(file), { total, skipped: skippedCount }));
+        console.error(`inject-examples: ${display(file)}: no marker was checked (${skippedCount} skipped); nothing was resolved.`);
+        return FAILED;
+    }
 
     if (options.out !== null) {
         const out = resolve(options.out);
         const current = readOrNull(out);
         const changed = current === null || normalize(current) !== normalize(result.text);
+        const verb = options.check || options.dryRun ? 'stale' : 'updated';
+        const summary = documentSummary(`${display(file)} -> ${display(out)}`, {
+            total, stale: stale.length, failed: failed.length, skipped: skippedCount, verb,
+        });
 
         if (options.check) {
+            console.log(summary);
             if (failed.length > 0) {
                 console.error(`\n${display(file)}: ${failed.length} of ${total} marker(s) could not be resolved; ${display(options.out)} was not verified.`);
                 return FAILED;
             }
-            if (!changed) {
-                console.log(`\n${display(options.out)} is up to date with respect to ${display(file)}.`);
-                return OK;
-            }
+            if (!changed) return OK;
             console.error(`\n${display(options.out)} is stale with respect to ${display(file)}${current === null ? ' (the file does not exist)' : ''}.`);
             console.error(`Run: inject-examples --out ${display(options.out)} ${display(file)}`);
             return FAILED;
         }
 
         if (options.dryRun) {
+            console.log(summary);
             if (failed.length > 0) {
-                console.log(`\n${display(file)}: ${failed.length} marker(s) could not be resolved and would be left as written${skipNote}.`);
+                console.error(`\n${display(file)}: ${failed.length} marker(s) could not be resolved and would be left as written${skipNote}.`);
                 return FAILED;
             }
-            console.log(!changed
-                ? `\n${display(file)} is already in sync with ${display(options.out)}${skipNote}.`
-                : stale.length > 0
-                    ? `\n${display(file)} would write ${display(options.out)}: ${stale.length} of ${checked} block(s) updated${skipNote}.`
-                    : `\n${display(file)} would write ${display(options.out)}${skipNote}.`);
             return OK;
         }
 
         mkdirSync(dirname(out), { recursive: true });
         if (changed) writeFileSync(out, result.text, 'utf8');
+        console.log(summary);
         if (failed.length > 0) {
-            console.log(`\n${display(file)} -> ${display(options.out)} updated: ${failed.length} marker(s) could not be resolved and were left as written${skipNote}.`);
+            console.error(`\n${display(file)} -> ${display(options.out)}: ${failed.length} marker(s) could not be resolved and were left as written${skipNote}.`);
             return FAILED;
         }
-        console.log(`\n${display(file)} -> ${display(options.out)} ${changed ? 'updated' : 'already up to date'}${skipNote}.`);
         return OK;
     }
 
+    const summary = documentSummary(display(file), {
+        total,
+        stale: stale.length,
+        failed: failed.length,
+        skipped: skippedCount,
+        verb: options.check || options.dryRun ? 'stale' : 'updated',
+    });
+
     if (options.check) {
+        console.log(summary);
         if (stale.length > 0 || failed.length > 0) {
             if (stale.length > 0) {
                 console.error(`\n${display(file)} is stale: ${stale.length} of ${checked} block(s) differ from their files.`);
@@ -514,25 +570,24 @@ function processDocument(file, options, gitignore) {
             console.error(`Run: inject-examples ${display(file)}`);
             return FAILED;
         }
-        console.log(skippedCount > 0
-            ? `\n${display(file)} is up to date: ${checked} checked, ${skippedCount} skipped.`
-            : `\n${display(file)} matches all ${total} marker(s).`);
         return OK;
     }
 
     if (options.dryRun) {
-        console.log(stale.length > 0
-            ? `\n${display(file)} would update ${stale.length} of ${checked} block(s)${skipNote}${failedNote}.`
-            : `\n${display(file)} already up to date${skipNote}${failedNote}.`);
-        return failed.length > 0 ? FAILED : OK;
+        console.log(summary);
+        if (failed.length > 0) {
+            console.error(`\n${display(file)}: ${failed.length} marker(s) could not be resolved and would be left as written${skipNote}.`);
+            return FAILED;
+        }
+        return OK;
     }
 
     if (result.changed) writeFileSync(file, result.text, 'utf8');
+    console.log(summary);
     if (failed.length > 0) {
-        console.log(`\n${display(file)}: ${stale.length} updated, ${failed.length} failed${skipNote}.`);
+        console.error(`\n${display(file)}: ${stale.length} updated, ${failed.length} failed${skipNote}.`);
         return FAILED;
     }
-    console.log(`\n${display(file)} ${result.changed ? 'updated' : 'already up to date'}${skipNote}.`);
     return OK;
 }
 

@@ -360,23 +360,23 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="1339" data-md-to="1339">CSS: rules and at-rules</h2>
-<p data-md-from="1341" data-md-to="1341">A <code>.css</code> reference names a <strong>rule</strong>, in CSS’s own vocabulary. A style rule is named by the rightmost simple selector of its selector list, an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the declarations alone&quot; works through a path too, so <code>@media/.card/-</code> is that inner rule’s declarations without its selector.</p>
+<h2 data-md-from="1367" data-md-to="1367">CSS: rules and at-rules</h2>
+<p data-md-from="1369" data-md-to="1369">A <code>.css</code> reference names a <strong>rule</strong>, in CSS’s own vocabulary. A style rule is named by the rightmost simple selector of its selector list, an at-rule by its keyword (<code>@media</code>, <code>@keyframes</code>), and <code>/</code> descends the nesting CSS already has — a rule inside a media query is a child of it. The <code>-</code> a code reference uses for &quot;the declarations alone&quot; works through a path too, so <code>@media/.card/-</code> is that inner rule’s declarations without its selector.</p>
 <p class="md-marker" data-marker="css-t-51-1"><a href="../docs/samples/site.css#:root">samples/site.css#:root</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-51-1" data-md-from="1345" data-md-to="1350"><code class="language-css">:root {
+<pre class="md-pre" data-inject="css-t-51-1" data-md-from="1373" data-md-to="1378"><code class="language-css">:root {
   --brand: #<span class="tok-n">1f6feb</span>;
   --<span class="tok-k">radius</span>: <span class="tok-n">6px</span>;
 }</code></pre>
 <p class="md-marker" data-marker="css-t-51-2"><a href="../docs/samples/site.css#@media">samples/site.css#@media</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-51-2" data-md-from="1354" data-md-to="1360"><code class="language-css"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {
+<pre class="md-pre" data-inject="css-t-51-2" data-md-from="1382" data-md-to="1388"><code class="language-css"><span class="tok-a">@media</span> (min-<span class="tok-k">width</span>: <span class="tok-n">700px</span>) {
   .card {
     <span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;
   }
 }</code></pre>
 <p class="md-marker" data-marker="css-t-51-3"><a href="../docs/samples/site.css#@media/.card/-">samples/site.css#@media/.card/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-51-3" data-md-from="1364" data-md-to="1366"><code class="language-css"><span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</code></pre>
+<pre class="md-pre" data-inject="css-t-51-3" data-md-from="1392" data-md-to="1394"><code class="language-css"><span class="tok-k">grid</span>-template-columns: <span class="tok-n">1fr</span> <span class="tok-n">1fr</span>;</code></pre>
 <p class="md-marker" data-marker="css-t-51-4"><a href="../docs/samples/site.css#@keyframes:pulse">samples/site.css#@keyframes:pulse</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-51-4" data-md-from="1370" data-md-to="1379"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
+<pre class="md-pre" data-inject="css-t-51-4" data-md-from="1398" data-md-to="1407"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
   from {
     <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;
   }
@@ -386,12 +386,12 @@ body {
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="1381" data-md-to="1381">CSS: a predicate, and a region</h2>
-<p data-md-from="1383" data-md-to="1383">Two rules share the name <code>.card</code> — the base rule and its compact variant — so a reference that would match both is an error rather than a guess, and <code>#.card</code> names nothing. A predicate read from the selector picks one, and a region directive still works in CSS, where a class name cannot be a region name.</p>
-<p data-md-from="1385" data-md-to="1385">[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])</p>
-<pre class="md-pre" data-md-from="1387" data-md-to="1388"><code></code></pre>
+<h2 data-md-from="1409" data-md-to="1409">CSS: a predicate, and a region</h2>
+<p data-md-from="1411" data-md-to="1411">Two rules share the name <code>.card</code> — the base rule and its compact variant — so a reference that would match both is an error rather than a guess, and <code>#.card</code> names nothing. A predicate read from the selector picks one, and a region directive still works in CSS, where a class name cannot be a region name.</p>
+<p data-md-from="1413" data-md-to="1413">[samples/site.css#.card[data-variant=compact]](./samples/site.css#.card[data-variant=compact])</p>
+<pre class="md-pre" data-md-from="1415" data-md-to="1416"><code></code></pre>
 <p class="md-marker" data-marker="css-t-52-1"><a href="../docs/samples/site.css#pulse">samples/site.css#pulse</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="css-t-52-1" data-md-from="1392" data-md-to="1401"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
+<pre class="md-pre" data-inject="css-t-52-1" data-md-from="1420" data-md-to="1429"><code class="language-css"><span class="tok-a">@keyframes</span> pulse {
   from {
     <span class="tok-k">opacity</span>: <span class="tok-n">0.4</span>;
   }

@@ -307,7 +307,7 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>C#: regions and declarations</h3>
 <ul class="targets">
-<li class="target-item" id="csharp-t-22-1"><button class="target" type="button" data-file="samples/Cart.cs" data-section="22" data-from="7" data-to="7" data-ranges="7-7" aria-pressed="false" aria-controls="csharp-t-22-1-desc" title="[samples/Cart.cs#catalog](./samples/Cart.cs#catalog)"><span class="chip-file">Cart.cs</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="csharp-t-22-1"><button class="target" type="button" data-file="samples/Cart.cs" data-section="22" data-from="6" data-to="8" data-ranges="6-8" aria-pressed="false" aria-controls="csharp-t-22-1-desc" title="[samples/Cart.cs#catalog](./samples/Cart.cs#catalog)"><span class="chip-file">Cart.cs</span><span class="chip-ref">#catalog</span></button></li>
 <li class="target-item" id="csharp-t-22-2"><button class="target" type="button" data-file="samples/Cart.cs" data-section="22" data-from="16" data-to="19" data-ranges="16-19" aria-pressed="false" aria-controls="csharp-t-22-2-desc" title="[samples/Cart.cs#Add](./samples/Cart.cs#Add)"><span class="chip-file">Cart.cs</span><span class="chip-ref">#Add</span></button></li>
 <li class="target-item" id="csharp-t-22-3"><button class="target" type="button" data-file="samples/Cart.cs" data-section="22" data-from="18" data-to="18" data-ranges="18-18" aria-pressed="false" aria-controls="csharp-t-22-3-desc" title="[samples/Cart.cs#Add/-](./samples/Cart.cs#Add/-)"><span class="chip-file">Cart.cs</span><span class="chip-ref">#Add/-</span></button></li>
 <li class="target-item" id="csharp-t-22-4"><button class="target" type="button" data-file="samples/Cart.cs" data-section="22" data-from="16" data-to="19" data-ranges="16-19" aria-pressed="false" aria-controls="csharp-t-22-4-desc" title="[samples/Cart.cs#Add/+](./samples/Cart.cs#Add/+)"><span class="chip-file">Cart.cs</span><span class="chip-ref">#Add/+</span></button></li>
@@ -384,48 +384,50 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="629" data-md-to="629">C#: regions and declarations</h2>
-<p data-md-from="631" data-md-to="631">A static array is named by its region directive, and a method by its name: <code>Add/-</code> is the body without the signature, <code>Add/+</code> the method with its attribute, <code>Add/++</code> those and the doc comment above them. A verbatim string keeps its quotes, so the brace inside it is text.</p>
+<h2 data-md-from="639" data-md-to="639">C#: regions and declarations</h2>
+<p data-md-from="641" data-md-to="641">A static array is named by its region directive, and a method by its name: <code>Add/-</code> is the body without the signature, <code>Add/+</code> the method with its attribute, <code>Add/++</code> those and the doc comment above them. A verbatim string keeps its quotes, so the brace inside it is text.</p>
 <p class="md-marker" data-marker="csharp-t-22-1"><a href="../docs/samples/Cart.cs#catalog">samples/Cart.cs#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-22-1" data-md-from="635" data-md-to="637"><code class="language-csharp">    <span class="tok-k">private</span> <span class="tok-k">static</span> <span class="tok-k">readonly</span> <span class="tok-k">string</span>[] <span class="tok-t">Catalog</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };</code></pre>
+<pre class="md-pre" data-inject="csharp-t-22-1" data-md-from="645" data-md-to="649"><code class="language-csharp">    <span class="tok-c">// #region catalog</span>
+    <span class="tok-k">private</span> <span class="tok-k">static</span> <span class="tok-k">readonly</span> <span class="tok-k">string</span>[] <span class="tok-t">Catalog</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };
+    <span class="tok-c">// #endregion</span></code></pre>
 <p class="md-marker" data-marker="csharp-t-22-2"><a href="../docs/samples/Cart.cs#Add">samples/Cart.cs#Add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-22-2" data-md-from="641" data-md-to="646"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
+<pre class="md-pre" data-inject="csharp-t-22-2" data-md-from="653" data-md-to="658"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
     {
         items.<span class="tok-t">Add</span>(item);
     }</code></pre>
 <p class="md-marker" data-marker="csharp-t-22-3"><a href="../docs/samples/Cart.cs#Add/-">samples/Cart.cs#Add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-22-3" data-md-from="650" data-md-to="652"><code class="language-csharp">        items.<span class="tok-t">Add</span>(item);</code></pre>
+<pre class="md-pre" data-inject="csharp-t-22-3" data-md-from="662" data-md-to="664"><code class="language-csharp">        items.<span class="tok-t">Add</span>(item);</code></pre>
 <p class="md-marker" data-marker="csharp-t-22-4"><a href="../docs/samples/Cart.cs#Add/+">samples/Cart.cs#Add/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-22-4" data-md-from="656" data-md-to="661"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
+<pre class="md-pre" data-inject="csharp-t-22-4" data-md-from="668" data-md-to="673"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
     {
         items.<span class="tok-t">Add</span>(item);
     }</code></pre>
 <p class="md-marker" data-marker="csharp-t-22-5"><a href="../docs/samples/Cart.cs#Add/++">samples/Cart.cs#Add/++</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-22-5" data-md-from="665" data-md-to="671"><code class="language-csharp">    <span class="tok-c">/// &lt;summary&gt;Add one item to the cart.&lt;/summary&gt;</span>
+<pre class="md-pre" data-inject="csharp-t-22-5" data-md-from="677" data-md-to="683"><code class="language-csharp">    <span class="tok-c">/// &lt;summary&gt;Add one item to the cart.&lt;/summary&gt;</span>
     <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
     {
         items.<span class="tok-t">Add</span>(item);
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="673" data-md-to="673">C#: a condition and an anchor</h2>
-<p data-md-from="675" data-md-to="675">A condition literal names the block whose header line carries the string it tests, and a trailing comment on the declaration line names the block below it.</p>
+<h2 data-md-from="685" data-md-to="685">C#: a condition and an anchor</h2>
+<p data-md-from="687" data-md-to="687">A condition literal names the block whose header line carries the string it tests, and a trailing comment on the declaration line names the block below it.</p>
 <p class="md-marker" data-marker="csharp-t-23-1"><a href="../docs/samples/Cart.cs#Dispatch/count">samples/Cart.cs#Dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-23-1" data-md-from="679" data-md-to="684"><code class="language-csharp">        <span class="tok-k">if</span> (methodName == <span class="tok-s">&quot;count&quot;</span>)
+<pre class="md-pre" data-inject="csharp-t-23-1" data-md-from="691" data-md-to="696"><code class="language-csharp">        <span class="tok-k">if</span> (methodName == <span class="tok-s">&quot;count&quot;</span>)
         {
             <span class="tok-k">return</span> items.<span class="tok-t">Count</span>;
         }</code></pre>
 <p class="md-marker" data-marker="csharp-t-23-2"><a href="../docs/samples/Cart.cs#Legacy/count">samples/Cart.cs#Legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-23-2" data-md-from="688" data-md-to="693"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Legacy</span>() <span class="tok-c">//count</span>
+<pre class="md-pre" data-inject="csharp-t-23-2" data-md-from="700" data-md-to="705"><code class="language-csharp">    <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Legacy</span>() <span class="tok-c">//count</span>
     {
         <span class="tok-t">System</span>.<span class="tok-t">Console</span>.<span class="tok-t">WriteLine</span>(items.<span class="tok-t">Count</span>);
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="696" data-md-to="696">C#: an envelope around a method</h2>
-<p data-md-from="698" data-md-to="698">A C# method taken out of its class reads as a fragment too, and the envelope is the type: <code>#Cart/^,Add,$</code> is the class header, the method with the attribute above it, and the closing brace.</p>
+<h2 data-md-from="708" data-md-to="708">C#: an envelope around a method</h2>
+<p data-md-from="710" data-md-to="710">A C# method taken out of its class reads as a fragment too, and the envelope is the type: <code>#Cart/^,Add,$</code> is the class header, the method with the attribute above it, and the closing brace.</p>
 <p class="md-marker" data-marker="csharp-t-24-1"><a href="../docs/samples/Cart.cs#Cart/^,Add,$">samples/Cart.cs#Cart/^,Add,$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-24-1" data-md-from="702" data-md-to="710"><code class="language-csharp"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span>
+<pre class="md-pre" data-inject="csharp-t-24-1" data-md-from="714" data-md-to="722"><code class="language-csharp"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span>
 {
     <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
     {
@@ -433,7 +435,7 @@ body {
     }
 }</code></pre>
 <p class="md-marker" data-marker="csharp-t-24-2"><a href="../docs/samples/Cart.cs#Cart/^,Cart/Add,Cart/$">samples/Cart.cs#Cart/^,Cart/Add,Cart/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="csharp-t-24-2" data-md-from="714" data-md-to="722"><code class="language-csharp"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span>
+<pre class="md-pre" data-inject="csharp-t-24-2" data-md-from="726" data-md-to="734"><code class="language-csharp"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span>
 {
     <span class="tok-k">public</span> <span class="tok-k">void</span> <span class="tok-t">Add</span>(<span class="tok-k">string</span> item)
     {

@@ -370,10 +370,10 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="236" data-md-to="236">Java: a path into the file</h2>
-<p data-md-from="238" data-md-to="238">A path is how a reference descends: <code>#Inventory/Item</code> is the <code>Item</code> class nested in <code>Inventory</code>, and the segments before the last are scopes to search while only the last one selects. The overview shows the longer form, <code>Inventory/Item/render</code>, which is a method of that nested class.</p>
+<h2 data-md-from="238" data-md-to="238">Java: a path into the file</h2>
+<p data-md-from="240" data-md-to="240">A path is how a reference descends: <code>#Inventory/Item</code> is the <code>Item</code> class nested in <code>Inventory</code>, and the segments before the last are scopes to search while only the last one selects. The overview shows the longer form, <code>Inventory/Item/render</code>, which is a method of that nested class.</p>
 <p class="md-marker" data-marker="java-t-8-1"><a href="../docs/samples/Inventory.java#Inventory/Item">samples/Inventory.java#Inventory/Item</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="java-t-8-1" data-md-from="242" data-md-to="257"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-k">static</span> <span class="tok-k">class</span> <span class="tok-t">Item</span> {
+<pre class="md-pre" data-inject="java-t-8-1" data-md-from="244" data-md-to="259"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-k">static</span> <span class="tok-k">class</span> <span class="tok-t">Item</span> {
         <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-t">String</span> name;
         <span class="tok-k">private</span> <span class="tok-k">final</span> <span class="tok-k">int</span> quantity;
 
@@ -389,10 +389,10 @@ body {
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="259" data-md-to="259">Java: line numbers, and several pieces at once</h2>
-<p data-md-from="261" data-md-to="261">A reference may name lines instead of a block: <code>#L8-L14</code> is a range, and <code>#L7,toString/++,L50</code> mixes a line, a declaration and a line — injected in the order they were written.</p>
+<h2 data-md-from="261" data-md-to="261">Java: line numbers, and several pieces at once</h2>
+<p data-md-from="263" data-md-to="263">A reference may name lines instead of a block: <code>#L8-L14</code> is a range, and <code>#L7,toString/++,L50</code> mixes a line, a declaration and a line — injected in the order they were written.</p>
 <p class="md-marker" data-marker="java-t-9-1"><a href="../docs/samples/Inventory.java#L8-L14">samples/Inventory.java#L8-L14</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="java-t-9-1" data-md-from="265" data-md-to="273"><code class="language-java">
+<pre class="md-pre" data-inject="java-t-9-1" data-md-from="267" data-md-to="275"><code class="language-java">
     <span class="tok-c">// The catalog is a region directive: the directive lines are never injected.</span>
     <span class="tok-c">// #region catalog</span>
     <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
@@ -400,7 +400,7 @@ body {
     <span class="tok-c">// #endregion</span>
 </code></pre>
 <p class="md-marker" data-marker="java-t-9-2"><a href="../docs/samples/Inventory.java#L7,toString/++,L50">samples/Inventory.java#L7,toString/++,L50</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="java-t-9-2" data-md-from="277" data-md-to="285"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
+<pre class="md-pre" data-inject="java-t-9-2" data-md-from="279" data-md-to="287"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
     <span class="tok-c">/** Summarise the inventory. */</span>
     <span class="tok-a">@Deprecated</span>
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
@@ -409,24 +409,24 @@ body {
             <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="288" data-md-to="288">Java: an envelope around a member</h2>
-<p data-md-from="290" data-md-to="290">A method copied out of a class reads as a fragment — indented under nothing, with no sign of the type it belongs to. An <strong>envelope</strong> is that type's own first and last lines, taken verbatim around the member: <code>^</code> is the head (the declaration line through the line its body opens on) and <code>$</code> is the tail (the line the block ends on). The parent is named once, on either mark, and everything between them is read inside it — so <code>#Inventory/^,toString,$</code> is the class's opening line, the whole <code>toString</code> method, and the class's closing brace.</p>
-<p data-md-from="292" data-md-to="292">The long form says the same thing with the parent on every selector, and takes byte for byte the same text.</p>
+<h2 data-md-from="290" data-md-to="290">Java: an envelope around a member</h2>
+<p data-md-from="292" data-md-to="292">A method copied out of a class reads as a fragment — indented under nothing, with no sign of the type it belongs to. An <strong>envelope</strong> is that type's own first and last lines, taken verbatim around the member: <code>^</code> is the head (the declaration line through the line its body opens on) and <code>$</code> is the tail (the line the block ends on). The parent is named once, on either mark, and everything between them is read inside it — so <code>#Inventory/^,toString,$</code> is the class's opening line, the whole <code>toString</code> method, and the class's closing brace.</p>
+<p data-md-from="294" data-md-to="294">The long form says the same thing with the parent on every selector, and takes byte for byte the same text.</p>
 <p class="md-marker" data-marker="java-t-10-1"><a href="../docs/samples/Inventory.java#Inventory/^,toString,$">samples/Inventory.java#Inventory/^,toString,$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="java-t-10-1" data-md-from="296" data-md-to="302"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
+<pre class="md-pre" data-inject="java-t-10-1" data-md-from="298" data-md-to="304"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }
 }</code></pre>
 <p class="md-marker" data-marker="java-t-10-2"><a href="../docs/samples/Inventory.java#Inventory/^,Inventory/toString,Inventory/$">samples/Inventory.java#Inventory/^,Inventory/toString,Inventory/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="java-t-10-2" data-md-from="306" data-md-to="312"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
+<pre class="md-pre" data-inject="java-t-10-2" data-md-from="308" data-md-to="314"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }
 }</code></pre>
-<p data-md-from="314" data-md-to="314">The marks compose with the rest of the grammar: a modifier selects less of the member, and a line range may take its place.</p>
+<p data-md-from="316" data-md-to="316">The marks compose with the rest of the grammar: a modifier selects less of the member, and a line range may take its place.</p>
 <p class="md-marker" data-marker="java-t-10-3"><a href="../docs/samples/Inventory.java#Inventory/^,toString/-,Inventory/$">samples/Inventory.java#Inventory/^,toString/-,Inventory/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="java-t-10-3" data-md-from="318" data-md-to="322"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
+<pre class="md-pre" data-inject="java-t-10-3" data-md-from="320" data-md-to="324"><code class="language-java"><span class="tok-k">public</span> <span class="tok-k">class</span> <span class="tok-t">Inventory</span> {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
 }</code></pre>
 </section>

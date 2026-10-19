@@ -103,8 +103,11 @@ through with live examples.
 One rule covers every type no other rule claims: source code, `.md`, `.txt`,
 anything. An explicit `#region <name>` directive always wins, and a block may
 instead be named by a comment at its opening brace — `{//name` — which the
-[regions guide](./doc/usage.md#regions) describes. When the file has
-none, the name is looked for as a **declaration** — a method, constructor,
+[regions guide](./doc/usage.md#regions) describes. A region is injected **with
+its directive lines** — the opening `#region <name>` through `#endregion` —
+just as a declaration comes with its signature; `#name/-` gives only the body
+between them. When the file has none, the name is looked for as a
+**declaration** — a method, constructor,
 function or class-like declaration (`class`, `interface`, `enum`, `record`,
 `struct`, `trait`, `object`), nested or not, and an `enum`'s constants are
 declarations too (`#OrgFeature/CALL`). The declaration *is* the region, so code
@@ -126,7 +129,8 @@ A name may contain `-` (`item-list`, `update-document-test`) — only a whole
 segment is a modifier — and `+` never occurs in a name at all, so an old
 `#toString++` is an error whose message says to write `#toString/++`.
 
-A declaration is injected verbatim, indentation and all. Region names must be
+A declaration is injected verbatim, indentation and all, and so is a region: the
+`#region`/`#endregion` lines are part of the sample. Region names must be
 unique, and so must the name a reference *selects* — two methods named `add` are
 an error (`"add" is declared 2 times; names must be unique`), exactly as two
 `#region add`s are. A path that names the holder is how you say which one:
@@ -306,26 +310,26 @@ any of them produced.
 Marker paths resolve relative to the directory holding each document, unless
 `--root` says otherwise.
 
-| Option                     | Meaning                                                                           |
-| -------------------------- | --------------------------------------------------------------------------------- |
-| `-c`, `--check`            | Write nothing; exit `1` if any block is stale                                     |
-| `-n`, `--dry-run`          | Write nothing; report what would change                                           |
+| Option                     | Meaning                                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `-c`, `--check`            | Write nothing; exit `1` if any block is stale                                                |
+| `-n`, `--dry-run`          | Write nothing; report what would change                                                      |
 | `-o`, `--out <file>`       | Write the processed document to `<file>` instead of updating the input in place; the input is never modified, and exactly one input file is required |
-| `-r`, `--root <dir>`       | Base directory for the paths the markers name (default: the document's directory) |
+| `-r`, `--root <dir>`       | Base directory for the paths the markers name (default: the document's directory)            |
 | `-g`, `--gitignore <file>` | Skip markers whose target file is ignored by this `.gitignore` file (default: the walk-up search above) |
-| `--no-gitignore`           | Do not apply any `.gitignore` rules                                               |
-| `-q`, `--quiet`            | Print only the closing summary                                                    |
-| `--allow-empty`            | Succeed when the document has no markers                                          |
+| `--no-gitignore`           | Do not apply any `.gitignore` rules                                                          |
+| `-q`, `--quiet`            | Print only the per-document summary line                                                     |
+| `--allow-empty`            | Accepted for compatibility; a document with no markers is already a success                  |
 | `-l`, `--lenient`          | Tolerate broken includes: report and leave as written any marker that cannot be resolved (see above) |
-| `-h`, `--help`             | Show help                                                                         |
-| `-V`, `--version`          | Show the version                                                                  |
+| `-h`, `--help`             | Show help                                                                                    |
+| `-V`, `--version`          | Show the version                                                                             |
 
 ### Exit codes
 
 | Code | Meaning                                     |
 | ---- | ------------------------------------------- |
 | `0`  | Every block is up to date, or was rewritten |
-| `1`  | A block is stale in `--check` mode, a document or directory is unreadable, a directory holds no Markdown, a marker is malformed, or (with `--lenient`) a marker could not be resolved |
+| `1`  | A block is stale in `--check` mode, a document or directory is unreadable, a directory holds no Markdown, a marker is malformed, a document's markers all resolved nothing, or (with `--lenient`) a marker could not be resolved |
 | `2`  | The command line itself was wrong           |
 
 ### Output
@@ -334,7 +338,21 @@ A difference is reported as `stale` under `--check` and `--dry-run` (nothing was
 written) and as `updated` on a normal run. A gitignored target is reported as
 `skipped` and never counts as stale. A marker that `--lenient` could not resolve
 is reported as `failed` — and, unlike `skipped`, it is an error: the run ends
-`1` and the marker's block is left as written. The sample output is in
+`1` and the marker's block is left as written.
+
+Every document ends with one line, even with `--quiet`:
+
+```text
+docs/GUIDE.md: 8 markers, 0 stale
+```
+
+The second count is `stale` under `--check`/`--dry-run` and `updated` when the
+document is written; `failed` and `skipped` are added when non-zero, and
+`--out` names both files. A document with **no markers** prints `0 markers, 0
+stale` and succeeds: there was nothing to resolve. If a document has markers but
+every one was skipped, the line says `N markers, 0 stale, N skipped` and the run
+exits `1`: there was something to resolve and none of it was resolved. The
+sample output is in
 [`doc/usage.md`](./doc/usage.md#running-the-cli).
 
 Recipes — npm scripts, a GitHub Actions step, several documents in one run, a
@@ -568,7 +586,9 @@ still has no runtime dependencies, and `files` does not ship `tools/`.
 - **Duplicated markers** in one document are an error, not a silent double
   injection.
 - **No markers at all** is an error, because it usually means the file argument
-  or the `--root` is wrong. Pass `--allow-empty` to allow it.
+  or the `--root` is wrong. A document whose markers were all skipped is also
+  an error: it resolved nothing. Pass `--allow-empty` only for a document that
+  has no markers at all.
 - **Only the block body changes — except the fence's language tag.** The
   marker line and everything outside the block are left untouched. If the
   opening fence has no language, the tool adds one from the file's extension

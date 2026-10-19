@@ -307,7 +307,7 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>JavaScript: regions, declarations and modifiers</h3>
 <ul class="targets">
-<li class="target-item" id="javascript-t-11-1"><button class="target" type="button" data-file="samples/cart.js" data-section="11" data-from="6" data-to="6" data-ranges="6-6" aria-pressed="false" aria-controls="javascript-t-11-1-desc" title="[samples/cart.js#catalog](./samples/cart.js#catalog)"><span class="chip-file">cart.js</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="javascript-t-11-1"><button class="target" type="button" data-file="samples/cart.js" data-section="11" data-from="5" data-to="7" data-ranges="5-7" aria-pressed="false" aria-controls="javascript-t-11-1-desc" title="[samples/cart.js#catalog](./samples/cart.js#catalog)"><span class="chip-file">cart.js</span><span class="chip-ref">#catalog</span></button></li>
 <li class="target-item" id="javascript-t-11-2"><button class="target" type="button" data-file="samples/cart.js" data-section="11" data-from="15" data-to="17" data-ranges="15-17" aria-pressed="false" aria-controls="javascript-t-11-2-desc" title="[samples/cart.js#render](./samples/cart.js#render)"><span class="chip-file">cart.js</span><span class="chip-ref">#render</span></button></li>
 <li class="target-item" id="javascript-t-11-3"><button class="target" type="button" data-file="samples/cart.js" data-section="11" data-from="16" data-to="16" data-ranges="16-16" aria-pressed="false" aria-controls="javascript-t-11-3-desc" title="[samples/cart.js#render/-](./samples/cart.js#render/-)"><span class="chip-file">cart.js</span><span class="chip-ref">#render/-</span></button></li>
 <li class="target-item" id="javascript-t-11-4"><button class="target" type="button" data-file="samples/cart.js" data-section="11" data-from="14" data-to="17" data-ranges="14-17" aria-pressed="false" aria-controls="javascript-t-11-4-desc" title="[samples/cart.js#render/+](./samples/cart.js#render/+)"><span class="chip-file">cart.js</span><span class="chip-ref">#render/+</span></button></li>
@@ -394,55 +394,57 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="324" data-md-to="324">JavaScript: regions, declarations and modifiers</h2>
-<p data-md-from="326" data-md-to="326">A class member is named directly: <code>#render/-</code> is the body without the signature, and <code>#render/+</code> brings the <code>@deprecated</code> annotation along. A static field is addressed by the region directive around it, because a field is a statement rather than a block.</p>
+<h2 data-md-from="326" data-md-to="326">JavaScript: regions, declarations and modifiers</h2>
+<p data-md-from="328" data-md-to="328">A class member is named directly: <code>#render/-</code> is the body without the signature, and <code>#render/+</code> brings the <code>@deprecated</code> annotation along. A static field is addressed by the region directive around it, because a field is a statement rather than a block.</p>
 <p class="md-marker" data-marker="javascript-t-11-1"><a href="../docs/samples/cart.js#catalog">samples/cart.js#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-11-1" data-md-from="330" data-md-to="332"><code class="language-javascript">    <span class="tok-k">static</span> catalog = [<span class="tok-s">'bolt'</span>, <span class="tok-s">'nut'</span>, <span class="tok-s">'washer'</span>];</code></pre>
+<pre class="md-pre" data-inject="javascript-t-11-1" data-md-from="332" data-md-to="336"><code class="language-javascript">    <span class="tok-c">// #region catalog</span>
+    <span class="tok-k">static</span> catalog = [<span class="tok-s">'bolt'</span>, <span class="tok-s">'nut'</span>, <span class="tok-s">'washer'</span>];
+    <span class="tok-c">// #endregion</span></code></pre>
 <p class="md-marker" data-marker="javascript-t-11-2"><a href="../docs/samples/cart.js#render">samples/cart.js#render</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-11-2" data-md-from="336" data-md-to="340"><code class="language-javascript">    render() {
+<pre class="md-pre" data-inject="javascript-t-11-2" data-md-from="340" data-md-to="344"><code class="language-javascript">    render() {
         <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;
     }</code></pre>
 <p class="md-marker" data-marker="javascript-t-11-3"><a href="../docs/samples/cart.js#render/-">samples/cart.js#render/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-11-3" data-md-from="344" data-md-to="346"><code class="language-javascript">        <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;</code></pre>
+<pre class="md-pre" data-inject="javascript-t-11-3" data-md-from="348" data-md-to="350"><code class="language-javascript">        <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;</code></pre>
 <p class="md-marker" data-marker="javascript-t-11-4"><a href="../docs/samples/cart.js#render/+">samples/cart.js#render/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-11-4" data-md-from="350" data-md-to="355"><code class="language-javascript">    <span class="tok-a">@deprecated</span>
+<pre class="md-pre" data-inject="javascript-t-11-4" data-md-from="354" data-md-to="359"><code class="language-javascript">    <span class="tok-a">@deprecated</span>
     render() {
         <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;
     }</code></pre>
 <p class="md-marker" data-marker="javascript-t-11-5"><a href="../docs/samples/cart.js#add">samples/cart.js#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-11-5" data-md-from="359" data-md-to="363"><code class="language-javascript">    add(item) {
+<pre class="md-pre" data-inject="javascript-t-11-5" data-md-from="363" data-md-to="367"><code class="language-javascript">    add(item) {
         <span class="tok-k">this</span>.items.push(item);
     }</code></pre>
 <p class="md-marker" data-marker="javascript-t-11-6"><a href="../docs/samples/cart.js#add/-">samples/cart.js#add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-11-6" data-md-from="367" data-md-to="369"><code class="language-javascript">        <span class="tok-k">this</span>.items.push(item);</code></pre>
+<pre class="md-pre" data-inject="javascript-t-11-6" data-md-from="371" data-md-to="373"><code class="language-javascript">        <span class="tok-k">this</span>.items.push(item);</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="371" data-md-to="371">JavaScript: a template, a condition and an anchor</h2>
-<p data-md-from="373" data-md-to="373">A path descends into the class, and a template literal that spans lines hides its braces from the matcher — the body of <code>render</code> is found *through* it. A condition literal names the <code>if</code> whose header tests it, and a trailing comment names the block it opens: <code>count/count</code> is the <code>count()</code> method that opens with <code>//count</code>.</p>
+<h2 data-md-from="375" data-md-to="375">JavaScript: a template, a condition and an anchor</h2>
+<p data-md-from="377" data-md-to="377">A path descends into the class, and a template literal that spans lines hides its braces from the matcher — the body of <code>render</code> is found *through* it. A condition literal names the <code>if</code> whose header tests it, and a trailing comment names the block it opens: <code>count/count</code> is the <code>count()</code> method that opens with <code>//count</code>.</p>
 <p class="md-marker" data-marker="javascript-t-12-1"><a href="../docs/samples/cart.js#Cart/render">samples/cart.js#Cart/render</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-12-1" data-md-from="377" data-md-to="381"><code class="language-javascript">    render() {
+<pre class="md-pre" data-inject="javascript-t-12-1" data-md-from="381" data-md-to="385"><code class="language-javascript">    render() {
         <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;
     }</code></pre>
 <p class="md-marker" data-marker="javascript-t-12-2"><a href="../docs/samples/cart.js#dispatch/count">samples/cart.js#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-12-2" data-md-from="385" data-md-to="389"><code class="language-javascript">        <span class="tok-k">if</span> (methodName == <span class="tok-s">&quot;count&quot;</span>) {
+<pre class="md-pre" data-inject="javascript-t-12-2" data-md-from="389" data-md-to="393"><code class="language-javascript">        <span class="tok-k">if</span> (methodName == <span class="tok-s">&quot;count&quot;</span>) {
             <span class="tok-k">return</span> <span class="tok-k">this</span>.items.length;
         }</code></pre>
 <p class="md-marker" data-marker="javascript-t-12-3"><a href="../docs/samples/cart.js#count/count">samples/cart.js#count/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-12-3" data-md-from="393" data-md-to="397"><code class="language-javascript">    count() { <span class="tok-c">//count</span>
+<pre class="md-pre" data-inject="javascript-t-12-3" data-md-from="397" data-md-to="401"><code class="language-javascript">    count() { <span class="tok-c">//count</span>
         <span class="tok-k">return</span> <span class="tok-k">this</span>.items.length;
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="400" data-md-to="400">JavaScript: an envelope around a member</h2>
-<p data-md-from="402" data-md-to="402">A method copied out of a class reads as a fragment — <code>render</code> alone is indented under nothing, and the template literal is the only hint of where it came from. An envelope takes the class's own first and last lines around it: <code>#Cart/^,render,$</code> is <code>export class Cart {</code>, the whole <code>render</code> method, and the closing brace, as three pieces.</p>
+<h2 data-md-from="404" data-md-to="404">JavaScript: an envelope around a member</h2>
+<p data-md-from="406" data-md-to="406">A method copied out of a class reads as a fragment — <code>render</code> alone is indented under nothing, and the template literal is the only hint of where it came from. An envelope takes the class's own first and last lines around it: <code>#Cart/^,render,$</code> is <code>export class Cart {</code>, the whole <code>render</code> method, and the closing brace, as three pieces.</p>
 <p class="md-marker" data-marker="javascript-t-13-1"><a href="../docs/samples/cart.js#Cart/^,render,$">samples/cart.js#Cart/^,render,$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-13-1" data-md-from="406" data-md-to="412"><code class="language-javascript"><span class="tok-k">export</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span> {
+<pre class="md-pre" data-inject="javascript-t-13-1" data-md-from="410" data-md-to="416"><code class="language-javascript"><span class="tok-k">export</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span> {
     render() {
         <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;
     }
 }</code></pre>
 <p class="md-marker" data-marker="javascript-t-13-2"><a href="../docs/samples/cart.js#Cart/^,Cart/render,Cart/$">samples/cart.js#Cart/^,Cart/render,Cart/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="javascript-t-13-2" data-md-from="416" data-md-to="422"><code class="language-javascript"><span class="tok-k">export</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span> {
+<pre class="md-pre" data-inject="javascript-t-13-2" data-md-from="420" data-md-to="426"><code class="language-javascript"><span class="tok-k">export</span> <span class="tok-k">class</span> <span class="tok-t">Cart</span> {
     render() {
         <span class="tok-k">return</span> <span class="tok-s">`cart (${this.items.length}): ${this.items.map((item) =&gt; `</span>{${item}}<span class="tok-s">`).join(', ')}`</span>;
     }

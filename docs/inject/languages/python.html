@@ -307,7 +307,7 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>Python: regions, defs and decorators</h3>
 <ul class="targets">
-<li class="target-item" id="python-t-19-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="11" data-to="11" data-ranges="11-11" aria-pressed="false" aria-controls="python-t-19-1-desc" title="[samples/Cart.py#catalog](./samples/Cart.py#catalog)"><span class="chip-file">Cart.py</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="python-t-19-1"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="10" data-to="12" data-ranges="10-12" aria-pressed="false" aria-controls="python-t-19-1-desc" title="[samples/Cart.py#catalog](./samples/Cart.py#catalog)"><span class="chip-file">Cart.py</span><span class="chip-ref">#catalog</span></button></li>
 <li class="target-item" id="python-t-19-2"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="18" data-to="19" data-ranges="18-19" aria-pressed="false" aria-controls="python-t-19-2-desc" title="[samples/Cart.py#add](./samples/Cart.py#add)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add</span></button></li>
 <li class="target-item" id="python-t-19-3"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="19" data-to="19" data-ranges="19-19" aria-pressed="false" aria-controls="python-t-19-3-desc" title="[samples/Cart.py#add/-](./samples/Cart.py#add/-)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add/-</span></button></li>
 <li class="target-item" id="python-t-19-4"><button class="target" type="button" data-file="samples/Cart.py" data-section="19" data-from="18" data-to="19" data-ranges="18-19" aria-pressed="false" aria-controls="python-t-19-4-desc" title="[samples/Cart.py#add/+](./samples/Cart.py#add/+)"><span class="chip-file">Cart.py</span><span class="chip-ref">#add/+</span></button></li>
@@ -379,39 +379,41 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="559" data-md-to="559">Python: regions, defs and decorators</h2>
-<p data-md-from="561" data-md-to="561">A method body is the indented block under its <code>def</code>, so the selection ends where the indentation ends, and the <code>@property</code> decorator above <code>catalog</code> is what the <code>+</code> modifier brings along. A class attribute is named by the region directive around it.</p>
+<h2 data-md-from="567" data-md-to="567">Python: regions, defs and decorators</h2>
+<p data-md-from="569" data-md-to="569">A method body is the indented block under its <code>def</code>, so the selection ends where the indentation ends, and the <code>@property</code> decorator above <code>catalog</code> is what the <code>+</code> modifier brings along. A class attribute is named by the region directive around it.</p>
 <p class="md-marker" data-marker="python-t-19-1"><a href="../docs/samples/Cart.py#catalog">samples/Cart.py#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-19-1" data-md-from="565" data-md-to="567"><code class="language-python">    <span class="tok-t">CATALOG</span> = [<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>]</code></pre>
+<pre class="md-pre" data-inject="python-t-19-1" data-md-from="573" data-md-to="577"><code class="language-python">    <span class="tok-c"># #region catalog</span>
+    <span class="tok-t">CATALOG</span> = [<span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span>]
+    <span class="tok-c"># #endregion</span></code></pre>
 <p class="md-marker" data-marker="python-t-19-2"><a href="../docs/samples/Cart.py#add">samples/Cart.py#add</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-19-2" data-md-from="571" data-md-to="574"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
+<pre class="md-pre" data-inject="python-t-19-2" data-md-from="581" data-md-to="584"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
         <span class="tok-k">self</span>.items.append(item)</code></pre>
 <p class="md-marker" data-marker="python-t-19-3"><a href="../docs/samples/Cart.py#add/-">samples/Cart.py#add/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-19-3" data-md-from="578" data-md-to="580"><code class="language-python">        <span class="tok-k">self</span>.items.append(item)</code></pre>
+<pre class="md-pre" data-inject="python-t-19-3" data-md-from="588" data-md-to="590"><code class="language-python">        <span class="tok-k">self</span>.items.append(item)</code></pre>
 <p class="md-marker" data-marker="python-t-19-4"><a href="../docs/samples/Cart.py#add/+">samples/Cart.py#add/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-19-4" data-md-from="584" data-md-to="587"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
+<pre class="md-pre" data-inject="python-t-19-4" data-md-from="594" data-md-to="597"><code class="language-python">    <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
         <span class="tok-k">self</span>.items.append(item)</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="589" data-md-to="589">Python: an indented condition and an anchor</h2>
-<p data-md-from="591" data-md-to="591">The triple-quoted docstring hides a whole <code>def decoy</code> from the matcher. Inside a method, a condition literal names the indented <code>if</code> it tests, and a trailing comment names the block it opens.</p>
+<h2 data-md-from="599" data-md-to="599">Python: an indented condition and an anchor</h2>
+<p data-md-from="601" data-md-to="601">The triple-quoted docstring hides a whole <code>def decoy</code> from the matcher. Inside a method, a condition literal names the indented <code>if</code> it tests, and a trailing comment names the block it opens.</p>
 <p class="md-marker" data-marker="python-t-20-1"><a href="../docs/samples/Cart.py#dispatch/count">samples/Cart.py#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-20-1" data-md-from="595" data-md-to="598"><code class="language-python">        <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span>:
+<pre class="md-pre" data-inject="python-t-20-1" data-md-from="605" data-md-to="608"><code class="language-python">        <span class="tok-k">if</span> method_name == <span class="tok-s">&quot;count&quot;</span>:
             <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</code></pre>
 <p class="md-marker" data-marker="python-t-20-2"><a href="../docs/samples/Cart.py#legacy/count">samples/Cart.py#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-20-2" data-md-from="602" data-md-to="605"><code class="language-python">    <span class="tok-k">def</span> legacy(<span class="tok-k">self</span>):  <span class="tok-c">#count</span>
+<pre class="md-pre" data-inject="python-t-20-2" data-md-from="612" data-md-to="615"><code class="language-python">    <span class="tok-k">def</span> legacy(<span class="tok-k">self</span>):  <span class="tok-c">#count</span>
         <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="608" data-md-to="608">Python: an envelope restores the indentation</h2>
-<p data-md-from="610" data-md-to="610">Indentation is meaning in Python, so a method taken out of its class is not valid code on its own. The envelope is the class line and the end of the block: <code>#Cart/^,add,$</code> puts <code>add</code> under <code>class Cart:</code> exactly as the file has it.</p>
+<h2 data-md-from="618" data-md-to="618">Python: an envelope restores the indentation</h2>
+<p data-md-from="620" data-md-to="620">Indentation is meaning in Python, so a method taken out of its class is not valid code on its own. The envelope is the class line and the end of the block: <code>#Cart/^,add,$</code> puts <code>add</code> under <code>class Cart:</code> exactly as the file has it.</p>
 <p class="md-marker" data-marker="python-t-21-1"><a href="../docs/samples/Cart.py#Cart/^,add,$">samples/Cart.py#Cart/^,add,$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-21-1" data-md-from="614" data-md-to="619"><code class="language-python"><span class="tok-k">class</span> <span class="tok-t">Cart</span>:
+<pre class="md-pre" data-inject="python-t-21-1" data-md-from="624" data-md-to="629"><code class="language-python"><span class="tok-k">class</span> <span class="tok-t">Cart</span>:
     <span class="tok-k">def</span> add(<span class="tok-k">self</span>, item):
         <span class="tok-k">self</span>.items.append(item)
         <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</code></pre>
 <p class="md-marker" data-marker="python-t-21-2"><a href="../docs/samples/Cart.py#Cart/^,add/-,Cart/$">samples/Cart.py#Cart/^,add/-,Cart/$</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="python-t-21-2" data-md-from="623" data-md-to="627"><code class="language-python"><span class="tok-k">class</span> <span class="tok-t">Cart</span>:
+<pre class="md-pre" data-inject="python-t-21-2" data-md-from="633" data-md-to="637"><code class="language-python"><span class="tok-k">class</span> <span class="tok-t">Cart</span>:
         <span class="tok-k">self</span>.items.append(item)
         <span class="tok-k">return</span> len(<span class="tok-k">self</span>.items)</code></pre>
 </section>

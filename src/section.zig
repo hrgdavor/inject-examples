@@ -2533,8 +2533,7 @@ const Build = struct {
             }
 
             if (matchStatementKeyword(mask_line)) |stmt| {
-                if (js.indexOfUnit(self.facts.mask[start..], '{')) |brace_offset| {
-                    const brace_pos = start + brace_offset;
+                if (statementBrace(self.facts.mask, start + stmt.index)) |brace_pos| {
                     const segments = try chainSegments(
                         alloc,
                         self.facts.mask,
@@ -2675,7 +2674,7 @@ const Build = struct {
             // are the block's own start and end markers, so `{//name` (or a
             // `//name` line just inside it) names it. A bare block with no
             // anchor is left to the existing line scan.
-            if (js.eql(js.trim(mask_line), &js.lit("{"))) {
+            if (js.startsWithBytes(js.trim(mask_line), "{")) {
                 const brace_at = start + (js.indexOf(mask_line, &js.lit("{")) orelse 0);
                 if (braceBody(self.facts.mask, self.facts.starts, brace_at)) |body| {
                     const block = try alloc.create(Block);
@@ -3297,6 +3296,27 @@ fn makeSegment(
 
 /// The segments of an if/else-if (or try/catch) chain opened on this line.
 /// Bare-`else` and `do … while` terminators are respected.
+/// The `{` that opens a statement's body, or null when the body is a single
+/// statement. The search starts at the statement's keyword and stops at the
+/// first top-level `;` or `{`, so a later bare block is never taken as this
+/// statement's body.
+fn statementBrace(mask: Str, from: usize) ?usize {
+    var depth: usize = 0;
+    var i = from;
+    while (i < mask.len) : (i += 1) {
+        const unit = mask[i];
+        if (unit == '(' or unit == '[') {
+            depth += 1;
+        } else if (unit == ')' or unit == ']') {
+            if (depth > 0) depth -= 1;
+        } else if (depth == 0) {
+            if (unit == '{') return i;
+            if (unit == ';') return null;
+        }
+    }
+    return null;
+}
+
 fn chainSegments(
     alloc: Allocator,
     mask: Str,
@@ -3521,7 +3541,7 @@ fn indentAnchor(
     if (isRegionWord(body)) return null;
     if (body.len == 0 or !js.isIdentStart(body[0])) return null;
     var at: usize = 1;
-    while (at < body.len and js.isIdentPart(body[at])) at += 1;
+    while (at < body.len and (js.isIdentPart(body[at]) or body[at] == '-')) at += 1;
     if (at != body.len) return null;
     return .{ .name = body, .line = lineOf(starts, found.from) };
 }
@@ -3554,7 +3574,7 @@ fn leadingAnchor(
     if (isRegionWord(body)) return null;
     if (body.len == 0 or !js.isIdentStart(body[0])) return null;
     var at: usize = 1;
-    while (at < body.len and js.isIdentPart(body[at])) at += 1;
+    while (at < body.len and (js.isIdentPart(body[at]) or body[at] == '-')) at += 1;
     if (at != body.len) return null;
     return .{ .name = body, .line = comment_line };
 }
@@ -4614,9 +4634,14 @@ fn selectorPart(
     var slice: LineSpan = undefined;
     var kind: PlanKind = undefined;
     if (final.region) |region| {
-        rendered = try renderSpan(alloc, facts.lines, region.start_line + 1, region.end_line - 1);
-        // The region's own span is the rendered slice's: the directive lines are
-        // not part of it, and the slice is exactly the lines between them.
+        // A region is the whole marked span: the opening directive through the
+        // closing one, like a declaration with its signature. `/-` is the body
+        // between the directives.
+        if (path.scope == .body) {
+            rendered = try renderSpan(alloc, facts.lines, region.start_line + 1, region.end_line - 1);
+        } else {
+            rendered = try renderSpan(alloc, facts.lines, region.start_line, region.end_line);
+        }
         slice = .{ .from = rendered.from, .to = rendered.to };
         kind = .region;
     } else {
@@ -5305,20 +5330,25 @@ test "every selection reports the lines it came from, regions included" {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    // The span is not an extra search for the text: it is the slice the text was
-    // made from, so a region reports the lines *between* its directives — the
-    // directive lines are not part of the selection — and a line range reports
-    // exactly what was asked for.
+    // The span is the source slice the text was made from: a region includes
+    // its opening and closing directives, and `/-` drops them for the body.
     const source = try js.utf8Decode(alloc, "line1\n// #region r\naaa\nbbb\n// #endregion\nline6");
 
     const region = try planFor(alloc, source, "r", "x.java");
-    try expectPlanText(alloc, "aaa\nbbb", region);
+    try expectPlanText(alloc, "// #region r\naaa\nbbb\n// #endregion", region);
     try testing.expectEqual(PlanKind.region, region.kind);
     try testing.expectEqual(@as(usize, 1), region.ranges.len);
-    try testing.expectEqual(@as(usize, 3), region.ranges[0].from);
-    try testing.expectEqual(@as(usize, 4), region.ranges[0].to);
-    try testing.expectEqual(@as(usize, 3), region.start_line);
-    try testing.expectEqual(@as(usize, 4), region.end_line);
+    try testing.expectEqual(@as(usize, 2), region.ranges[0].from);
+    try testing.expectEqual(@as(usize, 5), region.ranges[0].to);
+    try testing.expectEqual(@as(usize, 2), region.start_line);
+    try testing.expectEqual(@as(usize, 5), region.end_line);
+
+    {
+        const body = try planFor(alloc, source, "r/-", "x.java");
+        try expectPlanText(alloc, "aaa\nbbb", body);
+        try testing.expectEqual(@as(usize, 3), body.ranges[0].from);
+        try testing.expectEqual(@as(usize, 4), body.ranges[0].to);
+    }
 
     {
         const plan = try planFor(alloc, source, "L3-L4", "x.java");

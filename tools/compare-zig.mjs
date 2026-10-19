@@ -412,6 +412,17 @@ const SHORTHAND_JAVA = [
     '            tick();',
     '        }',
     '    }',
+    '',
+    '    public void hyphenated() {//item-list',
+    '        tick();',
+    '    }',
+    '',
+    '    public void guard(int n) {',
+    '        if (n == 0) return;',
+    '        {//guarded',
+    '            tick();',
+    '        }',
+    '    }',
     '}',
     '',
 ].join('\n');
@@ -864,6 +875,10 @@ const REFERENCE_CASES = [
     ['fixtures/Shorthand.java', 'handled/-'],
     ['fixtures/Shorthand.java', 'bare'],
     ['fixtures/Shorthand.java', 'bare/-'],
+    ['fixtures/Shorthand.java', 'item-list'],
+    ['fixtures/Shorthand.java', 'item-list/-'],
+    ['fixtures/Shorthand.java', 'guarded'],
+    ['fixtures/Shorthand.java', 'guarded/-'],
 ];
 
 

@@ -1395,8 +1395,8 @@ fn classMatches(interior: Str, unit: u16) bool {
 // module's public surface for them, kept spelling-for-spelling with the
 // JavaScript exports.
 
-/// `extractRegion`: the lines strictly between `#region <name>` and the next
-/// `#endregion`.
+/// `extractRegion`: the whole region from `#region <name>` through the matching
+/// `#endregion`, both directive lines included.
 pub fn extractRegion(alloc: Allocator, text: Str, name: Str, failure: *Failure) JsError![]u16 {
     const lf = try crlfToLf(alloc, text);
     const lines = try splitLines(alloc, lf);
@@ -1446,7 +1446,7 @@ pub fn extractRegion(alloc: Allocator, text: Str, name: Str, failure: *Failure) 
         }
     }
 
-    return joinLines(alloc, lines[starts.items[0] + 1 .. close]);
+    return joinLines(alloc, lines[starts.items[0] .. close + 1]);
 }
 
 /// The four readings a scope modifier asks for. `section.zig` has its own
@@ -2468,8 +2468,12 @@ pub const GateFailure = struct {
 /// What `jumpGate` answers for one whole document.
 pub const GateResult = struct {
     passed: bool,
-    /// The number of markers the document carries — what the summary counts.
+    /// The number of **jump references** the document carries — links with a
+    /// `#fragment`. A bare path is an injection marker, not a jump, and a `#`
+    /// with no reference names nothing; both are ignored here.
     checked: usize,
+    total: usize,
+    skipped: usize,
     failures: []const GateFailure,
 };
 
@@ -2493,32 +2497,36 @@ pub fn jumpGate(
     const result = try updateDocument(alloc, text, gate_options, failure);
 
     var failures = std.ArrayList(GateFailure).empty;
+    var checked: usize = 0;
+    var skipped: usize = 0;
     for (result.results) |entry| {
-        const row_failure = entry.failure orelse continue;
         const marker = entry.marker;
+        const reference = marker.region orelse continue;
+        if (reference.len == 0) continue;
+        checked += 1;
+        if (entry.skipped and entry.failure == null) skipped += 1;
+        const row_failure = entry.failure orelse continue;
         var code: ?Str = null;
         var message = row_failure;
         // The band, the selector and the scope come from the same diagnosis an
         // editor reads, so a report names them without parsing prose. A failure
         // that is not a reference at all has no band to report, and the layer's
         // own message stands.
-        if (marker.region) |reference| {
-            var read_failure = Failure{};
-            if (gate_options.read_file.read(alloc, try utf8Encode(alloc, marker.path), &read_failure)) |bytes| {
-                const source = try utf8Decode(alloc, bytes);
-                // `cli.mjs` passes no `lexerFor` to `jumpGate`, so the lexer is
-                // undefined: the built-in engine reads the file, whatever its
-                // type, and the file's own region rule is not consulted again.
-                const diagnosis = try diagnose(alloc, source, reference, null);
-                if (diagnosis.status != .ok) {
-                    code = diagnosis.code;
-                    message = diagnosis.message;
-                }
-            } else |err| switch (err) {
-                // Being unable to read the file *is* the failure; nothing to add.
-                error.Failed => {},
-                else => |other| return other,
+        var read_failure = Failure{};
+        if (gate_options.read_file.read(alloc, try utf8Encode(alloc, marker.path), &read_failure)) |bytes| {
+            const source = try utf8Decode(alloc, bytes);
+            // `cli.mjs` passes no `lexerFor` to `jumpGate`, so the lexer is
+            // undefined: the built-in engine reads the file, whatever its
+            // type, and the file's own region rule is not consulted again.
+            const diagnosis = try diagnose(alloc, source, reference, null);
+            if (diagnosis.status != .ok) {
+                code = diagnosis.code;
+                message = diagnosis.message;
             }
+        } else |err| switch (err) {
+            // Being unable to read the file *is* the failure; nothing to add.
+            error.Failed => {},
+            else => |other| return other,
         }
         try failures.append(alloc, .{
             .marker = marker.raw,
@@ -2531,7 +2539,9 @@ pub fn jumpGate(
 
     return .{
         .passed = failures.items.len == 0,
-        .checked = result.markers.len,
+        .checked = checked,
+        .total = checked,
+        .skipped = skipped,
         .failures = failures.items,
     };
 }
@@ -2645,14 +2655,14 @@ test "regionDirective accepts the common comment spellings" {
     _ = alloc;
 }
 
-test "extractRegion returns the lines between the directives, exclusive" {
+test "extractRegion returns the whole region, both directives included" {
     var context: TestContext = undefined;
     context.init();
     defer context.deinit();
 
     const text = try context.units("before\n#region table\na\nb\n#endregion\nafter");
     var failure = Failure{};
-    try expectText("a\nb", try extractRegion(context.alloc, text, try context.units("table"), &failure));
+    try expectText("#region table\na\nb\n#endregion", try extractRegion(context.alloc, text, try context.units("table"), &failure));
 }
 
 test "extractRegion handles CRLF and empty regions" {
@@ -2662,10 +2672,10 @@ test "extractRegion handles CRLF and empty regions" {
 
     var failure = Failure{};
     const crlf = try context.units("#region t\r\na\r\n#endregion");
-    try expectText("a", try extractRegion(context.alloc, crlf, try context.units("t"), &failure));
+    try expectText("#region t\na\n#endregion", try extractRegion(context.alloc, crlf, try context.units("t"), &failure));
 
     const empty = try context.units("#region t\n#endregion");
-    try expectText("", try extractRegion(context.alloc, empty, try context.units("t"), &failure));
+    try expectText("#region t\n#endregion", try extractRegion(context.alloc, empty, try context.units("t"), &failure));
 }
 
 test "extractRegion fails loudly on missing, ambiguous and unclosed regions" {
@@ -3073,7 +3083,7 @@ test "extractCodeRegion prefers an explicit region directive" {
     var failure = Failure{};
 
     const text = try context.units("// #region add\nthe region body\n// #endregion\n\nvoid add() { body(); }");
-    try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("add"), try context.units("x.java"), &failure));
+    try expectText("// #region add\nthe region body\n// #endregion", try extractCodeRegion(alloc, text, try context.units("add"), try context.units("x.java"), &failure));
     try expectText("the region body", try extractCodeRegion(alloc, text, try context.units("add/-"), try context.units("x.java"), &failure));
 }
 

@@ -63,7 +63,7 @@ The entire published package, verbatim:
 ```json
 {
   "name": "@hrg/inject-examples",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "description": "Keep Markdown examples in sync with the real files they show — inject file content, or one region of it, into the fenced block that follows a link.",
   "keywords": [
     "markdown",
@@ -116,7 +116,7 @@ The entire published package, verbatim:
     "access": "public"
   },
   "scripts": {
-    "prepublishOnly": "npm test",
+    "prepublishOnly": "node cli.mjs --quiet doc/usage.md && npm test",
     "test": "node --test test.mjs && node --test lib/jump.test.mjs && tsc --noEmit && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/profile-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/error-codes-zig.mjs --check && node tools/conformance-manifest.mjs --check && node tools/package-contents.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
     "lexical:vectors": "node tools/lexical-vectors.mjs",
@@ -195,6 +195,7 @@ This is the real code that decides whether a line is a marker, injected from
 [../index.mjs#parseMarker](../index.mjs#parseMarker)
 
 ```javascript
+// #region parseMarker
 /**
  * Read one line as an injection marker, or return null.
  *
@@ -241,6 +242,7 @@ export function parseMarker(line) {
 
     return { raw: line.trim(), path: relativePath, reference: fragment };
 }
+// #endregion
 ```
 
 ## Regions
@@ -252,9 +254,11 @@ directives and the marker names the region. The next block is one region of
 [../test/fixtures/example.ts#table](../test/fixtures/example.ts#table)
 
 ```typescript
+// #region table
 | name | qty |
 | ---- | --- |
 | bolt | 12  |
+// #endregion
 ```
 
 The same file, a different region, through the same kind of marker — two
@@ -264,12 +268,17 @@ rule only forbids identical marker text:
 [../test/fixtures/example.ts#config](../test/fixtures/example.ts#config)
 
 ```typescript
+// #region config
 export const config = { retries: 3 };
+// #endregion
 ```
 
 Region directives come in the comment spellings a project actually uses —
 `//`, `#`, `--`, `;`, `%`, `'`, `REM`, `<!--` and `/* */` — and the comment
-prefix is stripped before the name is read. The rules:
+prefix is stripped before the name is read. A region is injected with its own
+directive lines by default — the opening `#region <name>` through
+`#endregion` — just as a declaration carries its signature; `#name/-` selects
+the body between them. The rules:
 
 - `#region <name>` opens a named region; `#endregion` closes it (a bare
   `#region` closes the unnamed one).
@@ -297,10 +306,12 @@ A block can also be named as a **region shorthand**: write the name at the
 opening brace (`{//name`, `{// name`) or on the first line inside the block
 (`//name`). The braces are the block's own start and end markers, so there is no
 `region` prefix and no ending comment; the block may be bare (`{ … }`) or carry a
-`while`, `if` or declaration prefix. The default selection is the block, starting
-at its opening line — so that prefix comes with it — and `/-` selects the body
-without that line (and without a next-line anchor line too). Whether you call it
-a region or a named block, the result is the same.
+`while`, `if` or declaration prefix. The default selection is the block, from
+its opening line through the matching closer — a one-line `{/*name*/ … }` block
+included — so that prefix comes with it; `/-` selects the body without the
+opening line (and without a next-line anchor line too). A region keeps its
+directives and a declaration keeps its signature the same way, so the three
+targets read alike.
 
 
 ## Region rules by file type
@@ -322,8 +333,9 @@ one selector is the ordinary case of a list of one.
 
 One rule covers every type no other rule claims — source code, `README.md`,
 `.txt`, anything. In a file that carries an explicit region directive,
-`#region <name>` opens and `#endregion` closes it and the lines strictly
-between them are injected, exactly as [Regions](#regions) describes.
+`#region <name>` opens and `#endregion` closes it, and the whole region from the
+opening directive through the closing one is injected — `/-` selects the body
+between them — exactly as [Regions](#regions) describes.
 
 When the file carries no such directive, the name is looked for as a
 **declaration**: a method, constructor, function, or class-like declaration
@@ -560,7 +572,7 @@ Top-level keys and a nested one, from `package.json`:
 ```json
 {
   "name": "@hrg/inject-examples",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "scripts": {
     "test": "node --test test.mjs && node --test lib/jump.test.mjs && tsc --noEmit && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/profile-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/error-codes-zig.mjs --check && node tools/conformance-manifest.mjs --check && node tools/package-contents.mjs --check"
   }
@@ -783,16 +795,30 @@ The options, as the tool's own `--help` documents them:
 - `--dry-run` — show what would change; write nothing.
 - `-o, --out <file>` — write the processed document to `<file>` instead of
   updating the input in place (below); exactly one input file is required.
-- `--allow-empty` — succeed when the document has no markers.
+- `--allow-empty` — succeed when the document contains no markers at all.
+  Markers that were all skipped still resolve nothing, and still fail.
 - `--lenient` — tolerate broken includes (below).
 - `-g <file>`, `--no-gitignore` — override or disable gitignore handling.
-- `-q` — print only the closing summary.
+- `-q` — print only the per-document summary line.
 
 Exit codes: `0` on success; `1` on a stale block, an unreadable file or
-directory, a directory that holds no Markdown, a malformed marker, or (with
-`--lenient`) a marker that could not be resolved; `2` on a usage error, such
-as a `--out` run given a directory or more than one file. With several
-targets the code is the worst of the run.
+directory, a directory that holds no Markdown, a malformed marker, a document
+whose markers all resolved nothing, or (with `--lenient`) a marker that could
+not be resolved; `2` on a usage error, such as a `--out` run given a directory
+or more than one file. With several targets the code is the worst of the run.
+
+Every document ends with one summary line, even with `-q`:
+
+```text
+doc/usage.md: 8 markers, 0 stale
+```
+
+The second count is `stale` under `--check`/`--dry-run` and `updated` when the
+document is written; `failed` and `skipped` are added when they are non-zero.
+`--out` names both files. A document with markers where every one was skipped
+prints `N markers, 0 stale, N skipped` and exits `1`: a run that checked
+nothing is not a passing run. `--allow-empty` only covers a document with no
+markers at all.
 
 The tool's own output for a clean run over this document:
 
@@ -800,7 +826,7 @@ The tool's own output for a clean run over this document:
 
 ```markdown
 $ npx @hrg/inject-examples doc/usage.md
-doc/usage.md updated.
+doc/usage.md: 27 markers, 0 updated
 ```
 
 A check run over a document with one stale block and one gitignored target:
@@ -810,6 +836,7 @@ $ inject-examples --check
 ok       [test/fixtures/before.md](./test/fixtures/before.md)
 stale    [test/fixtures/after.md](./test/fixtures/after.md)
 skipped  [node_modules/dep.js](./node_modules/dep.js)
+README.md: 3 markers, 1 stale, 1 skipped
 
 README.md is stale: 1 of 2 block(s) differ from their files.
 Run: inject-examples README.md
@@ -953,6 +980,7 @@ that drives the engine — a live marker into `test.mjs`, by its section:
 [../test.mjs#update-document-test](../test.mjs#update-document-test)
 
 ```javascript
+// #region update-document-test
 test('updateDocument rewrites every marker and is idempotent', () => {
     const read = reader(FILES);
     const first = updateDocument(DOC, { readFile: read });
@@ -969,6 +997,7 @@ test('updateDocument rewrites every marker and is idempotent', () => {
     assert.deepEqual(second.results.map((r) => r.changed), [false, false]);
     assert.equal(second.text, first.text);
 });
+// #endregion
 ```
 
 `updateDocument` returns `{ text, changed, markers, results }`: the rewritten

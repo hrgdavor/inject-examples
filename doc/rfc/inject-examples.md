@@ -222,6 +222,14 @@ run, never to the resolve:
 `cli.mjs` exposes both, and a document that fails does not stop the documents
 after it: the run exits with the worst code any of them produced.
 
+A document whose markers were all skipped has **resolved nothing**, so it exits
+`1` as well: `--allow-empty` only covers a document with no markers at all.
+Every document ends with one summary line (`docs/GUIDE.md: 8 markers, 0 stale`,
+or `updated`/`failed`/`skipped` as the mode and the document require), so a run
+that checked nothing is visible without reading every marker line. `--out`
+still writes and verifies its output for a document that has no markers, rather
+than returning before there is an output to check.
+
 ### 5.2 The bands, from this product's side
 
 The rows are [RFC 1 §5.2](section-mapping.md#52-the-band-table)'s, read from the
@@ -326,6 +334,13 @@ What it writes, precisely:
 
 ## 8. Change log
 
+- `0.1-draft` (this revision) — **a run that resolved nothing is not a
+  success.** A document whose markers were all skipped exits `1`; `--allow-empty`
+  only covers a document with no markers at all. Each document prints one
+  summary line (`<file>: N markers, M stale`, with `updated`, `failed` and
+  `skipped` as the mode and the document require), and `--out` still writes and
+  verifies its output for a marker-less document instead of returning before
+  there is an output to check. No resolution changes and no corpus row moves.
 - `0.1-draft` — first revision. Extracted from RFC 1's use case B (the former
   [§3.2](section-mapping.md)) and given what the split made possible: the
   document layer as one place ([§4](#4-the-document-layer)), the **strict gate

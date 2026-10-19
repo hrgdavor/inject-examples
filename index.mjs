@@ -80,7 +80,12 @@ export function regionDirective(line) {
 }
 
 /**
- * The lines strictly between `#region <name>` and the next `#endregion`.
+ * The lines from `#region <name>` through its matching `#endregion`, both
+ * directive lines included.
+ *
+ * A region is injected like a declaration with its signature: the markers are
+ * part of the sample. Use `#name/-` on a code reference for the body between
+ * them; this helper is the whole span.
  *
  * Throws when the region is missing, ambiguous, interleaved with another
  * region, or never closed.
@@ -116,7 +121,7 @@ export function extractRegion(text, name) {
         throw new Error(`"#region ${name}" is interleaved with "#region ${interleaved.name}"`);
     }
 
-    return lines.slice(starts[0] + 1, end).join('\n');
+    return lines.slice(starts[0], end + 1).join('\n');
 }
 
 // ---------------------------------------------------------------------------

@@ -354,13 +354,13 @@ body {
 <div class="md-scroll">
 <article class="md">
 <section class="md-section" data-md-section="1">
-<h2 data-md-from="1267" data-md-to="1267">TOML: tables and keys</h2>
-<p data-md-from="1269" data-md-to="1269"><code>server/port</code> renders <code>[server]</code> above the key, so the selection is valid TOML on its own. <code>#server</code> takes the whole table, and a value that spans lines — an array here — comes with its continuation lines.</p>
+<h2 data-md-from="1295" data-md-to="1295">TOML: tables and keys</h2>
+<p data-md-from="1297" data-md-to="1297"><code>server/port</code> renders <code>[server]</code> above the key, so the selection is valid TOML on its own. <code>#server</code> takes the whole table, and a value that spans lines — an array here — comes with its continuation lines.</p>
 <p class="md-marker" data-marker="toml-t-47-1"><a href="../docs/samples/app.toml#server/port">samples/app.toml#server/port</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="toml-t-47-1" data-md-from="1273" data-md-to="1276"><code class="language-toml">[server]
+<pre class="md-pre" data-inject="toml-t-47-1" data-md-from="1301" data-md-to="1304"><code class="language-toml">[server]
 port = <span class="tok-n">8080</span></code></pre>
 <p class="md-marker" data-marker="toml-t-47-2"><a href="../docs/samples/app.toml#server">samples/app.toml#server</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="toml-t-47-2" data-md-from="1280" data-md-to="1288"><code class="language-toml">[server]
+<pre class="md-pre" data-inject="toml-t-47-2" data-md-from="1308" data-md-to="1316"><code class="language-toml">[server]
 host = <span class="tok-s">&quot;localhost&quot;</span>
 port = <span class="tok-n">8080</span>
 hosts = [
@@ -368,17 +368,17 @@ hosts = [
   <span class="tok-s">&quot;b.example&quot;</span>,
 ]</code></pre>
 <p class="md-marker" data-marker="toml-t-47-3"><a href="../docs/samples/app.toml#server/hosts">samples/app.toml#server/hosts</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="toml-t-47-3" data-md-from="1292" data-md-to="1298"><code class="language-toml">[server]
+<pre class="md-pre" data-inject="toml-t-47-3" data-md-from="1320" data-md-to="1326"><code class="language-toml">[server]
 hosts = [
   <span class="tok-s">&quot;a.example&quot;</span>,
   <span class="tok-s">&quot;b.example&quot;</span>,
 ]</code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="1300" data-md-to="1300">TOML: nested tables</h2>
-<p data-md-from="1302" data-md-to="1302">A table may hold another table, and the path descends into it: <code>server/tls/enabled</code> renders both headers above the key.</p>
+<h2 data-md-from="1328" data-md-to="1328">TOML: nested tables</h2>
+<p data-md-from="1330" data-md-to="1330">A table may hold another table, and the path descends into it: <code>server/tls/enabled</code> renders both headers above the key.</p>
 <p class="md-marker" data-marker="toml-t-48-1"><a href="../docs/samples/app.toml#server/tls/enabled">samples/app.toml#server/tls/enabled</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="toml-t-48-1" data-md-from="1306" data-md-to="1309"><code class="language-toml">[server.tls]
+<pre class="md-pre" data-inject="toml-t-48-1" data-md-from="1334" data-md-to="1337"><code class="language-toml">[server.tls]
 enabled = true</code></pre>
 </section>
 </article>

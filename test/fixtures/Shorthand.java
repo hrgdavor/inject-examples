@@ -25,4 +25,19 @@ public class Shorthand {
             tick();
         }
     }
+
+    public void hyphenated() {//item-list
+        tick();
+    }
+
+    public void guard(int n) {
+        if (n == 0) return;
+        {//guarded
+            tick();
+        }
+    }
+
+    public void singleLine() {
+        {/*single*/ tick(); }
+    }
 }

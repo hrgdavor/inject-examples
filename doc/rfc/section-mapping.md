@@ -725,17 +725,17 @@ bug in the *port* by definition.
 
 | Corpus                                         | Rows | Asserts                                                                                            | Read by                  |
 | ---------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------- | ------------------------ |
-| `test/vectors/section-vectors.json`            | 320  | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust, Lua |
+| `test/vectors/section-vectors.json`            | 326  | the grammar and the resolution: canonical spelling, text, `startLine`/`endLine`, `ranges`, `kind`, error | JS, Zig, Java, Rust, Lua |
 | — of which grammar-only (`input: null`)        | 68   | canonical spelling and the thrown message; no file, no lexer                                       | do.                      |
-| — of which resolution                          | 252  | text and ranges against a fixture                                                                  | do.                      |
+| — of which resolution                          | 258  | text and ranges against a fixture                                                                  | do.                      |
 | — of which expect an **error**                 | 94   | the failure path: a missing name, an ambiguous name, a malformed selector, a range past the end, a second `#`, a misplaced modifier | do. |
 | `test/vectors/lexical-vectors.json` → `masks`  | 46   | `mask()` output for every lexer entry (plus the built-in engine), and the length/newline invariant | JS, Zig, Java, Rust, Lua |
 | `test/vectors/lexical-vectors.json` → `shapes` | 53   | `declarations(maskedLine)` field by field: `kind`, `name`, `headerFrom`, `body`, `end`, `line`     | JS, Zig, Java, Rust, Lua |
 | `test/vectors/manifest.json`                   | —    | the machine-readable map of the above (see §6.3)                                                   | tooling, humans          |
 
 The `kind` a resolution row reports, as a census of the suite:
-`declaration` 79, `property` 66, `multiple` 13, `anchor` 22, `lines` 6,
-`region` 6, `condition` 4, and `null` 124 (the error rows and the rows whose
+`declaration` 79, `property` 66, `multiple` 13, `anchor` 27, `lines` 6,
+`region` 7, `condition` 4, and `null` 124 (the error rows and the rows whose
 answer is a whole-file or body-less selection).
 
 A fourth suite is not in the corpus but is equally required: the **differential
@@ -1073,6 +1073,30 @@ through the fragment.
   **major**. A band-table change is a **minor** change to a use-case spec, and a
   **major** one only to the product that made it.
 - **Change log.**
+  - `0.9-rc` (this revision) — **a region includes its directives, and a
+    one-line block is a block.** A region selection is now the opening
+    `#region` through the closing `#endregion`, like a declaration with its
+    signature; `/-` selects the body, and `extractRegion` returns the same whole
+    span. The brace-block default already ran from its opening line through its
+    closer, so region, brace block and declaration now read alike. A bare block
+    whose opener and closer share one line (`{/*name*/ … }`) is recognized too.
+    The region rows and the one-line anchor row pin the change; the §6.1 counts
+    are refreshed.
+  - `0.9-rc` (this revision) — **a braceless statement does not own a later
+    block.** The statement scanner used to take the next `{` anywhere below an
+    `if (x) return;` as that statement's body, so a bare `{//name` block a few
+    lines later resolved as the whole `if` prefix plus the block. It now stops
+    at the first top-level `;` or `{` after the statement keyword: a `;` means
+    the body is one statement, a `{` is the body, and a later block is its own.
+    Two corpus rows on `test/fixtures/Shorthand.java` pin the reported shape; no
+    existing row moves, and the §6.1 counts are refreshed.
+  - `0.9-rc` (this revision) — **a hyphen is a name character in an anchor.** Now
+    that `-`, `+` and `++` are whole `/`-segments, a `-` can never be a modifier
+    suffix, so a comment anchor's name may contain one: `{//item-list`,
+    `//item-list`, `def f():  #item-list`. The anchor reader accepted only
+    `[A-Za-z_$][\w$]*` before, even though the grammar already read `item-list`
+    as a name; the two now agree. The corpus gains two rows and no existing row
+    moves; the §6.1 counts are refreshed.
   - `0.9-rc` (this revision) — **a block may be named without a region
     directive.** The block's braces already mark where it starts and ends, so a
     comment at the opening brace (`{//name`, `{// name`) or on the first line

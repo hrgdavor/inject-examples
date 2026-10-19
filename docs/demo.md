@@ -15,8 +15,10 @@ this works with any of the comment prefixes a language uses.
 [samples/Inventory.java#catalog](./samples/Inventory.java#catalog)
 
 ```java
+    // #region catalog
     /** The catalog, kept as an explicit region directive. */
     static final String[] CATALOG = { "bolt", "nut", "washer" };
+    // #endregion
 ```
 
 ## A declaration, and how much of it comes along
@@ -328,7 +330,9 @@ A class member is named directly: `#render/-` is the body without the signature,
 [samples/cart.js#catalog](./samples/cart.js#catalog)
 
 ```javascript
+    // #region catalog
     static catalog = ['bolt', 'nut', 'washer'];
+    // #endregion
 ```
 
 [samples/cart.js#render](./samples/cart.js#render)
@@ -428,7 +432,9 @@ A package-level variable is named by the region directive around it — a region
 [samples/Cart.go#catalog](./samples/Cart.go#catalog)
 
 ```go
+// #region catalog
 var Catalog = []string{"bolt", "nut", "washer"}
+// #endregion
 ```
 
 [samples/Cart.go#Add](./samples/Cart.go#Add)
@@ -473,8 +479,10 @@ A constant is named by the region directive around it, and `#Cart/add` reaches a
 [samples/Cart.rs#catalog](./samples/Cart.rs#catalog)
 
 ```rust
+// #region catalog
 /// The catalog the shop stocks.
 pub const CATALOG: [&str; 3] = ["bolt", "nut", "washer"];
+// #endregion
 ```
 
 [samples/Cart.rs#add](./samples/Cart.rs#add)
@@ -563,7 +571,9 @@ A method body is the indented block under its `def`, so the selection ends where
 [samples/Cart.py#catalog](./samples/Cart.py#catalog)
 
 ```python
+    # #region catalog
     CATALOG = ["bolt", "nut", "washer"]
+    # #endregion
 ```
 
 [samples/Cart.py#add](./samples/Cart.py#add)
@@ -633,7 +643,9 @@ A static array is named by its region directive, and a method by its name: `Add/
 [samples/Cart.cs#catalog](./samples/Cart.cs#catalog)
 
 ```csharp
+    // #region catalog
     private static readonly string[] Catalog = { "bolt", "nut", "washer" };
+    // #endregion
 ```
 
 [samples/Cart.cs#Add](./samples/Cart.cs#Add)
@@ -728,7 +740,9 @@ A nested block comment swallows the decoy beside it and a raw string is text wit
 [samples/Cart.kt#catalog](./samples/Cart.kt#catalog)
 
 ```kotlin
+    // #region catalog
     val catalog = listOf("bolt", "nut", "washer")
+    // #endregion
 ```
 
 [samples/Cart.kt#add](./samples/Cart.kt#add)
@@ -806,7 +820,9 @@ A class constant is named by its region directive. The heredoc body inside `add`
 [samples/Cart.php#catalog](./samples/Cart.php#catalog)
 
 ```php
+    // #region catalog
     public const CATALOG = ['bolt', 'nut', 'washer'];
+    // #endregion
 ```
 
 [samples/Cart.php#add](./samples/Cart.php#add)
@@ -901,7 +917,9 @@ class Cart
 [samples/Cart.rb#catalog](./samples/Cart.rb#catalog)
 
 ```ruby
+  # #region catalog
   CATALOG = %w[bolt nut washer].freeze
+  # #endregion
 ```
 
 [samples/Cart.rb#add!](./samples/Cart.rb#add!)
@@ -977,18 +995,22 @@ A shell script has no members to name, so regions are how its settings and its h
 [samples/run.sh#config](./samples/run.sh#config)
 
 ```bash
+# #region config
 # A shell script has no members to name, so a region is how its settings stay
 # addressable — and the directive lines are never injected.
 CATALOG="bolt nut washer"
 HOST="localhost"
+# #endregion
 ```
 
 [samples/run.sh#count](./samples/run.sh#count)
 
 ```bash
+# #region count
 count() {
 	echo "$CATALOG" | wc -w
 }
+# #endregion
 ```
 
 [samples/run.sh#deploy](./samples/run.sh#deploy)
@@ -1030,7 +1052,9 @@ VB declares with capitalised keywords and closes every block with a keyword line
 [samples/Form.vb#catalog](./samples/Form.vb#catalog)
 
 ```vb
+    ' #region catalog
     Private Shared ReadOnly CatalogList As String() = {"bolt", "nut", "washer"}
+    ' #endregion
 ```
 
 [samples/Form.vb#Add](./samples/Form.vb#Add)
@@ -1106,9 +1130,11 @@ A binding is `add x y = x + y`, and the `add ::` line above it is its annotation
 [samples/Main.hs#catalog](./samples/Main.hs#catalog)
 
 ```haskell
+-- #region catalog
 catalog :: [String]
 catalog = ["bolt", "nut", "washer"]
 
+-- #endregion
 ```
 
 [samples/Main.hs#add](./samples/Main.hs#add)
@@ -1154,7 +1180,9 @@ A `const` array is named by its region directive, and `#target` names a function
 [samples/Nesting.zig#catalog](./samples/Nesting.zig#catalog)
 
 ```zig
+// #region catalog
 const catalog = [_][]const u8{ "bolt", "nut", "washer" };
+// #endregion
 ```
 
 [samples/Nesting.zig#target](./samples/Nesting.zig#target)

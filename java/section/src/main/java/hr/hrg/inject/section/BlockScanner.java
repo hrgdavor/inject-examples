@@ -317,7 +317,7 @@ public final class BlockScanner {
     private static final Pattern CALL = Pattern.compile("(^|[^\\w$.])([A-Za-z_$][\\w$]*)\\s*\\(");
     private static final Pattern FUNC_PREFIX = Pattern.compile("^func\\s*\\([^)]*\\)\\s*");
     private static final Pattern FUNCTION_WORD = Pattern.compile("^function\\b");
-    private static final Pattern ANCHOR_NAME = Pattern.compile("^([A-Za-z_$][\\w$]*)$");
+    private static final Pattern ANCHOR_NAME = Pattern.compile("^([A-Za-z_$][\\w$-]*)$");
     private static final Pattern IS_REGION_LINE = Pattern.compile("^(#?)(region|endregion)\\b",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern QUOTED_NAME = Pattern.compile("^\\s*([A-Za-z_]+)");
@@ -874,7 +874,7 @@ public final class BlockScanner {
 
             Matcher statement = STATEMENT_KEYWORD.matcher(maskedLine);
             if (statement.find()) {
-                int bracePos = lex.mask.indexOf('{', start);
+                int bracePos = statementBrace(lex.mask, start + statement.start());
                 if (bracePos != -1) {
                     List<Segment> segments =
                             chainSegments(lex.mask, lex.starts, i, statement.group(1), bracePos,
@@ -992,7 +992,7 @@ public final class BlockScanner {
             // A bare braced block that carries a name is a section: its braces are the block's own start
             // and end markers, so `{//name` (or a `//name` line just inside it) names it. A bare block
             // with no anchor is left to the existing line scan.
-            if ("{".equals(maskedLine.trim())) {
+            if (maskedLine.trim().startsWith("{")) {
                 Span body = braceBody(lex.mask, lex.starts, start + maskedLine.indexOf('{'));
                 if (body != null) {
                     Block block = new Block("statement", null, i);
@@ -2040,6 +2040,33 @@ public final class BlockScanner {
     }
 
     /** The segments of an if/else-if (or try/catch) chain opened on this line. */
+    /**
+     * The {@code &#123;} that opens a statement's body, or {@code -1} when the body is a single
+     * statement. The search starts at the statement's keyword and stops at the first top-level
+     * {@code ;} or {@code &#123;}, so a later bare block is never taken as this statement's body.
+     */
+    private static int statementBrace(String mask, int from) {
+        int depth = 0;
+        for (int i = from; i < mask.length(); i++) {
+            char c = mask.charAt(i);
+            if (c == '(' || c == '[') {
+                depth++;
+            } else if (c == ')' || c == ']') {
+                if (depth > 0) {
+                    depth--;
+                }
+            } else if (depth == 0) {
+                if (c == '{') {
+                    return i;
+                }
+                if (c == ';') {
+                    return -1;
+                }
+            }
+        }
+        return -1;
+    }
+
     private static List<Segment> chainSegments(String mask, int[] starts, int headerLine,
                                               String keyword, int bracePos, int keywordOffset) {
         List<Segment> segments = new ArrayList<>();

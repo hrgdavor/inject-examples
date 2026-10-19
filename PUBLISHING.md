@@ -2,11 +2,11 @@
 
 Two different things ship from here, on two different routes:
 
-| What | Route |
-| --- | --- |
-| `@hrg/inject-examples` — the CLI and `lib/section.mjs` | `npm publish` |
-| `hr.hrg.inject:inject-examples` — the Java matcher, in [`java/section`](java/section) | Maven Central, via the Central Portal |
-| The Zig binary | a `v*` tag builds it in `.github/workflows/release.yml` and attaches it to a GitHub release |
+| What                                                                                  | Route                                                                                       |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `@hrg/inject-examples` — the CLI and `lib/section.mjs`                                | `npm publish`                                                                               |
+| `hr.hrg.inject:inject-examples` — the Java matcher, in [`java/section`](java/section) | Maven Central, via the Central Portal                                                       |
+| The Zig binary                                                                        | a `v*` tag builds it in `.github/workflows/release.yml` and attaches it to a GitHub release |
 
 This document collects the **caveats** — the things that make a Maven release fail *quietly* — so the
 next artifact published from here does not rediscover them. The module-specific steps are in
@@ -77,9 +77,23 @@ note are in [`java/section/PUBLISHING.md`](java/section/PUBLISHING.md).
 ## Releasing the npm package
 
 ```sh
-npm test        # the suite, both corpus gates, and the package-contents gate
-npm publish     # `access: public` is in publishConfig
+npm publish            # `access: public` is in publishConfig; prepublishOnly syncs the doc and runs npm test
 ```
+
+Or, to check first:
+
+```sh
+node cli.mjs --quiet doc/usage.md   # the doc rebuilds its own injected block
+npm test                            # the suite, both corpus gates, and the package-contents gate
+npm publish
+```
+
+**A version bump makes `doc/usage.md` stale on purpose.** Its two live markers show the real
+`package.json`, so `npm test` (through the documentation-sync test) fails until the doc is rewritten.
+There is no separate version script: the tool rebuilds its own block with
+`node cli.mjs --quiet doc/usage.md`, and `prepublishOnly` runs exactly that before `npm test`. `npm
+publish` is therefore self-healing; `npm test` on its own is a check, not a fix, and after a manual
+bump it stays red until the doc is run through the CLI.
 
 **`tools/package-contents.mjs` is the gate that matters here**, and `npm test` runs it. It asserts that
 every `exports` subpath exists *and* is covered by `files`, and that every relative import reachable

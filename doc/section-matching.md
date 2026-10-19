@@ -210,7 +210,9 @@ A region directive is a *comment* in the language's own spelling, so the `#` of
 language writes — `// #region add`, `# #region add`, `' #region add`,
 `-- #region add`, `; #region add`, `<!-- #region add -->` or `/* #region add */`.
 A line that is not a comment takes the bare `#region` spelling only, so prose that
-says `region add` is prose.
+says `region add` is prose. A region is selected **with its directives** — the
+opening `#region` through the closing `#endregion`, like a declaration with its
+signature — and `/-` selects the body between them.
 
 A block can also be named **without** a region directive. Its braces already mark
 where it starts and ends, so it needs no `#region` prefix and no `#endregion` —
@@ -241,10 +243,14 @@ the same naming; whitespace after the brace or after the `//` does not matter.
 The block may be bare (`{ … }`) or carry a `while`, `if` or declaration prefix.
 This is a **shorthand for a region**, and it is answered by the comment anchor
 (matcher 6): whether you call the result a region or a named block, the answer is
-the same — the block. The default selection starts at the block's opening line,
-so a prefix on that line is included; `/-` selects the body without it (and,
-when the comment is on its own line, without that line too). The comment must be
-the first thing in the block, the name is one identifier, and a `// #region` line
+the same — the block. The default selection runs from the block's opening line
+through the matching closer, so a prefix on that line is included; `/-` selects
+the body without them (and, when the comment is on its own line, without that
+line too). A one-line block with a block comment (`{/*name*/ … }`) is included.
+A region keeps its directives and a declaration its signature the same way, so
+the three targets read alike. The comment must be
+the first thing in the block, the name is one token (letters, digits, `_`, `$`
+and `-`), and a `// #region` line
 is not a name.
 
 Rules 1, 2 and 4 are the subject of [Paths and scopes](#paths-and-scopes); rule
@@ -388,13 +394,13 @@ Within one scope the matchers below are tried in this order; the first that
 matches ends the lookup *for that scope*. In a single-segment reference that
 also ends the whole search.
 
-| #   | Matcher                    | What it finds                                                                                    | Selects                                                    |
-| --- | -------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| 1   | **Region directive**       | `#region <name>` … `#endregion` whose enclosing block is this scope (the whole file for a top-level region) | the lines strictly between the directives       |
-| 2   | **Class-like declaration** | `class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`, `union` named `<name>` in this scope | the declaration, or the modified part             |
-| 3   | **Method / function**      | a named method, constructor, function or arrow-valued property in this scope **that has a body** | the declaration, or the modified part                      |
+| #   | Matcher                    | What it finds                                                                                    | Selects                                                             |
+| --- | -------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| 1   | **Region directive**       | `#region <name>` … `#endregion` whose enclosing block is this scope (the whole file for a top-level region) | the region, both directives included; `/-` is the body between them |
+| 2   | **Class-like declaration** | `class`, `interface`, `enum`, `record`, `struct`, `trait`, `object`, `union` named `<name>` in this scope | the declaration, or the modified part                      |
+| 3   | **Method / function**      | a named method, constructor, function or arrow-valued property in this scope **that has a body** | the declaration, or the modified part                               |
 | 4   | **Property**               | a variable named `<name>` — a field, a constant, or one a block or a signature declares (`private int getUsers = 0;`, `int count;`, `int first = 1, second = 2;`, `String title` in `void render(String title)`, an enum's `CALL,`) | the whole statement, or the text that declares a parameter |
-| 5   | **Condition literal**      | a statement block **in this scope** whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace          |
+| 5   | **Condition literal**      | a statement block **in this scope** whose header line carries `"<name>"` (double-quoted, exact bytes) | the block, header line through closing brace                   |
 | 6   | **Comment anchor**         | a braced block **in this scope** whose first non-blank line is `//<name>` or `/*<name>*/`, or whose opening brace is followed by that comment on the same line | the block, anchor line through closing brace |
 
 A class-like name beats a same-named constructor. Body-less members (interface
@@ -544,8 +550,10 @@ Modifier semantics per match kind:
   is the language's to say through its lexer (see
   [Tokenizers](#tokenizers)): an `@Decorator` or `#[attribute]` by default, a
   Haskell `name ::` type signature when that lexer supplies the test.
-- **Region directive** — a region is already exactly its body, so the modifier is
-  **ignored**: `add/+` and `add` inject the same lines.
+- **Region directive** — no modifier takes the whole region, the opening
+  directive through the closing one; `-` takes the body between them, and `+`/
+  `++` behave like no modifier: `add`, `add/+` and `add/++` inject the same
+  lines, `add/-` the body.
 - **Condition literal, comment anchor** — the block is the unit. No modifier (or
   `+`) selects the block from its first line through its closing brace, where
   that first line is the anchor comment (for a comment anchor) or the statement
@@ -673,7 +681,7 @@ selector, it is that selector as written (`L40-`), not the whole reference:
 A missing, duplicate or unclosed `#region`/`#endregion` directive is reported by
 the region directive itself (see `extractRegion`) and is not part of this
 catalogue. The brace naming has no closing directive: a block whose comment is
-missing, or whose name is not one identifier, simply has no anchor, so a
+missing, or whose name is not one such token, simply has no anchor, so a
 reference to it is `no "#region <name>" found, and no section named "<name>"`.
 
 There are **no warnings** in this grammar. Every message above is an error, and a

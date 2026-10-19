@@ -51,7 +51,7 @@ import {
     updateDocument,
 } from './index.mjs';
 
-import { main, parseArgs, UsageError } from './cli.mjs';
+import { documentSummary, gateSummary, main, parseArgs, UsageError } from './cli.mjs';
 
 import { EXTENSIONS, lexerFor, LEXERS } from './src/js/scanner/lexers.js';
 import { lexerJS, scanJS, visitJS } from './src/js/scanner/scanJS.js';
@@ -111,15 +111,15 @@ test('regionDirective ignores prose and unknown words', () => {
 // extractRegion
 // ---------------------------------------------------------------------------
 
-test('extractRegion returns the lines between the directives, exclusive', () => {
+test('extractRegion returns the whole region, both directives included', () => {
     const text = ['before', '#region table', 'a', 'b', '#endregion', 'after'].join('\n');
-    assert.equal(extractRegion(text, 'table'), 'a\nb');
+    assert.equal(extractRegion(text, 'table'), '#region table\na\nb\n#endregion');
 });
 
 test('extractRegion handles CRLF and empty regions', () => {
     const crlf = ['#region t', 'a', '#endregion'].join('\r\n');
-    assert.equal(extractRegion(crlf, 't'), 'a');
-    assert.equal(extractRegion('#region t\n#endregion', 't'), '');
+    assert.equal(extractRegion(crlf, 't'), '#region t\na\n#endregion');
+    assert.equal(extractRegion('#region t\n#endregion', 't'), '#region t\n#endregion');
 });
 
 test('extractRegion fails loudly on missing, ambiguous and unclosed regions', () => {
@@ -366,8 +366,10 @@ test('extractDeclaration rejects ambiguous names and ignores calls', () => {
 
 test('extractCodeRegion prefers an explicit region directive', () => {
     const text = ['// #region add', 'the region body', '// #endregion', '', 'void add() { body(); }'].join('\n');
-    assert.equal(extractCodeRegion(text, 'add'), 'the region body');
-    assert.equal(extractCodeRegion(text, 'add/-'), 'the region body', 'a modifier cannot change a region');
+    assert.equal(extractCodeRegion(text, 'add'),
+        '// #region add\nthe region body\n// #endregion');
+    assert.equal(extractCodeRegion(text, 'add/-'), 'the region body',
+        'the body modifier drops the directives');
 });
 
 test('extractCodeRegion reads declarations and fails loudly on nothing', () => {
@@ -1060,16 +1062,18 @@ test('several selectors inject in order, each from its own lines', () => {
 });
 
 test('every selection reports the lines it came from, regions included', () => {
-    // The span is not an extra search for the text: it is the slice the text was
-    // made from, so a region reports the lines *between* its directives — the
-    // directive lines are not part of the selection — and a line range reports
-    // exactly what was asked for.
+    // The span is the source slice the text was made from: a region includes
+    // its opening and closing directives, and `/-` drops them for the body.
     const source = ['line1', '// #region r', 'aaa', 'bbb', '// #endregion', 'line6'].join('\n');
     const region = planSection(source, 'r');
-    assert.deepEqual(region.ranges, [{ from: 3, to: 4 }]);
-    assert.equal(region.text, 'aaa\nbbb');
-    assert.equal(region.startLine, 3);
-    assert.equal(region.endLine, 4);
+    assert.deepEqual(region.ranges, [{ from: 2, to: 5 }]);
+    assert.equal(region.text, '// #region r\naaa\nbbb\n// #endregion');
+    assert.equal(region.startLine, 2);
+    assert.equal(region.endLine, 5);
+
+    const body = planSection(source, 'r/-');
+    assert.deepEqual(body.ranges, [{ from: 3, to: 4 }]);
+    assert.equal(body.text, 'aaa\nbbb');
 
     assert.deepEqual(planSection(source, 'L3-L4').ranges, [{ from: 3, to: 4 }]);
     assert.deepEqual(planSection(source, 'L2-L3').ranges, [{ from: 2, to: 3 }]);
@@ -1354,6 +1358,99 @@ test('scanBlocks: {//name, {// name and a solo line below are the same block anc
         'the anchor belongs to the statement block, not the method');
 });
 
+test('scanBlocks: an anchor name may contain a hyphen', () => {
+    const java = scanBlocks('void f() {//item-list\n  x();\n}\nvoid g() {\n  //item-list\n  y();\n}\n');
+    assert.equal(java.blocks.find((b) => b.name === 'f').anchor.name, 'item-list',
+        'the same-line spelling');
+    assert.equal(java.blocks.find((b) => b.name === 'g').anchor.name, 'item-list',
+        'the next-line spelling');
+
+    const python = scanBlocks('def legacy(self):  #item-list\n    pass\n', undefined, lexerFor('x.py'));
+    assert.equal(python.blocks.find((b) => b.name === 'legacy').anchor.name, 'item-list',
+        'the indented spelling');
+});
+
+test('a named bare block after a braceless statement is not its body', () => {
+    const text = [
+        'void f(int n) {',
+        '    if (n == 0) return;',
+        '    {//guarded',
+        '        work();',
+        '    }',
+        '}',
+    ].join('\n');
+    const plan = planSection(text, 'guarded', lexerFor('x.java'));
+    assert.equal(plan.kind, 'anchor');
+    assert.equal(plan.text, ['    {//guarded', '        work();', '    }'].join('\n'),
+        'the braceless `if` must not take the bare block as its body');
+    assert.deepEqual(plan.ranges, [{ from: 3, to: 5 }]);
+});
+
+test('region, brace block and declaration select opening through closing, byte for byte', () => {
+    const source = [
+        'class Demo {',
+        '    // #region regionName',
+        '    int regionLine = 1;',
+        '    // #endregion',
+        '',
+        '    void declaration() {',
+        '        work();',
+        '    }',
+        '',
+        '    void braces() {',
+        '        {//braceName',
+        '            if (flag) {',
+        '                nested();',
+        '            }',
+        '        }',
+        '    }',
+        '',
+        '    void oneLine() {',
+        '        {/*single*/ tick(); }',
+        '    }',
+        '}',
+    ].join('\n');
+    const lines = source.split('\n');
+    const slice = (plan) => lines.slice(plan.startLine - 1, plan.endLine).join('\n');
+
+    for (const reference of ['regionName', 'declaration', 'braces/braceName', 'single']) {
+        const plan = planSection(source, reference, lexerFor('x.java'));
+        assert.equal(plan.text, slice(plan), `${reference}: the text is the source slice`);
+    }
+
+    const region = planSection(source, 'regionName', lexerFor('x.java'));
+    assert.equal(region.text, [
+        '    // #region regionName',
+        '    int regionLine = 1;',
+        '    // #endregion',
+    ].join('\n'));
+    assert.equal(planSection(source, 'regionName/-', lexerFor('x.java')).text, '    int regionLine = 1;');
+
+    const declaration = planSection(source, 'declaration', lexerFor('x.java'));
+    assert.equal(declaration.text, [
+        '    void declaration() {',
+        '        work();',
+        '    }',
+    ].join('\n'));
+
+    // Indented, with a nested `}` inside: the inner brace is part of the
+    // block, and the matching close is the one at the opener's indentation.
+    const brace = planSection(source, 'braces/braceName', lexerFor('x.java'));
+    assert.equal(brace.text, [
+        '        {//braceName',
+        '            if (flag) {',
+        '                nested();',
+        '            }',
+        '        }',
+    ].join('\n'));
+    assert.equal(brace.text, slice(brace));
+
+    // A one-line block: the opener and the closer on one line.
+    const single = planSection(source, 'single', lexerFor('x.java'));
+    assert.equal(single.text, '        {/*single*/ tick(); }');
+    assert.equal(single.text, slice(single));
+});
+
 test('scanBlocks: the anchor name is the whole trimmed comment body', () => {
     const s = scanBlocks('class A {\n  void one() {\n    // getUsers\n    x();\n  }\n  void two() {\n    // getUsers and more\n    x();\n  }\n}');
     assert.equal(s.blocks.find((b) => b.name === 'one').anchor.name, 'getUsers');
@@ -1534,10 +1631,13 @@ test('resolveSection: error shapes', () => {
 test('resolveSection: region directives', () => {
     const read = fileReader(dirname(fileURLToPath(import.meta.url)));
     const ts = read('test/fixtures/example.ts');
-    assert.equal(resolveSection(ts, 'table'), '| name | qty |\n| ---- | --- |\n| bolt | 12  |');
-    assert.equal(resolveSection(ts, 'table/+'), resolveSection(ts, 'table'), 'region ignores modifier');
+    assert.equal(resolveSection(ts, 'table'),
+        '// #region table\n| name | qty |\n| ---- | --- |\n| bolt | 12  |\n// #endregion');
+    assert.equal(resolveSection(ts, 'table/-'), '| name | qty |\n| ---- | --- |\n| bolt | 12  |');
+    assert.equal(resolveSection(ts, 'table/+'), resolveSection(ts, 'table'), 'region ignores +');
     assert.equal(resolveSection(ts, 'table/++'), resolveSection(ts, 'table'));
-    assert.equal(resolveSection(ts, 'config'), 'export const config = { retries: 3 };');
+    assert.equal(resolveSection(ts, 'config'),
+        '// #region config\nexport const config = { retries: 3 };\n// #endregion');
 });
 
 // A file-scope #region name beats a same-named declaration anywhere (§6 note).
@@ -1552,7 +1652,8 @@ test('resolveSection: region outranks a declaration', () => {
         '    }',             // 6
         '}',                 // 7
     ].join('\n');
-    assert.equal(resolveSection(text, 'thing'), 'region body');
+    assert.equal(resolveSection(text, 'thing'), '// #region thing\nregion body\n// #endregion');
+    assert.equal(resolveSection(text, 'thing/-'), 'region body');
 });
 
 // --- Ambiguity pin: two inner classes each have `render` ---
@@ -2503,7 +2604,7 @@ test('resolveMarker reads a whole file or one region of it', () => {
     assert.equal(resolveMarker(parseMarker('[whole.md](./whole.md)'), read), 'one\ntwo');
     assert.equal(
         resolveMarker(parseMarker('[big.md](./big.md#table)'), read),
-        '| a |',
+        '#region table\n| a |\n#endregion',
     );
 });
 
@@ -3052,6 +3153,33 @@ test('parseArgs collects every positional target, files and directories alike', 
     assert.deepEqual(parseArgs([]).files, ['README.md'], 'the default is still README.md');
 });
 
+/** Run the CLI and capture both streams, so a test can assert the summary line. */
+function runCli(argv) {
+    const out = [];
+    const err = [];
+    const log = console.log;
+    const error = console.error;
+    console.log = (...args) => out.push(args.join(' '));
+    console.error = (...args) => err.push(args.join(' '));
+    try {
+        return { code: main(argv), out, err };
+    } finally {
+        console.log = log;
+        console.error = error;
+    }
+}
+
+test('documentSummary is the per-document line', () => {
+    assert.equal(documentSummary('fs-meta/doc/x.md', { total: 8, stale: 0 }),
+        'fs-meta/doc/x.md: 8 markers, 0 stale');
+    assert.equal(documentSummary('x.md', { total: 1, stale: 0, skipped: 1 }),
+        'x.md: 1 marker, 0 stale, 1 skipped');
+    assert.equal(documentSummary('x.md', { total: 2, stale: 1, failed: 1, skipped: 1, verb: 'updated' }),
+        'x.md: 2 markers, 1 updated, 1 failed, 1 skipped');
+    assert.equal(gateSummary('x.md', { total: 3, failed: 1, skipped: 2 }),
+        'x.md: 3 markers, 1 failed, 2 skipped');
+});
+
 test('main checks, updates and skips gitignored markers', (t) => {
     const dir = mkdtempSync(join(process.cwd(), '.cli-test-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -3078,7 +3206,14 @@ test('main checks, updates and skips gitignored markers', (t) => {
     assert.equal(main([readmePath, '--check']), 0, 'up to date after update');
 
     writeFileSync(join(dir, 'ci.txt'), 'fixtures\n');
-    assert.equal(main([readmePath, '--check', '-g', join(dir, 'ci.txt')]), 0, 'skipped markers are not stale');
+    const skipped = runCli([readmePath, '--check', '-g', join(dir, 'ci.txt')]);
+    assert.equal(skipped.code, 1, 'all markers skipped resolves nothing');
+    assert.ok(skipped.out.some((line) => line.includes('README.md: 1 marker, 0 stale, 1 skipped')),
+        `the per-document line names what was skipped: ${JSON.stringify(skipped.out)}`);
+    assert.ok(skipped.err.some((line) => line.includes('nothing was resolved')),
+        `the failure says nothing was resolved: ${JSON.stringify(skipped.err)}`);
+    assert.equal(main([readmePath, '--check', '-g', join(dir, 'ci.txt'), '--allow-empty']), 1,
+        '--allow-empty only covers a document with no markers');
     assert.equal(main([readmePath, '--check', '--no-gitignore']), 0);
     assert.equal(main([readmePath, '--check', '--gitignore', join(dir, 'missing.txt')]), 1, 'unreadable gitignore fails');
     assert.equal(main(['--bogus']), 2, 'unknown option is a usage error');
@@ -3139,7 +3274,7 @@ test('main --lenient refreshes live markers, reports dead ones, exits 1', (t) =>
     assert.equal(main([readmePath, '--lenient', '--check']), 0);
 });
 
-test('main --lenient --check exits 0 when only gitignored skips remain', (t) => {
+test('main --lenient --check fails when only gitignored skips remain', (t) => {
     const dir = mkdtempSync(join(process.cwd(), '.cli-lenient-ig-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -3152,8 +3287,86 @@ test('main --lenient --check exits 0 when only gitignored skips remain', (t) => 
         '```',
     ].join('\n'));
 
-    assert.equal(main([readmePath, '--check', '-g', join(dir, 'ci.txt')]), 0);
-    assert.equal(main([readmePath, '--lenient', '--check', '-g', join(dir, 'ci.txt')]), 0);
+    assert.equal(main([readmePath, '--check', '-g', join(dir, 'ci.txt')]), 1,
+        'a skipped marker resolved nothing');
+    assert.equal(main([readmePath, '--lenient', '--check', '-g', join(dir, 'ci.txt')]), 1,
+        '--lenient does not turn a skipped marker into a checked one');
+});
+
+test('main --gate fails when every marker was skipped', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-gate-skip-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    mkdirSync(join(dir, 'fixtures'), { recursive: true });
+    writeFileSync(join(dir, 'fixtures', 'dep.js'), 'export const x = 1;\n');
+    writeFileSync(join(dir, 'ci.txt'), 'fixtures\n');
+    const docPath = join(dir, 'README.md');
+    writeFileSync(docPath, ['[fixtures/dep.js#x](./fixtures/dep.js#x)', '```js', 'x', '```', ''].join('\n'));
+
+    const skipped = runCli([docPath, '--gate', '-g', join(dir, 'ci.txt')]);
+    assert.equal(skipped.code, 1, 'a skipped marker resolved nothing');
+    assert.ok(skipped.out.some((line) => line.includes('README.md: 1 marker, 0 failed, 1 skipped')),
+        `the gate summary names the skip: ${JSON.stringify(skipped.out)}`);
+    assert.ok(skipped.err.some((line) => line.includes('nothing was resolved')),
+        `the gate failure says nothing was resolved: ${JSON.stringify(skipped.err)}`);
+    assert.equal(main([docPath, '--gate', '--no-gitignore']), 0, 'without the skip the gate resolves');
+});
+
+test('main --out still writes and verifies a document with no markers', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-out-empty-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    const docPath = join(dir, 'doc.md');
+    writeFileSync(docPath, 'plain prose\n');
+    const outPath = join(dir, 'dist', 'copy.md');
+
+    assert.equal(main([docPath, '--out', outPath]), 0,
+        'a document with no markers is a success, no --allow-empty needed');
+    assert.equal(readFileSync(outPath, 'utf8'), 'plain prose\n',
+        '--out writes the copy even when there are no markers');
+
+    const checked = runCli([docPath, '--out', outPath, '--check']);
+    assert.equal(checked.code, 0);
+    assert.ok(checked.out.some((line) => line.includes('0 markers, 0 stale')),
+        `the per-document line is still printed: ${JSON.stringify(checked.out)}`);
+
+    rmSync(outPath);
+    assert.equal(main([docPath, '--out', outPath, '--check']), 1,
+        'a missing copy is stale, not a silent success');
+});
+
+test('a document with no markers is a success', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-no-markers-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    const docPath = join(dir, 'doc.md');
+    writeFileSync(docPath, 'plain prose\n');
+
+    const checked = runCli([docPath, '--check']);
+    assert.equal(checked.code, 0, 'nothing to resolve is not a failure');
+    assert.ok(checked.out.some((line) => line.includes('0 markers, 0 stale')),
+        `the per-document line is still printed: ${JSON.stringify(checked.out)}`);
+
+    assert.equal(main([docPath, '--check', '--allow-empty']), 0,
+        '--allow-empty is accepted for compatibility');
+});
+
+test('main --gate ignores a document with no jump references', (t) => {
+    const dir = mkdtempSync(join(process.cwd(), '.cli-gate-empty-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    const docPath = join(dir, 'doc.md');
+    writeFileSync(docPath, ['[plain](./plain.md)', 'ordinary prose', ''].join('\n'));
+    writeFileSync(join(dir, 'plain.md'), 'plain\n');
+
+    const bare = runCli([docPath, '--gate']);
+    assert.equal(bare.code, 0, 'a bare path is an injection marker, not a jump');
+    assert.ok(bare.out.some((line) => line.includes('0 markers, 0 failed')),
+        `the gate summary is still printed: ${JSON.stringify(bare.out)}`);
+
+    // A bare link to a missing file is not a jump reference either.
+    writeFileSync(docPath, ['[missing](./missing.md)', 'ordinary prose', ''].join('\n'));
+    assert.equal(main([docPath, '--gate']), 0);
 });
 
 test('parseArgs reads --out', () => {
@@ -3329,13 +3542,13 @@ test('the fixtures that back the docs are real files with stable content', () =>
     assert.equal(normalize(read('test/fixtures/before.md')),
         "## Example\n\n```ts\nimport { inject } from 'acme';\n\ninject('a', 'b');\n```");
     assert.equal(normalize(read('test/fixtures/after.md')),
-        '$ npx @hrg/inject-examples doc/usage.md\ndoc/usage.md updated.');
+        '$ npx @hrg/inject-examples doc/usage.md\ndoc/usage.md: 27 markers, 0 updated');
     assert.equal(normalize(read('test/fixtures/fenced.md')),
         "Prose, then a nested fence:\n\n```js\nconst x = 1;\n```\n\nAnd prose after it.");
     assert.equal(extractRegion(read('test/fixtures/example.ts'), 'table'),
-        '| name | qty |\n| ---- | --- |\n| bolt | 12  |');
+        '// #region table\n| name | qty |\n| ---- | --- |\n| bolt | 12  |\n// #endregion');
     assert.equal(extractRegion(read('test/fixtures/example.ts'), 'config'),
-        'export const config = { retries: 3 };');
+        '// #region config\nexport const config = { retries: 3 };\n// #endregion');
 
     // The declarations the "Region rules by file type" section injects: an
     // annotated, documented method and an inner class.
@@ -3373,10 +3586,11 @@ test('the region markers in index.mjs and test.mjs resolve to real code', () => 
     const read = fileReader(root);
 
     const parse = resolveMarker(parseMarker('[index.mjs](index.mjs#parseMarker)'), read);
-    assert.match(parse, /^\/\*\*\n \* Read one line as an injection marker/);
+    assert.match(parse, /^\/\/ #region parseMarker\n\/\*\*\n \* Read one line as an injection marker/);
     assert.match(parse, /export function parseMarker\(line\)/);
 
     const testCode = resolveMarker(parseMarker('[test.mjs](test.mjs#update-document-test)'), read);
+    assert.match(testCode, /^\/\/ #region update-document-test\n/);
     assert.match(testCode, /updateDocument rewrites every marker and is idempotent/);
     assert.match(testCode, /a second pass is a no-op/);
 });

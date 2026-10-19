@@ -341,8 +341,15 @@ local function selector_part(selector, scope, scan, ctx)
   local rendered, slice, kind
   local lines, source, starts = scan.lex.lines, scan.lex.source, scan.lex.starts
   if final.region then
-    rendered = span(U.slice(lines, final.region.startLine + 1, final.region.endLine),
-      final.region.startLine + 1, final.region.endLine - 1)
+    -- A region is the whole marked span: the opening directive through the
+    -- closing one, like a declaration with its signature. `/-` is the body.
+    if selector.scope == 'body' then
+      rendered = span(U.slice(lines, final.region.startLine + 1, final.region.endLine),
+        final.region.startLine + 1, final.region.endLine - 1)
+    else
+      rendered = span(U.slice(lines, final.region.startLine, final.region.endLine + 1),
+        final.region.startLine, final.region.endLine)
+    end
     slice = { from = rendered.from, to = rendered.to }
     kind = 'region'
   else

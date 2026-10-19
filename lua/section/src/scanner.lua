@@ -31,7 +31,7 @@ local STATEMENT_KEYWORD_AT_START = re.compile(
   [=[^(?:if|else|elseif|for|while|do|switch|select|try|catch|finally|synchronized|unless|until|when|case)\b]=], 'i')
 local REGION_DIRECTIVE = re.compile([=[^(#?)(region|endregion)\b\s*(.*)$]=], 'i')
 local REGION_BODY = re.compile([=[^(#?)(region|endregion)\b]=], 'i')
-local ANCHOR_NAME = re.compile([=[^([A-Za-z_$][\w$]*)$]=], '')
+local ANCHOR_NAME = re.compile([=[^([A-Za-z_$][\w$\-]*)$]=], '')
 local GAP = re.compile([=[^[\s+]*$]=], '')
 local EXPRESSION_MODIFIER_BEFORE = re.compile("[\\w$>)\\]}]", '')
 local CONTINUES_AFTER = re.compile("[,+\\-*/%&|?<(\\[{!~^]\\s*$", '')
@@ -867,6 +867,28 @@ local function make_segment(masked, starts, keyword, header_line, open, close, c
   }
 end
 
+-- The `{` that opens a statement's body, or -1 when the body is a single
+-- statement. The search starts at the statement's keyword and stops at the
+-- first top-level `;` or `{`, so a later bare block is never taken as this
+-- statement's body.
+local function statement_brace(mask, from)
+  local depth = 0
+  local i = from
+  while i < #mask do
+    local unit = mask[i + 1]
+    if unit == 40 or unit == 91 then
+      depth = depth + 1
+    elseif unit == 41 or unit == 93 then
+      if depth > 0 then depth = depth - 1 end
+    elseif depth == 0 then
+      if unit == 123 then return i end
+      if unit == 59 then return -1 end
+    end
+    i = i + 1
+  end
+  return -1
+end
+
 local function chain_segments(masked, starts, header_line, keyword, brace_pos, keyword_offset)
   local segments = {}
   local function is_cont(word) return word == 'else' or word == 'catch' or word == 'finally' end
@@ -1310,7 +1332,7 @@ function M.build_scope(owner, from_line, to_line, lex, blocks)
       -- block's own start and end markers, so `{//name` (or a `//name` line just
       -- inside it) names it. A bare block with no anchor falls through to the
       -- existing line scan.
-      if text(U.trim(m_line)) == '{' then
+      if text(U.trim(m_line)):sub(1, 1) == '{' then
         local brace_at = start + U.indexOf(m_line, '{', 0)
         local body = brace_body(mask, starts, brace_at)
         if body then
@@ -1498,7 +1520,7 @@ function M.build_scope(owner, from_line, to_line, lex, blocks)
           else
             local stmt = re.exec(STATEMENT_KEYWORD, m_line, 0)
             if stmt then
-              local brace_pos = U.indexOf(mask, '{', start)
+              local brace_pos = statement_brace(mask, start + stmt.index)
               if brace_pos ~= -1 then
                 local segs = chain_segments(mask, starts, i, re.group_text(m_line, stmt, 1),
                   brace_pos, start + stmt.index)

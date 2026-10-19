@@ -7,9 +7,10 @@
 //! of `README.md`.
 //!
 //! Exit codes, as documented in the README: `0` every block is up to date or was
-//! rewritten, `1` a block is stale in `--check` mode, a document is malformed,
-//! or (with `--lenient`) an include could not be resolved, `2` the command line
-//! was wrong.
+//! rewritten (a document with no markers has nothing to do and also succeeds),
+//! `1` a block is stale in `--check` mode, a document is malformed, a document's
+//! markers all resolved nothing, or (with `--lenient`) an include could not be
+//! resolved, `2` the command line was wrong.
 //!
 //! Paths are handled as bytes exactly as Node hands them over (`std.fs.path`
 //! mirrors `node:path` on Windows), and messages that come out of the library
@@ -32,7 +33,7 @@ const FAILED: u8 = 1;
 const USAGE: u8 = 2;
 
 /// Mirrors `version()` in `cli.mjs`, which reads `package.json` at runtime.
-const VERSION = "1.1.0";
+const VERSION = "1.2.1";
 
 /// The `HELP` template in `cli.mjs`, with every `\${...}` already filled in and
 /// every escaped backtick unescaped: byte for byte what `--help` prints.
@@ -90,8 +91,9 @@ const HELP =
     \\                       .gitignore file (default: search upward from the
     \\                       document's directory, like git)
     \\      --no-gitignore   Do not apply any .gitignore rules
-    \\  -q, --quiet          Print only the closing summary
-    \\      --allow-empty    Succeed when the document contains no markers
+    \\  -q, --quiet          Print only the per-document summary line
+    \\      --allow-empty    Accepted for compatibility: a document with no markers
+    \\                       is already a success (markers that were all skipped are not)
     \\  -l, --lenient        Tolerate broken includes: a marker whose file, region
     \\                       or block cannot be resolved is reported with its line
     \\                       number and its block is left as written; the exit code
@@ -103,10 +105,23 @@ const HELP =
     \\  -h, --help           Show this help
     \\  -V, --version        Show the version
     \\
+    \\Summary:
+    \\  Every document ends with one line, even with --quiet:
+    \\
+    \\      docs/GUIDE.md: 8 markers, 0 stale
+    \\
+    \\  In --check and --dry-run the second count is stale blocks; when the document
+    \\  is written it is updated blocks. --out names both files. A document with no
+    \\  markers is a success (`0 markers, 0 stale`); a document that has markers but
+    \\  checked none (every marker skipped) exits 1: a run that resolved
+    \\  nothing is not a passing run.
+    \\
     \\Exit codes:
-    \\  0  every block is up to date (or was rewritten)
+    \\  0  every block is up to date (or was rewritten); a document with no
+    \\             markers has nothing to do
     \\  1  a block is stale in --check mode, a document is malformed,
-    \\             or (with --lenient) an include could not be resolved
+    \\             a document's markers all resolved nothing, or (with --lenient) an
+    \\             include could not be resolved
     \\  2  the command line was wrong
     \\
     \\  With several documents the run processes all of them, including the ones
@@ -666,14 +681,19 @@ fn processGate(
         else => return err,
     };
 
-    if (result.checked == 0) {
-        if (!options.allow_empty) {
-            cli.printErr("inject-examples: no injection markers found in {s}.\n", .{try cli.display(file)});
-            cli.printErr("A marker is a line that is nothing but a link to a file it names; see --help.\n", .{});
-            return FAILED;
-        }
-        cli.print("{s}: no markers, nothing to jump to.\n", .{try cli.display(file)});
+    if (result.total == 0) {
+        const label = try cli.display(file);
+        cli.print("{s}: 0 markers, 0 failed\n", .{label});
         return OK;
+    }
+
+    // A document whose references were all excluded resolved nothing. Say so
+    // and fail: a skipped run is not a passing run.
+    if (result.total == result.skipped) {
+        const label = try cli.display(file);
+        cli.print("{s}\n", .{try gateSummaryLine(alloc, label, result.total, 0, result.skipped)});
+        cli.printErr("inject-examples: {s}: no reference was checked ({d} skipped); nothing was resolved.\n", .{ label, result.skipped });
+        return FAILED;
     }
 
     if (!options.quiet) {
@@ -697,16 +717,62 @@ fn processGate(
         }
     }
 
+    const label = try cli.display(file);
+    cli.print("{s}\n", .{try gateSummaryLine(alloc, label, result.total, result.failures.len, result.skipped)});
     if (!result.passed) {
         cli.printErr("\n{s}: {d} of {d} reference(s) do not resolve.\n", .{
-            try cli.display(file),
+            label,
             result.failures.len,
             result.checked,
         });
         return FAILED;
     }
-    cli.print("\n{s}: all {d} reference(s) resolve.\n", .{ try cli.display(file), result.checked });
     return OK;
+}
+
+/// `documentSummary`/`gateSummary` from `cli.mjs`: `label: N markers, M verb`
+/// with `failed` and `skipped` appended when they are non-zero. The gate counts
+/// failed references rather than a stale/updated second count.
+fn documentSummaryLine(
+    alloc: Allocator,
+    label: []const u8,
+    total: usize,
+    count: usize,
+    verb: []const u8,
+    failed: usize,
+    skipped: usize,
+) ![]const u8 {
+    const failed_part = if (failed > 0)
+        try std.fmt.allocPrint(alloc, ", {d} failed", .{failed})
+    else
+        "";
+    const skipped_part = if (skipped > 0)
+        try std.fmt.allocPrint(alloc, ", {d} skipped", .{skipped})
+    else
+        "";
+    return std.fmt.allocPrint(alloc, "{s}: {d} marker{s}, {d} {s}{s}{s}", .{
+        label,
+        total,
+        if (total == 1) "" else "s",
+        count,
+        verb,
+        failed_part,
+        skipped_part,
+    });
+}
+
+fn gateSummaryLine(alloc: Allocator, label: []const u8, total: usize, failed: usize, skipped: usize) ![]const u8 {
+    const skipped_part = if (skipped > 0)
+        try std.fmt.allocPrint(alloc, ", {d} skipped", .{skipped})
+    else
+        "";
+    return std.fmt.allocPrint(alloc, "{s}: {d} marker{s}, {d} failed{s}", .{
+        label,
+        total,
+        if (total == 1) "" else "s",
+        failed,
+        skipped_part,
+    });
 }
 
 /// `processDocument`: update, check or dry-run one document.
@@ -757,13 +823,9 @@ fn processDocument(
     };
 
     const total = result.markers.len;
-    if (total == 0) {
-        if (!options.allow_empty) {
-            cli.printErr("inject-examples: no injection markers found in {s}.\n", .{try cli.display(file)});
-            cli.printErr("A marker is a line that is nothing but a link to a file it names; see --help.\n", .{});
-            return FAILED;
-        }
-        cli.print("{s}: no markers, nothing to do.\n", .{try cli.display(file)});
+    if (total == 0 and options.out == null) {
+        const label = try cli.display(file);
+        cli.print("{s}\n", .{try documentSummaryLine(alloc, label, 0, 0, "stale", 0, 0)});
         return OK;
     }
 
@@ -781,12 +843,8 @@ fn processDocument(
         try std.fmt.allocPrint(alloc, ", {d} marker(s) skipped", .{skipped_count})
     else
         "";
-    const failed_note = if (failed > 0)
-        try std.fmt.allocPrint(alloc, ", {d} failed", .{failed})
-    else
-        "";
 
-    if (!options.quiet) {
+    if (!options.quiet and total > 0) {
         // In --check and --dry-run nothing is written, so a difference is a
         // finding ("stale"), not an action taken ("updated"). A failure-skip is
         // a failure ("failed"), distinct from a gitignored "skipped".
@@ -817,6 +875,15 @@ fn processDocument(
         }
     }
 
+    // A document with markers that were all excluded resolved nothing. The run
+    // must not read as a success: there was no work to be right about.
+    if (total > 0 and checked == 0 and failed == 0) {
+        const label = try cli.display(file);
+        cli.print("{s}\n", .{try documentSummaryLine(alloc, label, total, 0, "stale", 0, skipped_count)});
+        cli.printErr("inject-examples: {s}: no marker was checked ({d} skipped); nothing was resolved.\n", .{ label, skipped_count });
+        return FAILED;
+    }
+
     if (options.out) |out_option| {
         const out = try cli.resolvePath(out_option);
         const current = cli.readOrNull(out);
@@ -824,8 +891,15 @@ fn processDocument(
             !try normalizedEqual(alloc, bytes, result.text)
         else
             true;
+        const verb: []const u8 = if (options.check or options.dry_run) "stale" else "updated";
+        const label = try std.fmt.allocPrint(alloc, "{s} -> {s}", .{
+            try cli.display(file),
+            try cli.display(out_option),
+        });
+        const summary = try documentSummaryLine(alloc, label, total, stale, verb, failed, skipped_count);
 
         if (options.check) {
+            cli.print("{s}\n", .{summary});
             if (failed > 0) {
                 cli.printErr("\n{s}: {d} of {d} marker(s) could not be resolved; {s} was not verified.\n", .{
                     try cli.display(file),
@@ -835,13 +909,7 @@ fn processDocument(
                 });
                 return FAILED;
             }
-            if (!changed) {
-                cli.print("\n{s} is up to date with respect to {s}.\n", .{
-                    try cli.display(out_option),
-                    try cli.display(file),
-                });
-                return OK;
-            }
+            if (!changed) return OK;
             cli.printErr("\n{s} is stale with respect to {s}{s}.\n", .{
                 try cli.display(out_option),
                 try cli.display(file),
@@ -855,34 +923,14 @@ fn processDocument(
         }
 
         if (options.dry_run) {
+            cli.print("{s}\n", .{summary});
             if (failed > 0) {
-                cli.print("\n{s}: {d} marker(s) could not be resolved and would be left as written{s}.\n", .{
+                cli.printErr("\n{s}: {d} marker(s) could not be resolved and would be left as written{s}.\n", .{
                     try cli.display(file),
                     failed,
                     skip_note,
                 });
                 return FAILED;
-            }
-            if (!changed) {
-                cli.print("\n{s} is already in sync with {s}{s}.\n", .{
-                    try cli.display(file),
-                    try cli.display(out_option),
-                    skip_note,
-                });
-            } else if (stale > 0) {
-                cli.print("\n{s} would write {s}: {d} of {d} block(s) updated{s}.\n", .{
-                    try cli.display(file),
-                    try cli.display(out_option),
-                    stale,
-                    checked,
-                    skip_note,
-                });
-            } else {
-                cli.print("\n{s} would write {s}{s}.\n", .{
-                    try cli.display(file),
-                    try cli.display(out_option),
-                    skip_note,
-                });
             }
             return OK;
         }
@@ -899,8 +947,9 @@ fn processDocument(
                 return failure.set(try inject.utf8Decode(alloc, reason));
             };
         }
+        cli.print("{s}\n", .{summary});
         if (failed > 0) {
-            cli.print("\n{s} -> {s} updated: {d} marker(s) could not be resolved and were left as written{s}.\n", .{
+            cli.printErr("\n{s} -> {s}: {d} marker(s) could not be resolved and were left as written{s}.\n", .{
                 try cli.display(file),
                 try cli.display(out_option),
                 failed,
@@ -908,63 +957,47 @@ fn processDocument(
             });
             return FAILED;
         }
-        cli.print("\n{s} -> {s} {s}{s}.\n", .{
-            try cli.display(file),
-            try cli.display(out_option),
-            if (changed) "updated" else "already up to date",
-            skip_note,
-        });
         return OK;
     }
 
+    const label = try cli.display(file);
+    const verb: []const u8 = if (options.check or options.dry_run) "stale" else "updated";
+    const summary = try documentSummaryLine(alloc, label, total, stale, verb, failed, skipped_count);
+
     if (options.check) {
+        cli.print("{s}\n", .{summary});
         if (stale > 0 or failed > 0) {
             if (stale > 0) {
                 cli.printErr("\n{s} is stale: {d} of {d} block(s) differ from their files.\n", .{
-                    try cli.display(file),
+                    label,
                     stale,
                     checked,
                 });
             }
             if (failed > 0) {
                 cli.printErr("{s}: {d} of {d} marker(s) could not be resolved and were left as written.\n", .{
-                    try cli.display(file),
+                    label,
                     failed,
                     total,
                 });
             }
-            cli.printErr("Run: inject-examples {s}\n", .{try cli.display(file)});
+            cli.printErr("Run: inject-examples {s}\n", .{label});
             return FAILED;
-        }
-        if (skipped_count > 0) {
-            cli.print("\n{s} is up to date: {d} checked, {d} skipped.\n", .{
-                try cli.display(file),
-                checked,
-                skipped_count,
-            });
-        } else {
-            cli.print("\n{s} matches all {d} marker(s).\n", .{ try cli.display(file), total });
         }
         return OK;
     }
 
     if (options.dry_run) {
-        if (stale > 0) {
-            cli.print("\n{s} would update {d} of {d} block(s){s}{s}.\n", .{
-                try cli.display(file),
-                stale,
-                checked,
+        cli.print("{s}\n", .{summary});
+        if (failed > 0) {
+            cli.printErr("\n{s}: {d} marker(s) could not be resolved and would be left as written{s}.\n", .{
+                label,
+                failed,
                 skip_note,
-                failed_note,
             });
-        } else {
-            cli.print("\n{s} already up to date{s}{s}.\n", .{
-                try cli.display(file),
-                skip_note,
-                failed_note,
-            });
+            return FAILED;
         }
-        return if (failed > 0) FAILED else OK;
+        return OK;
     }
 
     if (result.changed) {
@@ -974,20 +1007,16 @@ fn processDocument(
             return failure.set(try inject.utf8Decode(alloc, reason));
         };
     }
+    cli.print("{s}\n", .{summary});
     if (failed > 0) {
-        cli.print("\n{s}: {d} updated, {d} failed{s}.\n", .{
-            try cli.display(file),
+        cli.printErr("\n{s}: {d} updated, {d} failed{s}.\n", .{
+            label,
             stale,
             failed,
             skip_note,
         });
         return FAILED;
     }
-    cli.print("\n{s} {s}{s}.\n", .{
-        try cli.display(file),
-        if (result.changed) "updated" else "already up to date",
-        skip_note,
-    });
     return OK;
 }
 

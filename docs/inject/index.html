@@ -307,7 +307,7 @@ body {
 <li class="example" id="ex-1">
 <h3><span class="num">1</span>A named region</h3>
 <ul class="targets">
-<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="11" data-to="12" data-ranges="11-12" aria-pressed="false" aria-controls="t-1-1-desc" title="[samples/Inventory.java#catalog](./samples/Inventory.java#catalog)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span></button></li>
+<li class="target-item" id="t-1-1"><button class="target" type="button" data-file="samples/Inventory.java" data-section="1" data-from="10" data-to="13" data-ranges="10-13" aria-pressed="false" aria-controls="t-1-1-desc" title="[samples/Inventory.java#catalog](./samples/Inventory.java#catalog)"><span class="chip-file">Inventory.java</span><span class="chip-ref">#catalog</span></button></li>
 </ul>
 </li>
 <li class="example" id="ex-2">
@@ -441,81 +441,83 @@ body {
 <h2 data-md-from="9" data-md-to="9">A named region</h2>
 <p data-md-from="11" data-md-to="13">Wrap part of a file in <code>#region &lt;name&gt;</code> / <code>#endregion</code> comments and name that region in the fragment. The directive lines themselves are never injected, and this works with any of the comment prefixes a language uses.</p>
 <p class="md-marker" data-marker="t-1-1"><a href="docs/samples/Inventory.java#catalog">samples/Inventory.java#catalog</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-1-1" data-md-from="17" data-md-to="20"><code class="language-java">    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
-    <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };</code></pre>
+<pre class="md-pre" data-inject="t-1-1" data-md-from="17" data-md-to="22"><code class="language-java">    <span class="tok-c">// #region catalog</span>
+    <span class="tok-c">/** The catalog, kept as an explicit region directive. */</span>
+    <span class="tok-k">static</span> <span class="tok-k">final</span> <span class="tok-t">String</span>[] <span class="tok-t">CATALOG</span> = { <span class="tok-s">&quot;bolt&quot;</span>, <span class="tok-s">&quot;nut&quot;</span>, <span class="tok-s">&quot;washer&quot;</span> };
+    <span class="tok-c">// #endregion</span></code></pre>
 </section>
 <section class="md-section" data-md-section="2">
-<h2 data-md-from="22" data-md-to="22">A declaration, and how much of it comes along</h2>
-<p data-md-from="24" data-md-to="27">When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A <code>-</code>, <code>+</code> or <code>++</code> <strong>segment</strong> after the path selects how far up the text starts:</p>
-<ul data-md-from="29" data-md-to="32">
+<h2 data-md-from="24" data-md-to="24">A declaration, and how much of it comes along</h2>
+<p data-md-from="26" data-md-to="29">When the file carries no region directive, the name is looked for as a declaration — a method, constructor or class-like block. The declaration *is* the region, so the file needs nothing added to it. A <code>-</code>, <code>+</code> or <code>++</code> <strong>segment</strong> after the path selects how far up the text starts:</p>
+<ul data-md-from="31" data-md-to="34">
 <li><code>#toString</code> — the declaration: signature through closing brace.</li>
 <li><code>#toString/-</code> — the body only, without the signature.</li>
 <li><code>#toString/+</code> — the declaration and the annotations above it.</li>
 <li><code>#toString/++</code> — those and the doc comment above them.</li>
 </ul>
-<p data-md-from="34" data-md-to="36">The modifier is the last segment of the path and nothing else, so <code>#toString-</code> is the name <code>toString-</code> and resolves to nothing, and the old spelling says so: <code>&quot;++&quot; is a path segment now; write &quot;#toString/++&quot;</code>.</p>
-<p data-md-from="38" data-md-to="39">The same method, four ways. <code>#toString</code> is the declaration alone — the signature through its closing brace.</p>
+<p data-md-from="36" data-md-to="38">The modifier is the last segment of the path and nothing else, so <code>#toString-</code> is the name <code>toString-</code> and resolves to nothing, and the old spelling says so: <code>&quot;++&quot; is a path segment now; write &quot;#toString/++&quot;</code>.</p>
+<p data-md-from="40" data-md-to="41">The same method, four ways. <code>#toString</code> is the declaration alone — the signature through its closing brace.</p>
 <p class="md-marker" data-marker="t-2-1"><a href="docs/samples/Inventory.java#toString">samples/Inventory.java#toString</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-1" data-md-from="43" data-md-to="47"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
+<pre class="md-pre" data-inject="t-2-1" data-md-from="45" data-md-to="49"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
-<p data-md-from="49" data-md-to="49"><code>#toString/-</code> is the body without the signature.</p>
+<p data-md-from="51" data-md-to="51"><code>#toString/-</code> is the body without the signature.</p>
 <p class="md-marker" data-marker="t-2-2"><a href="docs/samples/Inventory.java#toString/-">samples/Inventory.java#toString/-</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-2" data-md-from="53" data-md-to="55"><code class="language-java">        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;</code></pre>
-<p data-md-from="57" data-md-to="57"><code>#toString/+</code> keeps the annotations the declaration carries.</p>
+<pre class="md-pre" data-inject="t-2-2" data-md-from="55" data-md-to="57"><code class="language-java">        <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;</code></pre>
+<p data-md-from="59" data-md-to="59"><code>#toString/+</code> keeps the annotations the declaration carries.</p>
 <p class="md-marker" data-marker="t-2-3"><a href="docs/samples/Inventory.java#toString/+">samples/Inventory.java#toString/+</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-3" data-md-from="61" data-md-to="66"><code class="language-java">    <span class="tok-a">@Deprecated</span>
+<pre class="md-pre" data-inject="t-2-3" data-md-from="63" data-md-to="68"><code class="language-java">    <span class="tok-a">@Deprecated</span>
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
-<p data-md-from="68" data-md-to="68"><code>#toString/++</code> goes on up to the doc comment above them.</p>
+<p data-md-from="70" data-md-to="70"><code>#toString/++</code> goes on up to the doc comment above them.</p>
 <p class="md-marker" data-marker="t-2-4"><a href="docs/samples/Inventory.java#toString/++">samples/Inventory.java#toString/++</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-2-4" data-md-from="72" data-md-to="78"><code class="language-java">    <span class="tok-c">/** Summarise the inventory. */</span>
+<pre class="md-pre" data-inject="t-2-4" data-md-from="74" data-md-to="80"><code class="language-java">    <span class="tok-c">/** Summarise the inventory. */</span>
     <span class="tok-a">@Deprecated</span>
     <span class="tok-k">public</span> <span class="tok-t">String</span> toString() {
         <span class="tok-k">return</span> items.size() + <span class="tok-s">&quot; item(s)&quot;</span>;
     }</code></pre>
 </section>
 <section class="md-section" data-md-section="3">
-<h2 data-md-from="80" data-md-to="80">A nested declaration</h2>
-<p data-md-from="82" data-md-to="82">A name can be a path: the segments before the last are scopes to search inside, and only the last one selects. <code>Inventory/Item/render</code> is the <code>render</code> method of <code>Item</code>, the class nested in <code>Inventory</code>.</p>
-<p data-md-from="84" data-md-to="87">A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
+<h2 data-md-from="82" data-md-to="82">A nested declaration</h2>
+<p data-md-from="84" data-md-to="84">A name can be a path: the segments before the last are scopes to search inside, and only the last one selects. <code>Inventory/Item/render</code> is the <code>render</code> method of <code>Item</code>, the class nested in <code>Inventory</code>.</p>
+<p data-md-from="86" data-md-to="89">A name can be a path: slash-separated segments, each naming a block inside the one before it. <code>Inventory/Item/render</code> is the <code>render</code> method of the <code>Item</code> class of <code>Inventory</code>; only the last segment selects the injected text, the segments before it are scopes to descend into.</p>
 <p class="md-marker" data-marker="t-3-1"><a href="docs/samples/Inventory.java#Inventory/Item/render">samples/Inventory.java#Inventory/Item/render</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-3-1" data-md-from="91" data-md-to="95"><code class="language-java">        <span class="tok-t">String</span> render() {
+<pre class="md-pre" data-inject="t-3-1" data-md-from="93" data-md-to="97"><code class="language-java">        <span class="tok-t">String</span> render() {
             <span class="tok-k">return</span> name + <span class="tok-s">&quot; x&quot;</span> + quantity;
         }</code></pre>
 </section>
 <section class="md-section" data-md-section="4">
-<h2 data-md-from="97" data-md-to="97">A condition literal</h2>
-<p data-md-from="99" data-md-to="99">A block is also named by a string it tests — a statement whose header carries the name as a double-quoted literal. <code>dispatch/count</code> is the <code>if (&quot;count&quot;.equals(methodName))</code> block.</p>
-<p data-md-from="101" data-md-to="103">Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
+<h2 data-md-from="99" data-md-to="99">A condition literal</h2>
+<p data-md-from="101" data-md-to="101">A block is also named by a string it tests — a statement whose header carries the name as a double-quoted literal. <code>dispatch/count</code> is the <code>if (&quot;count&quot;.equals(methodName))</code> block.</p>
+<p data-md-from="103" data-md-to="105">Inside a scope a segment may also match what a block *contains*: a statement whose header carries the name as a double-quoted string. <code>dispatch/count</code> selects the <code>if (&quot;count&quot;.equals(methodName))</code> block, braces and all.</p>
 <p class="md-marker" data-marker="t-4-1"><a href="docs/samples/Inventory.java#dispatch/count">samples/Inventory.java#dispatch/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-4-1" data-md-from="107" data-md-to="111"><code class="language-java">        <span class="tok-k">if</span> (<span class="tok-s">&quot;count&quot;</span>.equals(methodName)) {
+<pre class="md-pre" data-inject="t-4-1" data-md-from="109" data-md-to="113"><code class="language-java">        <span class="tok-k">if</span> (<span class="tok-s">&quot;count&quot;</span>.equals(methodName)) {
             <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
         }</code></pre>
 </section>
 <section class="md-section" data-md-section="5">
-<h2 data-md-from="113" data-md-to="113">A named block</h2>
-<p data-md-from="115" data-md-to="115">And a block may be named by the trailing comment it opens with — a <strong>named block</strong>, which the reference calls a comment anchor: <code>legacy()</code> opens <code>public void legacy() {//count</code>, so <code>legacy/count</code> names the whole method.</p>
-<p data-md-from="117" data-md-to="120">A block whose opening line carries a trailing comment is named by that comment — the braces already mark where it starts and ends, so no <code>region</code> prefix and no <code>#endregion</code> are needed. <code>legacy()</code> opens <code>public void legacy() {//count</code>, so <code>legacy/count</code> names the whole method.</p>
+<h2 data-md-from="115" data-md-to="115">A named block</h2>
+<p data-md-from="117" data-md-to="117">And a block may be named by the trailing comment it opens with — a <strong>named block</strong>, which the reference calls a comment anchor: <code>legacy()</code> opens <code>public void legacy() {//count</code>, so <code>legacy/count</code> names the whole method.</p>
+<p data-md-from="119" data-md-to="122">A block whose opening line carries a trailing comment is named by that comment — the braces already mark where it starts and ends, so no <code>region</code> prefix and no <code>#endregion</code> are needed. <code>legacy()</code> opens <code>public void legacy() {//count</code>, so <code>legacy/count</code> names the whole method.</p>
 <p class="md-marker" data-marker="t-5-1"><a href="docs/samples/Inventory.java#legacy/count">samples/Inventory.java#legacy/count</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-5-1" data-md-from="124" data-md-to="130"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-k">void</span> legacy() {<span class="tok-c">//count</span>
+<pre class="md-pre" data-inject="t-5-1" data-md-from="126" data-md-to="132"><code class="language-java">    <span class="tok-k">public</span> <span class="tok-k">void</span> legacy() {<span class="tok-c">//count</span>
         {<span class="tok-c">//detail</span>
             <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
         }
     }</code></pre>
-<p data-md-from="132" data-md-to="132"><code>legacy/count/-</code> asks for the body, leaving that opening line out.</p>
-<p data-md-from="134" data-md-to="134">The block inside it is bare, and its own braces name it <code>detail</code>:</p>
+<p data-md-from="134" data-md-to="134"><code>legacy/count/-</code> asks for the body, leaving that opening line out.</p>
+<p data-md-from="136" data-md-to="136">The block inside it is bare, and its own braces name it <code>detail</code>:</p>
 <p class="md-marker" data-marker="t-5-2"><a href="docs/samples/Inventory.java#detail">samples/Inventory.java#detail</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-5-2" data-md-from="138" data-md-to="142"><code class="language-java">        {<span class="tok-c">//detail</span>
+<pre class="md-pre" data-inject="t-5-2" data-md-from="140" data-md-to="144"><code class="language-java">        {<span class="tok-c">//detail</span>
             <span class="tok-t">System</span>.out.println(<span class="tok-s">&quot;items: &quot;</span> + items.size());
         }</code></pre>
 </section>
 <section class="md-section" data-md-section="6">
-<h2 data-md-from="144" data-md-to="144">The whole file</h2>
-<p data-md-from="146" data-md-to="147">A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
+<h2 data-md-from="146" data-md-to="146">The whole file</h2>
+<p data-md-from="148" data-md-to="149">A marker with no <code>#fragment</code> stands for the whole file, normalised to LF and without a trailing newline. It is the plainest thing a marker can say.</p>
 <p class="md-marker" data-marker="t-6-1"><a href="docs/samples/Inventory.java">samples/Inventory.java</a><span class="md-badge">inject</span></p>
-<pre class="md-pre" data-inject="t-6-1" data-md-from="151" data-md-to="205"><code class="language-java"><span class="tok-k">package</span> demo;
+<pre class="md-pre" data-inject="t-6-1" data-md-from="153" data-md-to="207"><code class="language-java"><span class="tok-k">package</span> demo;
 
 <span class="tok-k">import</span> java.util.<span class="tok-t">ArrayList</span>;
 <span class="tok-k">import</span> java.util.<span class="tok-t">List</span>;
@@ -570,9 +572,9 @@ body {
 }</code></pre>
 </section>
 <section class="md-section" data-md-section="7">
-<h2 data-md-from="207" data-md-to="207">One page per language</h2>
-<p data-md-from="209" data-md-to="211">The examples are split by language, so you can go straight to the one you came for: the hamburger menu at the top of every page carries this same list, and each page has its language's examples beside the sample it reads.</p>
-<ul data-md-from="213" data-md-to="230">
+<h2 data-md-from="209" data-md-to="209">One page per language</h2>
+<p data-md-from="211" data-md-to="213">The examples are split by language, so you can go straight to the one you came for: the hamburger menu at the top of every page carries this same list, and each page has its language's examples beside the sample it reads.</p>
+<ul data-md-from="215" data-md-to="232">
 <li><a href="docs/inject/languages/java.html">Java</a> — paths, condition literals, anchors and line numbers</li>
 <li><a href="docs/inject/languages/javascript.html">JavaScript / TypeScript</a> — a template that hides its braces</li>
 <li><a href="docs/inject/languages/go.html">Go</a> — a raw string is not code</li>
@@ -592,7 +594,7 @@ body {
 <li><a href="docs/inject/languages/ini.html">INI</a> — a section and its key</li>
 <li><a href="docs/inject/languages/css.html">CSS</a> — a rule, an at-rule, and the nesting between</li>
 </ul>
-<p data-md-from="232" data-md-to="234">Every page reads the same <a href="docs/samples">samples/</a> directory and works the same way: click an example link, and the description below it opens while the middle and right columns show the lines the reference selects and where the injection lands in the rendered Markdown.</p>
+<p data-md-from="234" data-md-to="236">Every page reads the same <a href="docs/samples">samples/</a> directory and works the same way: click an example link, and the description below it opens while the middle and right columns show the lines the reference selects and where the injection lands in the rendered Markdown.</p>
 </section>
 </article>
 </div>

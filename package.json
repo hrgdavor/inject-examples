@@ -1,6 +1,6 @@
 {
   "name": "@hrg/inject-examples",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "description": "Keep Markdown examples in sync with the real files they show — inject file content, or one region of it, into the fenced block that follows a link.",
   "keywords": [
     "markdown",
@@ -53,7 +53,7 @@
     "access": "public"
   },
   "scripts": {
-    "prepublishOnly": "npm test",
+    "prepublishOnly": "node cli.mjs --quiet doc/usage.md && npm test",
     "test": "node --test test.mjs && node --test lib/jump.test.mjs && tsc --noEmit && node tools/section-vectors.mjs --check && node tools/lexical-vectors.mjs --check && node tools/profile-vectors.mjs --check && node tools/zig-vectors.mjs --check && node tools/error-codes-zig.mjs --check && node tools/conformance-manifest.mjs --check && node tools/package-contents.mjs --check",
     "vectors": "node tools/section-vectors.mjs",
     "lexical:vectors": "node tools/lexical-vectors.mjs",

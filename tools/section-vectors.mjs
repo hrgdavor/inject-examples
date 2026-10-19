@@ -258,6 +258,7 @@ const cases = [
     // between the two directives, not the comment that explains them.
     { name: 'hash-region-directive', input: HASH_PY, reference: 'Cart/catalog' },
     { name: 'hash-region-bare-name', input: HASH_PY, reference: 'catalog' },
+    { name: 'hash-region-bare-name-body', input: HASH_PY, reference: 'catalog/-' },
     { name: 'hash-region-missing', input: HASH_PY, reference: 'Cart/missing' },
     // No brace to open: the condition literal of an indented `if` is reached by
     // naming it inside the block that holds it, and a trailing comment on a
@@ -459,6 +460,13 @@ const cases = [
     { name: 'brace-anchor-method-body', input: SHORTHAND, reference: 'handled/-' },
     { name: 'brace-anchor-bare-block', input: SHORTHAND, reference: 'bare' },
     { name: 'brace-anchor-bare-block-body', input: SHORTHAND, reference: 'bare/-' },
+    // `-` is a name character now that modifiers are whole `/`-segments.
+    { name: 'brace-anchor-hyphenated', input: SHORTHAND, reference: 'item-list' },
+    { name: 'brace-anchor-hyphenated-body', input: SHORTHAND, reference: 'item-list/-' },
+    // A braceless statement must not swallow the bare block that follows it.
+    { name: 'brace-anchor-after-braceless-if', input: SHORTHAND, reference: 'guarded' },
+    { name: 'brace-anchor-after-braceless-if-body', input: SHORTHAND, reference: 'guarded/-' },
+    { name: 'brace-anchor-one-line', input: SHORTHAND, reference: 'single' },
 
     // Resolution — Nesting.zig (the per-type lexer hides a declaration a nested
     // block comment wraps; the built-in default mask, non-nesting, would leak it).

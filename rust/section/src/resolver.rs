@@ -765,14 +765,15 @@ fn selector_part(
 
     let (rendered, kind, slice) = match &found.region {
         Some(region) => {
-            let from = region.start_line + 1;
-            let rendered = span(
-                &slice(&scan.lex.source_lines, from, region.end_line),
-                from,
-                region.end_line,
-            );
-            // The region's own span is the rendered slice's: the directive lines are not part of it,
-            // and the slice is exactly the lines between them.
+            // A region is the whole marked span: the opening directive through
+            // the closing one, like a declaration with its signature. `/-` is
+            // the body between the directives.
+            let (from, to) = if *share == Scope::Body {
+                (region.start_line + 1, region.end_line)
+            } else {
+                (region.start_line, region.end_line + 1)
+            };
+            let rendered = span(&slice(&scan.lex.source_lines, from, to), from, to);
             let slice = LineRange {
                 from: rendered.from,
                 to: rendered.to,

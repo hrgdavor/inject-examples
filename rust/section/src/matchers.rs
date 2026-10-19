@@ -255,14 +255,24 @@ pub fn is_region_line(text: &str) -> bool {
         .any(|word| word_at_ignore_case(text, 0, word))
 }
 
-/// `^([A-Za-z_$][\w$]*)$` — a comment body that names a block and nothing else.
+/// `^([A-Za-z_$][\w$-]*)$` — a comment body that names a block and nothing else.
+/// A `-` is a name character now that a modifier is a whole `/`-segment (`/-`),
+/// so `item-list` is a name rather than a name plus a modifier.
 pub fn anchor_name(text: &str) -> Option<&str> {
-    let (name, length) = take_identifier(text)?;
-    if length == text.len() {
-        Some(name)
-    } else {
-        None
+    let mut chars = text.chars();
+    let first = chars.next()?;
+    if !(first.is_ascii_alphabetic() || first == '_' || first == '$') {
+        return None;
     }
+    let mut end = first.len_utf8();
+    for ch in chars {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' || ch == '-' {
+            end += ch.len_utf8();
+        } else {
+            return None;
+        }
+    }
+    Some(&text[..end])
 }
 
 /// `\b(?:class|interface|…)\s+([A-Za-z_$][\w$]*)\b`, first match wins left to right.
